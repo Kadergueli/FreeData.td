@@ -12,7 +12,7 @@ FreeData.td est une infrastructure de données ouverte alimentée par des agents
 AI autonomes. Son objectif : collecter, nettoyer, valider et rendre accessibles 
 les données socioéconomiques du Tchad — gratuitement, pour tous.
 
-## Pourquoi ChadData ?
+## Pourquoi FreeData.td ?
 
 Le Tchad souffre d'un déficit chronique de données publiques structurées.
 Chercheurs, startups, ONG et décideurs font face au même obstacle : 
