@@ -17,7 +17,7 @@ les données socioéconomiques du Tchad — gratuitement, pour tous.
 Le Tchad souffre d'un déficit chronique de données publiques structurées.
 Chercheurs, startups, ONG et décideurs font face au même obstacle : 
 l'absence d'une source de données fiable, centralisée et accessible.
-ChadData est la réponse à ce problème.
+FreeData.td est la réponse à ce problème.
 
 ## Secteurs couverts
 
