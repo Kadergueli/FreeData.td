@@ -27,7 +27,7 @@ FreeData.td est la réponse à ce problème.
 | 🛒 Marchés & Prix | WFP VAM, World Bank | 📋 Planifié |
 | 🚗 Transports | OpenStreetMap, OSR | 📋 Planifié |
 | 📚 Education | UNESCO, UNICEF | 📋 Planifié |
-| 🌍 Environnement | Open-Meteo, NASA | 📋 Planifié |
+| 🌍 Environnement | Open-Meteo, NASA |🔄 En développement |
 | 💰 Economie | World Bank, IMF | 📋 Planifié |
 
 ## Architecture
