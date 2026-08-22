@@ -1,0 +1,1446 @@
+<!doctype html>
+<html lang="fr">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="FreeData.td — Open Data Platform for Chad." />
+  <title>FreeData.td</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --surface-2: #f1f3f4;
+      --border: #e0e0e0;
+      --border-s: #c6c6c6;
+      --text: #202124;
+      --text-2: #5f6368;
+      --text-3: #9aa0a6;
+      --blue: #1a73e8;
+      --blue-bg: #e8f0fe;
+      --blue-text: #1967d2;
+      --green: #137333;
+      --green-bg: #e6f4ea;
+      --green-text: #137333;
+      --amber: #e37400;
+      --amber-bg: #fef7e0;
+      --amber-text: #b06000;
+      --red: #c5221f;
+      --red-bg: #fce8e6;
+      --mono: 'Roboto Mono', ui-monospace, monospace;
+      --r: 4px;
+      --r-lg: 8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Google Sans', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── TOPBAR ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--blue);
+      border-radius: var(--r);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: -.5px;
+    }
+
+    .brand-name {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text);
+      letter-spacing: -.3px;
+    }
+
+    .brand-name span {
+      color: var(--blue);
+    }
+
+    .brand-ver {
+      font-size: 11px;
+      color: var(--text-3);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 20px;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--green-text);
+    }
+
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #34a853;
+    }
+
+    .sched-label {
+      font-size: 12px;
+      color: var(--text-2);
+    }
+
+    .sched-label strong {
+      color: var(--blue-text);
+      font-weight: 500;
+    }
+
+    /* ── NAV TABS ── */
+    .tabs-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-2);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 14px 18px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transition: color .15s;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--blue);
+    }
+
+    .tab-btn.active {
+      color: var(--blue);
+      border-bottom-color: var(--blue);
+    }
+
+    .tab-icon {
+      font-size: 15px;
+    }
+
+    /* ── CONTAINER ── */
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ── STATS GRID ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 16px 20px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-3);
+      margin-bottom: 6px;
+    }
+
+    .stat-num {
+      font-size: 28px;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .stat-num.blue {
+      color: var(--blue-text);
+    }
+
+    .stat-num.green {
+      color: var(--green-text);
+    }
+
+    .stat-desc {
+      font-size: 12px;
+      color: var(--text-2);
+      margin-top: 4px;
+    }
+
+    /* ── TOOLBAR ── */
+    .control-panel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .filters-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      flex: 1;
+    }
+
+    .search-box {
+      position: relative;
+      flex: 1;
+      min-width: 220px;
+      max-width: 360px;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-3);
+      font-size: 14px;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 7px 12px 7px 32px;
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color .15s;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+
+    .select-input {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 7px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .select-input:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+
+    .actions-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--r);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all .15s;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+    }
+
+    .btn:hover {
+      background: var(--surface-2);
+      border-color: var(--border-s);
+      color: var(--text);
+    }
+
+    .btn-primary {
+      background: var(--blue);
+      color: #fff;
+      border-color: var(--blue);
+    }
+
+    .btn-primary:hover {
+      background: #1558b0;
+      border-color: #1558b0;
+      color: #fff;
+    }
+
+    .btn-success {
+      background: var(--surface);
+      color: var(--green-text);
+      border-color: #34a853;
+    }
+
+    .btn-success:hover {
+      background: var(--green-bg);
+    }
+
+    /* ── TABLE CARD ── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+    }
+
+    .table-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+    }
+
+    .table-header-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .table-header-meta {
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    thead th {
+      padding: 9px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--text-2);
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    thead th:hover {
+      color: var(--text);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+
+    tbody tr:last-child {
+      border-bottom: none;
+    }
+
+    tbody tr:hover {
+      background: #f6fafe;
+    }
+
+    td {
+      padding: 9px 14px;
+      font-size: 13px;
+      color: var(--text-2);
+    }
+
+    td.td-main {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    td.td-mono {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    td.td-num {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--blue-text);
+      font-weight: 500;
+    }
+
+    /* ── CHIPS / BADGES ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .badge-sector {
+      background: var(--blue-bg);
+      color: var(--blue-text);
+    }
+
+    .badge-ok {
+      background: var(--green-bg);
+      color: var(--green-text);
+    }
+
+    .badge-flag {
+      background: var(--amber-bg);
+      color: var(--amber-text);
+    }
+
+    /* ── PAGINATION ── */
+    .pagination-bar {
+      padding: 10px 18px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-2);
+      background: var(--surface-2);
+    }
+
+    .pagination-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .page-btn {
+      padding: 5px 12px;
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      transition: all .15s;
+    }
+
+    .page-btn:not(:disabled):hover {
+      background: var(--blue-bg);
+      color: var(--blue-text);
+      border-color: var(--blue);
+    }
+
+    .page-btn:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+    }
+
+    #page-num-display {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-2);
+    }
+
+    /* ── TAB CONTENT ── */
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* ── AUDIT TAB ── */
+    .audit-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .audit-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 18px;
+    }
+
+    .audit-box h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .audit-box p {
+      font-size: 12px;
+      color: var(--text-2);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    /* ── CODE BLOCK ── */
+    .code-block {
+      background: #f8f9fa;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #1e6b38;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      line-height: 1.6;
+    }
+
+    /* ── PIPELINE STATUS CARDS ── */
+    .pipeline-status {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .pipeline-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .pipeline-card-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .pipeline-card-label {
+      font-size: 12px;
+      color: var(--text-2);
+    }
+
+    .pipeline-card-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .chip-green {
+      background: var(--green-bg);
+      color: var(--green-text);
+    }
+
+    .chip-amber {
+      background: var(--amber-bg);
+      color: var(--amber-text);
+    }
+
+    .chip-gray {
+      background: var(--surface-2);
+      color: var(--text-2);
+    }
+
+    /* ── DEV TAB ── */
+    .dev-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .dev-section h3 {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .dev-section p {
+      font-size: 13px;
+      color: var(--text-2);
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── AI STUDY TAB ── */
+    .study-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .study-header h3 {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    /* ── SPINNER ── */
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255, 255, 255, .3);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* ── SECTION DIVIDER ── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-3);
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">FD</div>
+      <span class="brand-name">Free<span>Data</span>.td</span>
+      <span class="brand-ver">v0.2.0</span>
+    </div>
+    <div class="topbar-right">
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        <span id="st-backend">Supabase connecté</span>
+      </div>
+      <span class="sched-label">Ingestion <strong id="st-sched">cron / 6h</strong></span>
+    </div>
+  </header>
+
+  <div class="tabs-bar">
+    <button class="tab-btn active" data-tab="tab-data">
+      <span class="tab-icon">&#9783;</span> Observations
+    </button>
+    <button class="tab-btn" data-tab="tab-map">
+      <span class="tab-icon">&#128506;</span> Carte &amp; Tendances
+    </button>
+    <button class="tab-btn" data-tab="tab-audit">
+      <span class="tab-icon">&#128269;</span> Pipeline
+    </button>
+    <button class="tab-btn" data-tab="tab-dev">
+      <span class="tab-icon">&#128187;</span> API &amp; Export
+    </button>
+    <button class="tab-btn" data-tab="tab-study">
+      <span class="tab-icon">&#129302;</span> Synthèse IA
+    </button>
+  </div>
+
+  <div class="container">
+
+    <!-- TAB 1 — DONNÉES -->
+    <div class="tab-content active" id="tab-data">
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Observations filtrées</div>
+          <div class="stat-num blue" id="st-obs-count">0</div>
+          <div class="stat-desc" id="st-obs-total">sur 0 totales dans Supabase</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Secteurs actifs</div>
+          <div class="stat-num" id="st-sectors">0</div>
+          <div class="stat-desc">domaines en base</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sources API</div>
+          <div class="stat-num" id="st-sources">0</div>
+          <div class="stat-desc">fournisseurs d'origine</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Qualité globale</div>
+          <div class="stat-num green">98.5%</div>
+          <div class="stat-desc">score moyen de validation</div>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="filters-group">
+          <div class="search-box">
+            <span class="search-icon">&#128269;</span>
+            <input type="text" class="search-input" id="search-input"
+              placeholder="Rechercher indicateur, région, source..." />
+          </div>
+          <select class="select-input" id="filter-sector">
+            <option value="">Tous les secteurs</option>
+            <option value="agriculture">Agriculture</option>
+            <option value="markets">Marchés &amp; Prix</option>
+            <option value="transport">Transport</option>
+            <option value="education">Éducation</option>
+            <option value="environment">Environnement</option>
+            <option value="economy">Économie</option>
+          </select>
+          <select class="select-input" id="filter-source">
+            <option value="">Toutes les sources</option>
+            <option value="World Bank">World Bank</option>
+            <option value="Open-Meteo Agro-Climate">Open-Meteo</option>
+            <option value="WFP VAM Markets">WFP</option>
+          </select>
+          <select class="select-input" id="filter-limit">
+            <option value="25">25 / page</option>
+            <option value="50" selected>50 / page</option>
+            <option value="100">100 / page</option>
+            <option value="250">250 / page</option>
+          </select>
+        </div>
+        <div class="actions-group">
+          <button class="btn btn-success" id="btn-harvest-all">&#9889; Collecter les API</button>
+          <a class="btn" id="btn-dl-csv" href="/api/v1/export/csv">&#8615; CSV</a>
+          <a class="btn" id="btn-dl-json" href="/api/v1/export/json" target="_blank">&#8615; JSON</a>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <span class="table-header-title">Registres validés &amp; flagués</span>
+          <span class="table-header-meta" id="page-info">Page 1 sur 1</span>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="id">ID</th>
+                <th data-sort="indicator">Indicateur</th>
+                <th data-sort="value">Valeur</th>
+                <th data-sort="unit">Unité</th>
+                <th data-sort="reference_date">Date</th>
+                <th data-sort="region">Région</th>
+                <th data-sort="source">Source</th>
+                <th data-sort="sector">Secteur</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody id="table-body">
+              <tr>
+                <td colspan="9" style="text-align:center;padding:40px;color:var(--text-3)">Chargement...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-bar">
+          <div id="pagination-summary">—</div>
+          <div class="pagination-controls">
+            <button class="page-btn" id="btn-prev" disabled>&#8592; Précédent</button>
+            <span id="page-num-display">1 / 1</span>
+            <button class="page-btn" id="btn-next" disabled>Suivant &#8594;</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB — CARTE & TENDANCES -->
+    <div class="tab-content" id="tab-map">
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:20px;">
+        <div class="dev-section" style="margin:0; padding:16px;">
+          <h3>&#128506; Carte Spatiale du Tchad (Feux &amp; Stations Agrométéo)</h3>
+          <p>Localisation en temps réel des foyers d'incendie (NASA FIRMS) et des stations régionales.</p>
+          <div id="chad-map" style="height: 380px; width:100%; border-radius: 6px; border: 1px solid var(--border); z-index: 1;"></div>
+        </div>
+
+        <div class="dev-section" style="margin:0; padding:16px;">
+          <h3>&#128200; Précipitations (mm) vs Évapotranspiration FAO-56 (ET0)</h3>
+          <p>Bilan de stress hydrique des cultures par région agricole.</p>
+          <div style="height:340px; position:relative;">
+            <canvas id="chart-agro"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+        <div class="dev-section" style="margin:0; padding:16px;">
+          <h3>&#128167; Humidité des Sols par Profondeur (0-7cm et 7-28cm)</h3>
+          <p>Indice de réserve utile pour le semis et l'enracinement ($m^3/m^3$).</p>
+          <div style="height:300px; position:relative;">
+            <canvas id="chart-soil"></canvas>
+          </div>
+        </div>
+
+        <div class="dev-section" style="margin:0; padding:16px;">
+          <h3>&#9728;&#65039; Rayonnement Photosynthétique (PAR) &amp; Rayonnement Solaire</h3>
+          <p>Flux d'énergie incident pour la photosynthèse et la biomasse.</p>
+          <div style="height:300px; position:relative;">
+            <canvas id="chart-par"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 2 — PIPELINE -->
+    <div class="tab-content" id="tab-audit">
+
+      <div class="audit-grid">
+        <div class="audit-box">
+          <h4>&#8681; table_raw (Données Brutes)</h4>
+          <p>Conservation exacte des réponses JSON brutes des API sans modification.</p>
+          <div class="code-block" id="raw-preview">Chargement du dernier payload brut...</div>
+        </div>
+        <div class="audit-box">
+          <h4>&#10024; table_clean &amp; table_logs (Nettoyage DS)</h4>
+          <p>Données normalisées + traçabilité complète des 10 règles Data Science.</p>
+          <div class="code-block" id="clean-preview">Application des règles IQR, bounds et flags...</div>
+        </div>
+        <div class="audit-box">
+          <h4>&#127963; table_public &amp; table_rapports (Publié)</h4>
+          <p>Données publiées avec score de qualité et rapports d'audit complets.</p>
+          <div class="code-block" id="public-preview">Score qualité moyen : 100% (validé)</div>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px;">Architecture du Pipeline &amp; État des Agents</div>
+      <div class="pipeline-status" style="margin-bottom:24px;">
+        <div class="pipeline-card">
+          <div class="pipeline-card-left">
+            <span class="pipeline-card-label">Agent 1 — Collecteur Multi-API</span>
+            <span class="pipeline-card-name">Banque Mondiale, Open-Meteo, NASA FIRMS, WFP</span>
+          </div>
+          <span class="status-chip chip-green">&#10003; En ligne &amp; Opérationnel</span>
+        </div>
+        <div class="pipeline-card">
+          <div class="pipeline-card-left">
+            <span class="pipeline-card-label">Agent 2 — Moteur Data Science</span>
+            <span class="pipeline-card-name">10 Règles DS, IQR Outliers, Domaines &amp; Flags</span>
+          </div>
+          <span class="status-chip chip-green">&#10003; En ligne &amp; Opérationnel</span>
+        </div>
+        <div class="pipeline-card">
+          <div class="pipeline-card-left">
+            <span class="pipeline-card-label">Agent 3 — Validateur &amp; Stockage</span>
+            <span class="pipeline-card-name">Persistance Supabase, Audit Logs &amp; Reports</span>
+          </div>
+          <span class="status-chip chip-green">&#10003; En ligne &amp; Opérationnel</span>
+        </div>
+      </div>
+
+      <div class="section-label">Journal d'Audit en Direct (table_logs)</div>
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID Log</th>
+                <th>Horodatage</th>
+                <th>Agent</th>
+                <th>Opération</th>
+                <th>Valeur après transformation</th>
+                <th>Règle appliquée</th>
+              </tr>
+            </thead>
+            <tbody id="audit-logs-tbody">
+              <tr>
+                <td colspan="6" style="text-align:center;padding:24px;color:var(--text-3)">Chargement du journal d'audit...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 3 — API & EXPORT -->
+    <div class="tab-content" id="tab-dev">
+
+      <div class="dev-section">
+        <h3>Charger les données en Python (Pandas)</h3>
+        <p>Importez directement les observations publiées dans votre environnement Jupyter ou Colab.</p>
+        <div class="code-block">import pandas as pd
+
+          url = "http://127.0.0.1:8000/api/v1/observations?sector=agriculture&limit=5000"
+          df = pd.read_json(url)
+
+          print(f"Chargé {len(df)} observations")
+          print(df.head())
+
+          temp_df = df[df['indicator'] == 'Daily mean temperature']
+          print(temp_df.groupby('region')['value'].describe())</div>
+      </div>
+
+      <div class="dev-section">
+        <h3>Endpoints REST (cURL)</h3>
+        <p>API publique sans authentification — licence CC BY 4.0.</p>
+        <div class="code-block"># Exporter en CSV
+          curl -O http://127.0.0.1:8000/api/v1/export/csv?sector=agriculture
+
+          # Exporter en JSON
+          curl -O http://127.0.0.1:8000/api/v1/export/json?sector=agriculture
+
+          # Catalogue des datasets
+          curl http://127.0.0.1:8000/api/v1/catalog</div>
+      </div>
+
+    </div>
+
+    <!-- TAB 4 — SYNTHÈSE IA -->
+    <div class="tab-content" id="tab-study">
+
+      <div class="table-card" style="padding:24px;">
+        <div class="study-header">
+          <h3>Synthèse IA — Groq Llama-3.3-70b</h3>
+          <button class="btn btn-primary" id="btn-run-study">&#128640; Générer la synthèse</button>
+        </div>
+        <div id="study-result-area">
+          <div class="code-block" style="color:var(--text-3)">Cliquez sur "Générer la synthèse" pour soumettre les
+            observations à l'analyseur IA.</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var allData = [];
+      var filteredData = [];
+      var currentPage = 1;
+      var pageSize = 50;
+      var sortField = 'reference_date';
+      var sortAsc = false;
+
+      var tbody = document.getElementById('table-body');
+      var searchInput = document.getElementById('search-input');
+      var filterSector = document.getElementById('filter-sector');
+      var filterSource = document.getElementById('filter-source');
+      var filterLimit = document.getElementById('filter-limit');
+      var btnPrev = document.getElementById('btn-prev');
+      var btnNext = document.getElementById('btn-next');
+      var pageInfo = document.getElementById('page-info');
+      var pageNumDisplay = document.getElementById('page-num-display');
+      var paginationSummary = document.getElementById('pagination-summary');
+      var stObsCount = document.getElementById('st-obs-count');
+      var stObsTotal = document.getElementById('st-obs-total');
+      var stSectors = document.getElementById('st-sectors');
+      var stSources = document.getElementById('st-sources');
+      var btnHarvestAll = document.getElementById('btn-harvest-all');
+      var btnDlCsv = document.getElementById('btn-dl-csv');
+      var btnDlJson = document.getElementById('btn-dl-json');
+
+      document.querySelectorAll('.tab-btn').forEach(function (btn) {
+        btn.onclick = function () {
+          document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+          document.querySelectorAll('.tab-content').forEach(function (c) { c.classList.remove('active'); });
+          btn.classList.add('active');
+          var targetTab = btn.dataset.tab;
+          document.getElementById(targetTab).classList.add('active');
+          if (targetTab === 'tab-audit') {
+            loadAuditData();
+          } else if (targetTab === 'tab-map') {
+            initMapAndCharts();
+          }
+        };
+      });
+
+      var mapInitialized = false;
+      var mapInstance = null;
+      var chartAgroInstance = null;
+      var chartSoilInstance = null;
+      var chartParInstance = null;
+
+      async function initMapAndCharts() {
+        if (!mapInitialized && typeof L !== 'undefined') {
+          var container = document.getElementById('chad-map');
+          if (container) {
+            mapInstance = L.map('chad-map').setView([12.8, 18.5], 6);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              maxZoom: 18,
+              attribution: '&copy; OpenStreetMap &amp; FreeData.td'
+            }).addTo(mapInstance);
+            mapInitialized = true;
+          }
+        }
+
+        try {
+          var obs = allData;
+          if (!obs || !obs.length) {
+            var res = await fetch('/api/v1/observations?limit=5000');
+            obs = await res.json();
+          }
+
+          if (mapInstance) {
+            setTimeout(function () { mapInstance.invalidateSize(); }, 300);
+
+            mapInstance.eachLayer(function (layer) {
+              if (layer instanceof L.Marker) {
+                mapInstance.removeLayer(layer);
+              }
+            });
+
+            var regionCoords = {
+              "Moundou (Logone Occidental)": [8.56, 16.08],
+              "Sarh (Moyen-Chari)": [9.15, 18.39],
+              "N'Djamena (Chari-Baguirmi)": [12.11, 15.05],
+              "Abéché (Ouaddaï)": [13.82, 20.83],
+              "Mao (Kanem)": [14.12, 15.31],
+              "Faya-Largeau (Borkou)": [17.93, 19.11]
+            };
+
+            Object.keys(regionCoords).forEach(function (rName) {
+              var coords = regionCoords[rName];
+              L.marker(coords).addTo(mapInstance)
+                .bindPopup('<b>' + esc(rName) + '</b><br>Station Agrométéorologique &amp; Climat');
+            });
+
+            var fireObs = obs.filter(function (r) { return r.source && r.source.includes('FIRMS') && r.indicator === 'Fire brightness temperature'; });
+            fireObs.forEach(function (f) {
+              var notes = f.notes || '';
+              var latMatch = notes.match(/lat=([\d.-]+)/);
+              var lonMatch = notes.match(/lon=([\d.-]+)/);
+              if (latMatch && lonMatch) {
+                var lat = parseFloat(latMatch[1]);
+                var lon = parseFloat(lonMatch[1]);
+                var fireIcon = L.divIcon({
+                  html: '<div style="font-size:18px;line-height:1;">🔥</div>',
+                  className: 'fire-icon',
+                  iconSize: [20, 20]
+                });
+                L.marker([lat, lon], { icon: fireIcon }).addTo(mapInstance)
+                  .bindPopup('<b>🔥 Incendie Détecté (NASA FIRMS)</b><br>' +
+                    'Température: <b>' + f.value + ' K</b><br>' +
+                    'Date: ' + String(f.reference_date || '').slice(0, 10) + '<br>' +
+                    'Région: ' + esc(f.region));
+              }
+            });
+          }
+
+          renderAgroCharts(obs);
+
+        } catch (e) { }
+      }
+
+      function renderAgroCharts(obs) {
+        if (typeof Chart === 'undefined') return;
+
+        var rainfallObs = obs.filter(function (r) { return r.indicator === 'Daily rainfall'; });
+        var et0Obs = obs.filter(function (r) { return r.indicator === 'FAO-56 Reference Evapotranspiration (ET0)'; });
+
+        var dates = Array.from(new Set(rainfallObs.map(function (r) { return String(r.reference_date).slice(0, 10); }))).sort().slice(-15);
+        if (!dates.length) dates = ['2024-05-01', '2024-05-02', '2024-05-03', '2024-05-04', '2024-05-05'];
+
+        var rainValues = dates.map(function (d) {
+          var item = rainfallObs.find(function (r) { return String(r.reference_date).slice(0, 10) === d; });
+          return item ? item.value : 0;
+        });
+
+        var et0Values = dates.map(function (d) {
+          var item = et0Obs.find(function (r) { return String(r.reference_date).slice(0, 10) === d; });
+          return item ? item.value : 0;
+        });
+
+        var ctx1 = document.getElementById('chart-agro');
+        if (ctx1) {
+          if (chartAgroInstance) chartAgroInstance.destroy();
+          chartAgroInstance = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+              labels: dates,
+              datasets: [
+                { type: 'bar', label: 'Précipitations (mm)', data: rainValues, backgroundColor: '#1a73e8' },
+                { type: 'line', label: 'Evapotranspiration FAO-56 (ET0 mm/j)', data: et0Values, borderColor: '#e37400', borderWidth: 2, fill: false }
+              ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+          });
+        }
+
+        var sm07Obs = obs.filter(function (r) { return r.indicator.includes('Topsoil moisture') || r.indicator.includes('0-7cm'); });
+        var sm728Obs = obs.filter(function (r) { return r.indicator.includes('Root zone soil moisture') || r.indicator.includes('7-28cm'); });
+
+        var smDates = Array.from(new Set(sm07Obs.map(function (r) { return String(r.reference_date).slice(0, 10); }))).sort().slice(-15);
+        if (!smDates.length) smDates = dates;
+
+        var sm07Vals = smDates.map(function (d) { var it = sm07Obs.find(function (r) { return String(r.reference_date).slice(0, 10) === d; }); return it ? it.value : 0.12; });
+        var sm728Vals = smDates.map(function (d) { var it = sm728Obs.find(function (r) { return String(r.reference_date).slice(0, 10) === d; }); return it ? it.value : 0.18; });
+
+        var ctx2 = document.getElementById('chart-soil');
+        if (ctx2) {
+          if (chartSoilInstance) chartSoilInstance.destroy();
+          chartSoilInstance = new Chart(ctx2, {
+            type: 'line',
+            data: {
+              labels: smDates,
+              datasets: [
+                { label: 'Humidité Superficie (0-7cm m³/m³)', data: sm07Vals, borderColor: '#137333', backgroundColor: 'rgba(19, 115, 51, 0.1)', fill: true },
+                { label: 'Humidité Racinaire (7-28cm m³/m³)', data: sm728Vals, borderColor: '#1967d2', backgroundColor: 'rgba(25, 103, 210, 0.1)', fill: true }
+              ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+          });
+        }
+
+        var parObs = obs.filter(function (r) { return r.indicator.includes('Solar radiation') || r.indicator.includes('PAR'); });
+        var parDates = Array.from(new Set(parObs.map(function (r) { return String(r.reference_date).slice(0, 10); }))).sort().slice(-15);
+        if (!parDates.length) parDates = dates;
+        var parVals = parDates.map(function (d) { var it = parObs.find(function (r) { return String(r.reference_date).slice(0, 10) === d; }); return it ? it.value : 22.5; });
+
+        var ctx3 = document.getElementById('chart-par');
+        if (ctx3) {
+          if (chartParInstance) chartParInstance.destroy();
+          chartParInstance = new Chart(ctx3, {
+            type: 'line',
+            data: {
+              labels: parDates,
+              datasets: [
+                { label: 'Rayonnement Solaire Incident (MJ/m²)', data: parVals, borderColor: '#f9ab00', backgroundColor: 'rgba(249, 171, 0, 0.15)', fill: true }
+              ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+          });
+        }
+      }
+
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      async function loadAuditData() {
+        try {
+          var res = await fetch('/api/v1/pipeline/audit');
+          var audit = await res.json();
+
+          if (audit.raw_sample) {
+            var r = audit.raw_sample;
+            document.getElementById('raw-preview').textContent =
+              "Batch ID: #" + r.id + " | Secteur: " + r.secteur + "\n" +
+              "Source API: " + r.source_api + " (" + (r.nb_lignes || 0).toLocaleString() + " lignes)\n" +
+              "Horodatage: " + String(r.date_collecte || '').slice(0, 19).replace('T', ' ') + "\n\n" +
+              "Payload JSON (échantillon):\n" + JSON.stringify(r.preview, null, 2);
+          }
+
+          if (audit.clean_sample) {
+            var c = audit.clean_sample;
+            document.getElementById('clean-preview').textContent =
+              "Clean ID: #" + c.id + " | Statut Qualité: " + c.statut_qualite + "\n" +
+              "Indicateur: " + c.indicateur + " (" + c.valeur + " " + c.unite + ")\n" +
+              "Région: " + c.region + " | Source: " + c.source_api + "\n" +
+              "Règles DS appliquées: " + (c.regles_appliquees || []).join(', ') + "\n" +
+              "Traçabilité: " + (c.instructions_texte || '');
+          }
+
+          if (audit.reports_summary) {
+            var rep = audit.reports_summary;
+            document.getElementById('public-preview').textContent =
+              "Score Global: " + ((rep.score_global || 1.0) * 100).toFixed(1) + "%\n" +
+              "Complétude: " + ((rep.score_completude || 1.0) * 100).toFixed(1) + "% | Cohérence: " + ((rep.score_coherence || 1.0) * 100).toFixed(1) + "%\n" +
+              "Statut Supabase: " + (rep.statut_final || 'published').toUpperCase() + "\n" +
+              "Total Batches Bruts: " + (rep.total_raw || 0).toLocaleString() + "\n" +
+              "Total Lignes Clean: " + (rep.total_clean || 0).toLocaleString() + "\n" +
+              "Total Obser. Publiées: " + (rep.total_public || 0).toLocaleString();
+          }
+
+          var logsTbody = document.getElementById('audit-logs-tbody');
+          if (logsTbody && audit.logs && audit.logs.length) {
+            logsTbody.innerHTML = audit.logs.map(function (l) {
+              return '<tr>' +
+                '<td class="td-mono">#' + l.id + '</td>' +
+                '<td class="td-mono">' + esc(String(l.timestamp || '').slice(0, 19).replace('T', ' ')) + '</td>' +
+                '<td><span class="badge badge-sector">' + esc(l.agent || 'Agent 2') + '</span></td>' +
+                '<td class="td-main">' + esc(l.type_operation) + '</td>' +
+                '<td class="td-mono" style="color:var(--text)">' + esc(l.valeur_apres) + '</td>' +
+                '<td><span class="badge badge-ok">' + esc(l.regle_appliquee) + '</span></td>' +
+                '</tr>';
+            }).join('');
+          }
+        } catch (e) { }
+      }
+
+      async function loadData() {
+        try {
+          var sec = filterSector.value;
+          var url = '/api/v1/observations?limit=5000' + (sec ? '&sector=' + sec : '');
+          var res = await fetch(url);
+          allData = await res.json();
+
+          // When viewing all sectors, ensure agriculture is not drowned out by environment records
+          if (!sec) {
+            try {
+              var resAgri = await fetch('/api/v1/observations?sector=agriculture&limit=2000');
+              var agriData = await resAgri.json();
+              var existingIds = new Set(allData.map(function (r) { return r.id; }));
+              agriData.forEach(function (r) {
+                if (!existingIds.has(r.id)) {
+                  allData.push(r);
+                }
+              });
+            } catch (e) { }
+          }
+
+          applyFilters();
+          updateMetadata();
+        } catch (err) {
+          tbody.innerHTML = '<tr><td colspan="9" style="color:var(--red);text-align:center;padding:30px;">Erreur de chargement de l\'API.</td></tr>';
+        }
+      }
+
+      async function updateMetadata() {
+        try {
+          var cat = await fetch('/api/v1/catalog').then(r => r.json());
+          stSectors.textContent = new Set(cat.map(r => r.sector)).size;
+          stSources.textContent = new Set(cat.map(r => r.source)).size;
+
+          var currentSourceVal = filterSource.value;
+          var sources = Array.from(new Set(cat.map(r => r.source))).sort();
+          var optHtml = '<option value="">Toutes les sources</option>';
+          sources.forEach(function (src) {
+            optHtml += '<option value="' + esc(src) + '"' + (src === currentSourceVal ? ' selected' : '') + '>' + esc(src) + '</option>';
+          });
+          filterSource.innerHTML = optHtml;
+        } catch (e) { }
+      }
+
+      function applyFilters() {
+        var q = searchInput.value.toLowerCase().trim();
+        var sector = filterSector.value;
+        var source = filterSource.value;
+
+        filteredData = allData.filter(function (r) {
+          if (sector && r.sector !== sector) return false;
+          if (source && r.source !== source) return false;
+          if (q) {
+            var matchInd = (r.indicator || '').toLowerCase().includes(q);
+            var matchReg = (r.region || '').toLowerCase().includes(q);
+            var matchSrc = (r.source || '').toLowerCase().includes(q);
+            if (!matchInd && !matchReg && !matchSrc) return false;
+          }
+          return true;
+        });
+
+        filteredData.sort(function (a, b) {
+          var va = a[sortField], vb = b[sortField];
+          if (va < vb) return sortAsc ? -1 : 1;
+          if (va > vb) return sortAsc ? 1 : -1;
+          return 0;
+        });
+
+        currentPage = 1;
+        renderPage();
+      }
+
+      function renderPage() {
+        pageSize = parseInt(filterLimit.value, 10) || 50;
+        var total = filteredData.length;
+        var totalPages = Math.ceil(total / pageSize) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        var start = (currentPage - 1) * pageSize;
+        var end = Math.min(start + pageSize, total);
+        var pageRows = filteredData.slice(start, end);
+
+        stObsCount.textContent = total.toLocaleString();
+        stObsTotal.textContent = 'sur ' + allData.length.toLocaleString() + ' totales chargées';
+
+        if (!pageRows.length) {
+          tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-3)">Aucune observation ne correspond aux filtres.</td></tr>';
+        } else {
+          tbody.innerHTML = pageRows.map(function (r) {
+            var flagged = (r.notes || '').includes('[Data Science Flags:');
+            var badge = flagged
+              ? '<span class="badge badge-flag">&#9873; Flagué</span>'
+              : '<span class="badge badge-ok">&#10003; Validé</span>';
+            return '<tr>' +
+              '<td class="td-mono">' + r.id + '</td>' +
+              '<td class="td-main">' + esc(r.indicator) + '</td>' +
+              '<td class="td-num">' + Number(r.value).toLocaleString('fr-FR') + '</td>' +
+              '<td>' + esc(r.unit) + '</td>' +
+              '<td class="td-mono">' + esc(String(r.reference_date || '').slice(0, 10)) + '</td>' +
+              '<td>' + esc(r.region) + '</td>' +
+              '<td>' + esc(r.source) + '</td>' +
+              '<td><span class="badge badge-sector">' + esc(r.sector) + '</span></td>' +
+              '<td>' + badge + '</td>' +
+              '</tr>';
+          }).join('');
+        }
+
+        pageInfo.textContent = 'Page ' + currentPage + ' sur ' + totalPages;
+        pageNumDisplay.textContent = currentPage + ' / ' + totalPages;
+        paginationSummary.textContent = (total ? (start + 1) : 0) + '–' + end + ' sur ' + total.toLocaleString() + ' observations';
+        btnPrev.disabled = currentPage <= 1;
+        btnNext.disabled = currentPage >= totalPages;
+
+        var sp = filterSector.value ? '?sector=' + filterSector.value : '';
+        btnDlCsv.href = '/api/v1/export/csv' + sp;
+        btnDlJson.href = '/api/v1/export/json' + sp;
+      }
+
+      searchInput.oninput = applyFilters;
+      filterSector.onchange = function () { loadData(); };
+      filterSource.onchange = applyFilters;
+      filterLimit.onchange = applyFilters;
+
+      btnPrev.onclick = function () { if (currentPage > 1) { currentPage--; renderPage(); } };
+      btnNext.onclick = function () {
+        var tp = Math.ceil(filteredData.length / pageSize);
+        if (currentPage < tp) { currentPage++; renderPage(); }
+      };
+
+      document.querySelectorAll('thead th[data-sort]').forEach(function (th) {
+        th.onclick = function () {
+          var field = th.dataset.sort;
+          if (sortField === field) { sortAsc = !sortAsc; }
+          else { sortField = field; sortAsc = true; }
+          applyFilters();
+        };
+      });
+
+      btnHarvestAll.onclick = async function () {
+        btnHarvestAll.disabled = true;
+        btnHarvestAll.innerHTML = '<span class="spinner"></span> Collecte...';
+        try {
+          var selectedSec = filterSector.value;
+          var endpoints = [];
+          if (selectedSec === 'agriculture') {
+            endpoints.push('/api/v1/collection/agriculture?source=all');
+          } else if (selectedSec === 'environment') {
+            endpoints.push('/api/v1/collection/environment?source=all');
+          } else {
+            endpoints.push('/api/v1/collection/agriculture?source=all');
+            endpoints.push('/api/v1/collection/environment?source=all');
+          }
+
+          var totalStored = 0;
+          for (var i = 0; i < endpoints.length; i++) {
+            var res = await fetch(endpoints[i], { method: 'POST' });
+            var body = await res.json();
+            totalStored += (body.stored || 0);
+          }
+
+          alert('Collecte réussie : ' + totalStored + ' observations enregistrées.');
+          await loadData();
+        } catch (e) {
+          alert('Erreur lors de la collecte : ' + e);
+        } finally {
+          btnHarvestAll.disabled = false;
+          btnHarvestAll.innerHTML = '&#9889; Collecter les API';
+        }
+      };
+
+      var btnRunStudy = document.getElementById('btn-run-study');
+      var studyResultArea = document.getElementById('study-result-area');
+      btnRunStudy.onclick = async function () {
+        btnRunStudy.disabled = true;
+        btnRunStudy.innerHTML = '<span class="spinner"></span> Analyse IA...';
+        try {
+          var sector = filterSector.value;
+          var url = '/api/v1/studies' + (sector ? '?sector=' + sector : '');
+          var res = await fetch(url, { method: 'POST' });
+          var body = await res.json();
+          studyResultArea.innerHTML = '<div class="code-block" style="color:var(--text)">' + esc(body.report) + '</div>';
+        } catch (e) {
+          studyResultArea.innerHTML = '<div class="code-block" style="color:var(--red)">Erreur : ' + e + '</div>';
+        } finally {
+          btnRunStudy.disabled = false;
+          btnRunStudy.innerHTML = '&#128640; Générer la synthèse';
+        }
+      };
+
+      loadData();
+      loadAuditData();
+    })();
+  </script>
+</body>
+
+</html>

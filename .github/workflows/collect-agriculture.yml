@@ -1,0 +1,23 @@
+name: Collect agriculture data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Monday, 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m app.cli collect-agriculture --source world-bank
