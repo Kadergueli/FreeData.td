@@ -112,16 +112,23 @@ class ObservationRepository:
                         "statut": "generated",
                     }
                 ).execute()
-                return response.data[0]["id"]
+                if response.data:
+                    return response.data[0]["id"]
             except Exception as exc:
-                logger.warning("Supabase table_etudes insert failed (non-fatal): %s", exc)
-                return None
-        with self._connection() as connection:
-            cursor = connection.execute(
-                "INSERT INTO studies (sector, model, observations_used, report) VALUES (?, ?, ?, ?)",
-                (sector, model, observations_used, report),
-            )
-        return cursor.lastrowid
+                logger.debug("Supabase table_etudes insert skipped: %s", exc)
+
+        try:
+            self.database_path.parent.mkdir(parents=True, exist_ok=True)
+            self._initialize_sqlite()
+            with self._connection() as connection:
+                cursor = connection.execute(
+                    "INSERT INTO studies (sector, model, observations_used, report) VALUES (?, ?, ?, ?)",
+                    (sector, model, observations_used, report),
+                )
+            return cursor.lastrowid
+        except Exception as exc:
+            logger.warning("SQLite save_study failed: %s", exc)
+            return None
 
     def _upsert_many(self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None) -> int:
         rows = [self._serialise(observation) for observation in observations]
@@ -139,7 +146,26 @@ class ObservationRepository:
         return len(rows)
 
     def _store_supabase_pipeline_batch(self, rows: list[dict[str, Any]], raw_record_id: int | None) -> int:
-        """Write clean records then publish them using a single batch per table."""
+        """Write clean records then publish them using a single batch per table, avoiding duplicate entries."""
+        # In-memory deduplication of incoming rows
+        seen_rows: set[tuple[str, str, str, str, str]] = set()
+        deduped_rows: list[dict[str, Any]] = []
+        for r in rows:
+            key = (
+                str(r.get("sector", "")).strip().lower(),
+                str(r.get("indicator", "")).strip().lower(),
+                str(r.get("reference_date", "")).strip(),
+                str(r.get("region", "")).strip().lower(),
+                str(r.get("source", "")).strip()[:30].lower(),
+            )
+            if key not in seen_rows:
+                seen_rows.add(key)
+                deduped_rows.append(r)
+
+        rows = deduped_rows
+        if not rows:
+            return 0
+
         clean_payloads = []
         for row in rows:
             flags = row.get("flags", [])
@@ -216,7 +242,12 @@ class ObservationRepository:
                 on_conflict="secteur,source_api,date_reference,indicateur,region",
             ).execute()
         except Exception:
-            # Fallback to insert if the unique index table_public_dedup_idx is not yet created on Supabase
+            # Delete any existing matching rows before inserting to avoid duplicates if upsert fails
+            for p in public_payloads:
+                try:
+                    self._supabase.table("table_public").delete().eq("secteur", p["secteur"]).eq("source_api", p["source_api"]).eq("date_reference", p["date_reference"]).eq("indicateur", p["indicateur"]).eq("region", p["region"]).execute()
+                except Exception:
+                    pass
             try:
                 self._supabase.table("table_public").insert(public_payloads).execute()
             except Exception as exc:
@@ -226,21 +257,58 @@ class ObservationRepository:
         return len(rows)
 
     def list_observations(self, sector: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        raw_obs: list[dict[str, Any]] = []
+        fetch_limit = limit * 4 if limit else 1000
         if self._supabase:
-            query = self._supabase.table("table_public").select("*")
+            try:
+                query = self._supabase.table("table_public").select("*")
+                if sector:
+                    query = query.eq("secteur", sector)
+                query = query.order("date_reference", desc=True).limit(fetch_limit)
+                raw_obs = [self._public_to_observation(row) for row in query.execute().data]
+            except Exception as exc:
+                logger.warning("Supabase list_observations query failed (%s), falling back to SQLite", exc)
+                try:
+                    query = "SELECT * FROM observations"
+                    parameters: list[Any] = []
+                    if sector:
+                        query += " WHERE sector = ?"
+                        parameters.append(sector)
+                    query += " ORDER BY reference_date DESC LIMIT ?"
+                    parameters.append(fetch_limit)
+                    with self._connection() as connection:
+                        raw_obs = [dict(row) for row in connection.execute(query, parameters).fetchall()]
+                except Exception:
+                    raw_obs = []
+        else:
+            query = "SELECT * FROM observations"
+            parameters: list[Any] = []
             if sector:
-                query = query.eq("secteur", sector)
-            query = query.order("date_reference", desc=True).limit(limit)
-            return [self._public_to_observation(row) for row in query.execute().data]
-        query = "SELECT * FROM observations"
-        parameters: list[Any] = []
-        if sector:
-            query += " WHERE sector = ?"
-            parameters.append(sector)
-        query += " ORDER BY reference_date DESC LIMIT ?"
-        parameters.append(limit)
-        with self._connection() as connection:
-            return [dict(row) for row in connection.execute(query, parameters).fetchall()]
+                query += " WHERE sector = ?"
+                parameters.append(sector)
+            query += " ORDER BY reference_date DESC LIMIT ?"
+            parameters.append(fetch_limit)
+            with self._connection() as connection:
+                raw_obs = [dict(row) for row in connection.execute(query, parameters).fetchall()]
+
+        # Deduplicate observations by canonical business key
+        seen_keys: set[tuple[str, str, str, str, str]] = set()
+        deduped: list[dict[str, Any]] = []
+        for o in raw_obs:
+            key = (
+                str(o.get("sector", "")).strip().lower(),
+                str(o.get("indicator", "")).strip().lower(),
+                str(o.get("reference_date", "")).strip(),
+                str(o.get("region", "")).strip().lower(),
+                str(o.get("source", "")).strip().lower(),
+            )
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduped.append(o)
+                if limit and len(deduped) >= limit:
+                    break
+
+        return deduped
 
     @staticmethod
     def _public_to_observation(row: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,461 @@
+/* ============================================================
+   FreeData.td — Reusable Components (OFFICIAL BLUE BRANDING)
+   ============================================================ */
+
+/* ── Layout Shell ── */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: var(--bg);
+}
+
+/* ── Header & Official Logo ── */
+.app-header {
+  background-color: #ffffff;
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-3) var(--space-6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.3px;
+  color: var(--text);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lang-toggle {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.nav-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  vertical-align: middle;
+}
+
+
+/* Official Logo Badge (FD in White on Rounded Blue Square) */
+.brand-icon {
+  width: 32px;
+  height: 32px;
+  background-color: #2563eb; /* Official Logo Blue */
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  letter-spacing: -0.5px;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+  user-select: none;
+}
+
+.brand-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.brand-name span {
+  color: var(--cyan);
+}
+
+/* ── Navigation Tabs — desktop only ── */
+.nav-tabs {
+  background-color: #ffffff;
+  border-bottom: 1px solid var(--border);
+  padding: 0 var(--space-6);
+  display: flex;
+  gap: var(--space-6);
+  overflow-x: auto;
+}
+
+/* Hamburger hidden by default on desktop */
+.hamburger-btn {
+  display: none;
+}
+
+.nav-tab {
+  padding: var(--space-3) 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.nav-tab:hover { color: var(--text); }
+.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── Main Container ── */
+.app-main {
+  padding: var(--space-6);
+  flex: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── View (SPA pages) ── */
+.view {
+  display: none;
+  animation: fadeIn 0.3s ease-in-out;
+}
+.view.active { display: block; }
+
+/* ── Footer ── */
+.app-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background-color: var(--surface);
+}
+
+/* ── Button ── */
+.btn {
+  background-color: #ffffff;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.btn:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--text-muted);
+}
+
+.btn-primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+}
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: white;
+}
+
+.btn-cyan {
+  background-color: var(--cyan);
+  border-color: var(--cyan);
+  color: #ffffff;
+}
+
+.btn-ghost {
+  background: #ffffff;
+  border-color: var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.btn-ghost:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+
+/* ── Card ── */
+.card {
+  background-color: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.card--transparent {
+  background: #ffffff;
+}
+
+.card--accent-border {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+}
+
+/* ── Badge ── */
+.badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.05em;
+}
+
+.badge--valid {
+  background-color: var(--green-bg);
+  color: var(--green);
+  border: 1px solid rgba(22, 163, 74, 0.3);
+}
+
+.badge--cyan {
+  background: #eff6ff;
+  color: var(--accent);
+  border: 1px solid #bfdbfe;
+}
+
+.badge--muted {
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* ── Stat Card ── */
+.stat-card {
+  background: #ffffff;
+  border: 1px solid var(--border-strong);
+  padding: var(--space-5);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  margin-bottom: var(--space-1);
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ── Section Label ── */
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Health Bar ── */
+.health-bar {
+  width: 100px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.health-bar__fill {
+  height: 100%;
+  background: var(--accent);
+}
+.health-bar__fill--muted {
+  background: var(--text-muted);
+}
+
+/* ── Sector Icon ── */
+.sector-icon {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-size: 18px;
+}
+
+/* ── Source Icon ── */
+.source-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+/* ── Doc Link Row ── */
+.doc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+.doc-row:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--accent);
+}
+
+/* ── Pipeline Card ── */
+.pipeline-card {
+  padding: var(--space-4);
+  border-left: 4px solid var(--green);
+}
+.pipeline-card--error {
+  border-left-color: var(--red);
+}
+
+/* ── Alert Banner ── */
+.alert {
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  border: none;
+}
+.alert--danger {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: var(--red);
+}
+
+/* ── Chart Container ── */
+.chart-container {
+  position: relative;
+}
+
+/* ── Input ── */
+.input-search {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid var(--border-strong);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* ── Separator ── */
+.separator {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+/* ── Scrollable Horizontal Tabs Helper ── */
+.scrollable-tabs {
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.scrollable-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Word Break Helper ── */
+.word-break-all {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* ── Mono Text Sizes ── */
+.mono-xs  { font-family: var(--font-mono); font-size: 11px; }
+.mono-sm  { font-family: var(--font-mono); font-size: 13px; }
+.mono-md  { font-family: var(--font-mono); font-size: 14px; }
+.mono-lg  { font-family: var(--font-mono); font-size: 16px; }
+.mono-xl  { font-family: var(--font-mono); font-size: 24px; }
+.mono-2xl { font-family: var(--font-mono); font-size: 28px; }
+
+.fw-700 { font-weight: 700; }
+
+/* ── Responsive: Mobile (< 768px) ── */
+@media (max-width: 767px) {
+  /* Hide desktop nav, show hamburger */
+  .nav-tabs      { display: none !important; }
+  .hamburger-btn { display: flex !important; }
+
+  /* Compact spacing */
+  .app-header { padding: var(--space-3) var(--space-4); }
+  .app-main   { padding: var(--space-4); }
+  .card       { padding: var(--space-4); }
+
+  /* Stack grids into single column */
+  .grid-2,
+  .grid-3 { grid-template-columns: 1fr; }
+
+  .hero-title { font-size: 20px; }
+  .stat-value { font-size: 24px; }
+
+  .doc-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .doc-row > span {
+    align-self: flex-end;
+  }
+
+  .app-footer {
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    text-align: center;
+  }
+}
+
+/* ── Responsive: Small Mobile (< 480px) ── */
+@media (max-width: 480px) {
+  .brand-name { font-size: 15px; }
+  .brand-icon { width: 28px; height: 28px; font-size: 12px; }
+  .btn        { padding: 6px 10px; font-size: 12px; }
+}
+
+/* ── Responsive: Tablet & Desktop (>= 768px) ── */
+@media (min-width: 768px) {
+  /* Always show desktop nav, always hide mobile drawer & hamburger */
+  .nav-tabs      { display: flex !important; }
+  .hamburger-btn { display: none !important; }
+  .mobile-nav    { display: none !important; }
+  .mobile-nav-overlay { display: none !important; }
+}

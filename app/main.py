@@ -6,7 +6,15 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
-from app.agents import AgricultureAgent, AnalysisAgent, EnvironmentAgent
+from app.agents import (
+    AgricultureAgent,
+    AnalysisAgent,
+    EconomyAgent,
+    EducationAgent,
+    EnvironmentAgent,
+    MarketsAgent,
+    TransportAgent,
+)
 from app.config import settings
 from app.services.export import observations_to_csv, observations_to_json
 from app.services.scheduler import scheduler_service
@@ -37,13 +45,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.staticfiles import StaticFiles
+
 repository = ObservationRepository()
-DASHBOARD = Path(__file__).parent / "static" / "index.html"
+STATIC_DIR = Path(__file__).parent / "static"
+DASHBOARD = STATIC_DIR / "index.html"
 
 
 @app.get("/", include_in_schema=False)
 def dashboard() -> FileResponse:
-    return FileResponse(DASHBOARD)
+    return FileResponse(DASHBOARD, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
 
 
 @app.get("/api/v1/health")
@@ -110,6 +122,38 @@ async def collect_environment(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/v1/collection/markets", status_code=202)
+async def collect_markets(source: str = "all") -> dict:
+    try:
+        return (await MarketsAgent(repository).run(source)).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/collection/economy", status_code=202)
+async def collect_economy(source: str = "all") -> dict:
+    try:
+        return (await EconomyAgent(repository).run(source)).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/collection/transport", status_code=202)
+async def collect_transport(source: str = "all") -> dict:
+    try:
+        return (await TransportAgent(repository).run(source)).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/collection/education", status_code=202)
+async def collect_education(source: str = "all") -> dict:
+    try:
+        return (await EducationAgent(repository).run(source)).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/v1/collection/scheduler-status")
 def scheduler_status() -> dict:
     return scheduler_service.get_status()
@@ -128,3 +172,8 @@ async def generate_study(sector: str | None = None) -> dict:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# Mount static assets (css, js, images) to serve static directory
+app.mount("/static", StaticFiles(directory=STATIC_DIR, html=False), name="static")
+

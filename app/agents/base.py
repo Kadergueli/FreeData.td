@@ -7,12 +7,16 @@ import math
 from pathlib import Path
 from typing import Any
 
+import asyncio
+import httpx
+import logging
+
 from app.config import PROJECT_ROOT
 from app.schemas import CollectionResult, ObservationCreate
 from app.services.storage import ObservationRepository
 
+logger = logging.getLogger(__name__)
 
-# ─── Standardized Data Science Flags for FreeDatatd ──────────────────────────
 FLAGS = {
     "MISSING": "Valeur manquante non interpolable",
     "INTERPOLATED": "Valeur interpolée (gap <= 7 jours)",
@@ -27,34 +31,103 @@ FLAGS = {
 
 
 class BaseAgent(ABC):
-    """Shared data science collection & processing lifecycle for FreeDatatd agents."""
-
     sector: str
     name: str
 
     def __init__(self, repository: ObservationRepository) -> None:
         self.repository = repository
 
+    @staticmethod
+    async def fetch_json_with_retry(
+        client: httpx.AsyncClient,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        max_retries: int = 3,
+        throttle_seconds: float = 0.15,
+    ) -> Any:
+        req_headers = {"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata.td)"}
+        if headers:
+            req_headers.update(headers)
+
+        if throttle_seconds > 0:
+            await asyncio.sleep(throttle_seconds)
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = await client.get(url, params=params, headers=req_headers)
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    wait_time = float(retry_after) if retry_after and retry_after.isdigit() else float(2 ** attempt)
+                    logger.warning("HTTP 429 Rate limited on %s. Backing off for %.1fs (attempt %d/%d)", url, wait_time, attempt, max_retries)
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code >= 500 and attempt < max_retries:
+                    wait_time = float(2 ** attempt)
+                    logger.warning("HTTP %d Server Error on %s. Retrying in %.1fs...", exc.response.status_code, url, wait_time)
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.warning("HTTP status error fetching %s: %s", url, exc)
+                    return None
+            except (httpx.RequestError, json.JSONDecodeError, ValueError, TypeError) as exc:
+                logger.warning("Network or format error fetching %s (attempt %d/%d): %s", url, attempt, max_retries, exc)
+                if attempt < max_retries:
+                    await asyncio.sleep(1.0)
+                else:
+                    return None
+        return None
+
+    @staticmethod
+    async def fetch_text_with_retry(
+        client: httpx.AsyncClient,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        max_retries: int = 3,
+        throttle_seconds: float = 0.15,
+    ) -> str | None:
+        req_headers = {"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata.td)"}
+        if headers:
+            req_headers.update(headers)
+
+        if throttle_seconds > 0:
+            await asyncio.sleep(throttle_seconds)
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = await client.get(url, params=params, headers=req_headers)
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    wait_time = float(retry_after) if retry_after and retry_after.isdigit() else float(2 ** attempt)
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                response.raise_for_status()
+                return response.text
+            except Exception as exc:
+                logger.warning("HTTP error fetching text from %s: %s", url, exc)
+                if attempt < max_retries:
+                    await asyncio.sleep(1.0)
+                else:
+                    return None
+        return None
+
     @abstractmethod
     async def collect(self, source: str) -> list[dict[str, Any]]:
-        """Fetch raw records from a named source adapter."""
+        pass
 
     @abstractmethod
     def normalize(self, record: dict[str, Any]) -> ObservationCreate | None:
-        """Convert a raw source record to FreeDatatd's canonical model."""
+        pass
 
     def process_data_science_rules(self, observations: list[ObservationCreate]) -> list[ObservationCreate]:
-        """Apply the 10 professional Data Science rules to the dataset:
-        1. Never delete without documenting.
-        2. Domain-aware negative value rules.
-        3. 3*IQR Outlier detection & flagging.
-        4. Temporal jump detection (>50%).
-        5. Physical & sector domain validation.
-        """
         if not observations:
             return observations
 
-        # ── Step A: Group values by indicator for IQR Outlier Calculation ────
         indicator_values: dict[str, list[float]] = {}
         for obs in observations:
             if not math.isnan(obs.value):
@@ -68,7 +141,6 @@ class BaseAgent(ABC):
                 q1 = sorted_vals[n // 4]
                 q3 = sorted_vals[(3 * n) // 4]
                 iqr = q3 - q1
-                # 3*IQR rule for African volatile data
                 iqr_bounds[ind] = (q1 - 3 * iqr, q3 + 3 * iqr)
 
         processed: list[ObservationCreate] = []
@@ -78,13 +150,10 @@ class BaseAgent(ABC):
             val = obs.value
             ind = obs.indicator.strip()
 
-            # ── Rule 3: Domain-aware Negative Values ─────────────────────────
-            # Indicators where negative values are physically IMPOSSIBLE
             strictly_positive = (
                 "rainfall", "precip", "yield", "area", "price", "production",
                 "population", "distance", "fertilizer", "accident"
             )
-            # Indicators where negative values are VALID (temperatures, growth, balances, variations)
             valid_negative = ("temp", "temperature", "growth", "growth rate", "inflation", "balance", "variation")
 
             is_strictly_positive = any(k in ind.lower() for k in strictly_positive)
@@ -92,33 +161,27 @@ class BaseAgent(ABC):
 
             if val < 0:
                 if "rainfall" in ind.lower() or "precip" in ind.lower():
-                    # Physical correction rule: Negative rainfall replaced by 0.0 + flag
                     val = 0.0
                     flags.append("NEGATIVE_ERROR")
                 elif is_strictly_positive and not is_valid_neg:
                     flags.extend(["NEGATIVE_ERROR", "SUPERVISOR_REVIEW"])
 
-            # ── Rule 8: Sector & Domain Bounds ───────────────────────────────
             if "brightness" in ind.lower() or obs.unit.upper() == "K":
-                # Fire brightness temperature (Kelvin): valid satellite range 200 K - 600 K
                 if val < 200.0 or val > 600.0:
                     flags.extend(["DOMAIN_VIOLATION", "SUPERVISOR_REVIEW"])
             elif "temp" in ind.lower():
-                # Ambient air temperature (°C): valid meteorological range -5.0°C - 55.0°C
                 if val < -5.0 or val > 55.0:
                     flags.extend(["DOMAIN_VIOLATION", "SUPERVISOR_REVIEW"])
             elif "humidity" in ind.lower() or "rate" in ind.lower() or "percentage" in ind.lower():
                 if (val < 0.0 or val > 100.0) and "growth" not in ind.lower():
                     flags.extend(["DOMAIN_VIOLATION", "SUPERVISOR_REVIEW"])
 
-            # ── Rule 4: Outlier Detection using 3*IQR ────────────────────────
             if ind in iqr_bounds:
                 low_bound, high_bound = iqr_bounds[ind]
                 if val < low_bound or val > high_bound:
                     if "OUTLIER" not in flags:
                         flags.append("OUTLIER")
 
-            # Update observation with cleaned value and flags
             obs.value = val
             obs.flags = sorted(list(set(flags)))
             processed.append(obs)
@@ -126,7 +189,6 @@ class BaseAgent(ABC):
         return processed
 
     def validate(self, observation: ObservationCreate) -> list[str]:
-        """Basic structural check (date range, country code)."""
         errors: list[str] = []
         if observation.reference_date.year < 1960:
             errors.append("reference_date is outside the supported range (<1960)")
@@ -157,7 +219,6 @@ class BaseAgent(ABC):
             except (TypeError, ValueError) as exc:
                 errors.append(f"record skipped: {exc}")
 
-        # Apply the 10 Professional Data Science rules (IQR outliers, flags, domain bounds)
         accepted = self.process_data_science_rules(normalized_list)
 
         stored = self.repository.upsert_many(accepted, raw_record_id=raw_record_id)
@@ -181,7 +242,6 @@ class BaseAgent(ABC):
         )
 
     def _archive_raw(self, source: str, records: list[dict[str, Any]], collected_at: datetime) -> None:
-        """Keep source responses locally for reproducibility; these files are gitignored."""
         try:
             raw_directory = PROJECT_ROOT / "data" / "raw"
             raw_directory.mkdir(parents=True, exist_ok=True)

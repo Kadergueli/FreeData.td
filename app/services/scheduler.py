@@ -5,7 +5,14 @@ from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any
 
-from app.agents.agriculture import AgricultureAgent
+from app.agents import (
+    AgricultureAgent,
+    EconomyAgent,
+    EducationAgent,
+    EnvironmentAgent,
+    MarketsAgent,
+    TransportAgent,
+)
 from app.services.storage import ObservationRepository
 
 logger = logging.getLogger(__name__)
@@ -39,8 +46,13 @@ class AutonomousHarvesterScheduler:
         logger.info("Autonomous Harvester Scheduler stopped.")
 
     async def _scheduler_loop(self) -> None:
-        # Initial run on startup after 5 seconds delay
-        await asyncio.sleep(5)
+        # Do not run immediate heavy harvest on server startup to keep API 100% responsive
+        self.next_run = datetime.now(UTC) + timedelta(seconds=self.interval_seconds)
+        try:
+            await asyncio.sleep(self.interval_seconds)
+        except asyncio.CancelledError:
+            return
+
         while self.is_running:
             await self.run_harvest_job()
             self.next_run = datetime.now(UTC) + timedelta(seconds=self.interval_seconds)
@@ -50,18 +62,36 @@ class AutonomousHarvesterScheduler:
                 break
 
     async def run_harvest_job(self) -> dict[str, Any]:
-        logger.info("Starting scheduled autonomous data harvest...")
+        logger.info("Starting scheduled autonomous data harvest across active sector agents...")
         self.last_run = datetime.now(UTC)
-        try:
-            agent = AgricultureAgent(self.repository)
-            result = await agent.run(source="all")
-            self.last_result = result.model_dump(mode="json")
-            logger.info("Scheduled harvest completed: %d records stored.", result.stored)
-            return self.last_result
-        except Exception as exc:
-            logger.error("Error during scheduled harvest: %s", exc)
-            self.last_result = {"error": str(exc), "timestamp": self.last_run.isoformat()}
-            return self.last_result
+        total_stored = 0
+        agent_results = {}
+
+        agents = [
+            ("agriculture", AgricultureAgent(self.repository)),
+            ("environment", EnvironmentAgent(self.repository)),
+            ("markets", MarketsAgent(self.repository)),
+            ("economy", EconomyAgent(self.repository)),
+            ("transport", TransportAgent(self.repository)),
+            ("education", EducationAgent(self.repository)),
+        ]
+
+        for sec_name, agent in agents:
+            try:
+                res = await agent.run(source="all")
+                agent_results[sec_name] = res.model_dump(mode="json")
+                total_stored += res.stored
+            except Exception as exc:
+                logger.error("Error harvesting %s: %s", sec_name, exc)
+                agent_results[sec_name] = {"error": str(exc)}
+
+        self.last_result = {
+            "timestamp": self.last_run.isoformat(),
+            "total_stored": total_stored,
+            "sectors": agent_results,
+        }
+        logger.info("Scheduled harvest completed: %d total records stored.", total_stored)
+        return self.last_result
 
     def get_status(self) -> dict[str, Any]:
         return {

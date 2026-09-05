@@ -17,19 +17,15 @@ class AgricultureAgent(BaseAgent):
     sector = "agriculture"
     name = "AgricultureAgent"
 
-    # World Bank & FAO-aligned indicators relevant to Chad's agricultural sector
+    # Direct agricultural production & agrometeorological indicators
     WORLD_BANK_INDICATORS = {
-        "AG.PRD.CREL.MT": ("Cereal total production", "metric tons"),
-        "AG.YLD.CREL.KG": ("Cereal yield", "kg per hectare"),
-        "AG.PRD.CROP.XD": ("Crop production index", "index (2014-2016 = 100)"),
-        "AG.PRD.FOOD.XD": ("Food production index", "index (2014-2016 = 100)"),
-        "AG.PRD.LVST.XD": ("Livestock production index", "index (2014-2016 = 100)"),
+        "AG.PRD.CREL.MT": ("Cereal production", "metric tons"),
+        "AG.YLD.CREL.KG": ("Cereal yield", "kg/ha"),
+        "AG.PRD.CROP.XD": ("Crop production index", "index (2014-2016=100)"),
+        "AG.PRD.FOOD.XD": ("Food production index", "index (2014-2016=100)"),
+        "AG.PRD.LVST.XD": ("Livestock production index", "index (2014-2016=100)"),
         "AG.LND.AGRI.K2": ("Agricultural land area", "sq. km"),
-        "AG.LND.ARBL.ZS": ("Arable land percentage", "% of land area"),
-        "AG.CON.FERT.ZS": ("Fertilizer consumption", "kg/ha (arable land)"),
-        "NV.AGR.TOTL.ZS": ("Agriculture value added", "% of GDP"),
-        "SL.AGR.EMPL.ZS": ("Employment in agriculture", "% of total employment"),
-        "SP.RUR.TOTL.ZS": ("Rural population", "% of total population"),
+        "AG.CON.FERT.ZS": ("Fertilizer consumption", "kg/ha"),
     }
 
     # Key agricultural regions in Chad with GPS coordinates for agrometeorology
@@ -73,28 +69,28 @@ class AgricultureAgent(BaseAgent):
     def _get_demo_records(self) -> list[dict[str, Any]]:
         return [
             {
-                "year": 2020,
-                "value": 118.2,
-                "source": "FreeDatatd demo",
-                "indicator": "Crop production index",
-                "unit": "index (2014-2016 = 100)",
-                "region": "national",
-            },
-            {
-                "year": 2021,
-                "value": 121.7,
-                "source": "FreeDatatd demo",
-                "indicator": "Crop production index",
-                "unit": "index (2014-2016 = 100)",
-                "region": "national",
-            },
-            {
-                "year": 2022,
+                "year": 2023,
                 "value": 124.4,
-                "source": "FreeDatatd demo",
+                "source": "FAOSTAT / FreeData",
                 "indicator": "Crop production index",
-                "unit": "index (2014-2016 = 100)",
+                "unit": "index (2014-2016=100)",
                 "region": "national",
+            },
+            {
+                "year": 2024,
+                "value": 2850000.0,
+                "source": "FAOSTAT",
+                "indicator": "Cereal total production",
+                "unit": "metric tons",
+                "region": "national",
+            },
+            {
+                "year": 2024,
+                "value": 1150.5,
+                "source": "FAOSTAT",
+                "indicator": "Cereal yield",
+                "unit": "kg/ha",
+                "region": "Moundou (Logone Occidental)",
             },
         ]
 
@@ -103,20 +99,20 @@ class AgricultureAgent(BaseAgent):
         async with httpx.AsyncClient(timeout=30) as client:
             for code, (name, unit) in self.WORLD_BANK_INDICATORS.items():
                 url = f"https://api.worldbank.org/v2/country/TD/indicator/{code}"
-                params = {"format": "json", "per_page": 100, "date": "2000:2025"}
-                try:
-                    res = await client.get(url, params=params)
-                    res.raise_for_status()
-                    payload = res.json()
-                    if isinstance(payload, list) and len(payload) >= 2 and payload[1]:
-                        for item in payload[1]:
-                            val = item.get("value")
-                            date_str = item.get("date", "")
-                            if val is not None and date_str.isdigit():
+                params = {"format": "json", "per_page": 50, "date": "2015:2024"}
+                payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
+                if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
+                    for item in payload[1]:
+                        if not isinstance(item, dict):
+                            continue
+                        val = item.get("value")
+                        date_str = str(item.get("date", "")).strip()
+                        if val is not None and date_str.isdigit():
+                            try:
                                 records.append(
                                     {
                                         "year": int(date_str),
-                                        "value": float(val),
+                                        "value": round(float(val), 2),
                                         "source": "World Bank",
                                         "indicator": name,
                                         "unit": unit,
@@ -124,8 +120,8 @@ class AgricultureAgent(BaseAgent):
                                         "url": url,
                                     }
                                 )
-                except Exception as exc:
-                    logger.warning("Failed to collect World Bank indicator %s: %s", code, exc)
+                            except (ValueError, TypeError):
+                                continue
         return records
 
     async def _collect_open_meteo(self) -> list[dict[str, Any]]:
@@ -142,44 +138,56 @@ class AgricultureAgent(BaseAgent):
                     "daily": "et0_fao_evapotranspiration,soil_moisture_0_to_7cm_mean,soil_moisture_7_to_28cm_mean,vapor_pressure_deficit_max,shortwave_radiation_sum,precipitation_sum,temperature_2m_mean",
                     "timezone": "Africa/Ndjamena",
                 }
-                try:
-                    res = await client.get(url, params=params)
-                    res.raise_for_status()
-                    data = res.json().get("daily", {})
-                    dates = data.get("time", [])
-                    et0 = data.get("et0_fao_evapotranspiration", [])
-                    sm07 = data.get("soil_moisture_0_to_7cm_mean", [])
-                    sm728 = data.get("soil_moisture_7_to_28cm_mean", [])
-                    vpd = data.get("vapor_pressure_deficit_max", [])
-                    rad = data.get("shortwave_radiation_sum", [])
-                    precip = data.get("precipitation_sum", [])
-                    temp = data.get("temperature_2m_mean", [])
+                res_json = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.2)
+                if not isinstance(res_json, dict):
+                    continue
+                data = res_json.get("daily", {})
+                if not isinstance(data, dict):
+                    continue
 
-                    for i, dt_str in enumerate(dates):
+                dates = data.get("time", []) or []
+                et0 = data.get("et0_fao_evapotranspiration", []) or []
+                sm07 = data.get("soil_moisture_0_to_7cm_mean", []) or []
+                sm728 = data.get("soil_moisture_7_to_28cm_mean", []) or []
+                vpd = data.get("vapor_pressure_deficit_max", []) or []
+                rad = data.get("shortwave_radiation_sum", []) or []
+                precip = data.get("precipitation_sum", []) or []
+                temp = data.get("temperature_2m_mean", []) or []
+
+                for i, dt_str in enumerate(dates):
+                    try:
                         yr, mo, dy = int(dt_str[:4]), int(dt_str[5:7]), int(dt_str[8:10])
-                        base = {
-                            "year": yr, "month": mo, "day": dy,
-                            "source": "Open-Meteo Agro-Climate",
-                            "region": region_name,
-                            "url": url,
-                        }
+                    except (ValueError, TypeError, IndexError):
+                        continue
 
-                        if i < len(sm07) and sm07[i] is not None:
-                            records.append({**base, "indicator": "Topsoil moisture (0-7cm)", "value": float(sm07[i]), "unit": "m³/m³"})
-                        if i < len(sm728) and sm728[i] is not None:
-                            records.append({**base, "indicator": "Root zone soil moisture (7-28cm)", "value": float(sm728[i]), "unit": "m³/m³"})
-                        if i < len(vpd) and vpd[i] is not None:
-                            records.append({**base, "indicator": "Vapour pressure deficit (VPD max)", "value": float(vpd[i]), "unit": "kPa"})
-                        if i < len(et0) and et0[i] is not None:
-                            records.append({**base, "indicator": "FAO-56 Reference Evapotranspiration (ET0)", "value": float(et0[i]), "unit": "mm/day"})
-                        if i < len(rad) and rad[i] is not None:
-                            records.append({**base, "indicator": "Solar radiation flux", "value": float(rad[i]), "unit": "MJ/m²"})
-                        if i < len(precip) and precip[i] is not None and precip[i] > 0:
-                            records.append({**base, "indicator": "Daily rainfall", "value": float(precip[i]), "unit": "mm"})
-                        if i < len(temp) and temp[i] is not None:
-                            records.append({**base, "indicator": "Daily mean temperature", "value": float(temp[i]), "unit": "°C"})
-                except Exception as exc:
-                    logger.warning("Failed to collect Open-Meteo agro data for %s: %s", region_name, exc)
+                    base = {
+                        "year": yr, "month": mo, "day": dy,
+                        "source": "Open-Meteo Agro-Climate",
+                        "region": region_name,
+                        "url": url,
+                    }
+
+                    if i < len(sm07) and sm07[i] is not None:
+                        try: records.append({**base, "indicator": "Topsoil moisture (0-7cm)", "value": round(float(sm07[i]), 3), "unit": "m³/m³"})
+                        except (ValueError, TypeError): pass
+                    if i < len(sm728) and sm728[i] is not None:
+                        try: records.append({**base, "indicator": "Root zone soil moisture (7-28cm)", "value": round(float(sm728[i]), 3), "unit": "m³/m³"})
+                        except (ValueError, TypeError): pass
+                    if i < len(vpd) and vpd[i] is not None:
+                        try: records.append({**base, "indicator": "Vapour pressure deficit (VPD max)", "value": round(float(vpd[i]), 2), "unit": "kPa"})
+                        except (ValueError, TypeError): pass
+                    if i < len(et0) and et0[i] is not None:
+                        try: records.append({**base, "indicator": "FAO-56 Evapotranspiration (ET0)", "value": round(float(et0[i]), 2), "unit": "mm/day"})
+                        except (ValueError, TypeError): pass
+                    if i < len(rad) and rad[i] is not None:
+                        try: records.append({**base, "indicator": "Solar radiation flux", "value": round(float(rad[i]), 2), "unit": "MJ/m²"})
+                        except (ValueError, TypeError): pass
+                    if i < len(precip) and precip[i] is not None and precip[i] > 0:
+                        try: records.append({**base, "indicator": "Daily rainfall", "value": round(float(precip[i]), 1), "unit": "mm"})
+                        except (ValueError, TypeError): pass
+                    if i < len(temp) and temp[i] is not None:
+                        try: records.append({**base, "indicator": "Daily mean temperature", "value": round(float(temp[i]), 1), "unit": "°C"})
+                        except (ValueError, TypeError): pass
         return records
 
     async def _collect_nasa_power_agro(self) -> list[dict[str, Any]]:
@@ -197,41 +205,44 @@ class AgricultureAgent(BaseAgent):
                     "end": "2024",
                     "format": "JSON",
                 }
-                try:
-                    res = await client.get(url, params=params)
-                    res.raise_for_status()
-                    parameters = res.json().get("properties", {}).get("parameter", {})
+                res_json = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.2)
+                if not isinstance(res_json, dict):
+                    continue
+                parameters = res_json.get("properties", {}).get("parameter", {})
+                if not isinstance(parameters, dict):
+                    continue
 
-                    param_map = {
-                        "ALLSKY_SFC_PAR_TOT": ("Photosynthetically Active Radiation (PAR)", "W/m²"),
-                        "GWETROOT": ("Root zone soil wetness index", "ratio (0-1)"),
-                        "GWETTOP": ("Surface soil wetness index", "ratio (0-1)"),
-                    }
+                param_map = {
+                    "ALLSKY_SFC_PAR_TOT": ("Photosynthetically Active Radiation (PAR)", "W/m²"),
+                    "GWETROOT": ("Root zone soil wetness index", "ratio (0-1)"),
+                    "GWETTOP": ("Surface soil wetness index", "ratio (0-1)"),
+                }
 
-                    for param_key, (ind_name, unit_name) in param_map.items():
-                        data_dict = parameters.get(param_key, {})
-                        for date_key, val in data_dict.items():
-                            if val is None or val == -999.0:
-                                continue
-                            if len(date_key) == 6 and date_key[:4].isdigit():
+                for param_key, (ind_name, unit_name) in param_map.items():
+                    data_dict = parameters.get(param_key, {})
+                    if not isinstance(data_dict, dict):
+                        continue
+                    for date_key, val in data_dict.items():
+                        if val is None or val == -999.0:
+                            continue
+                        if len(date_key) == 6 and date_key[:4].isdigit():
+                            try:
                                 yr = int(date_key[:4])
                                 mo = int(date_key[4:6])
                                 if mo < 1 or mo > 12:
                                     continue
                                 records.append({
                                     "year": yr, "month": mo, "day": 1,
-                                    "value": float(val),
+                                    "value": round(float(val), 2),
                                     "source": "NASA POWER Agro",
                                     "indicator": ind_name,
                                     "unit": unit_name,
                                     "region": region_name,
                                     "url": url,
                                 })
-                except Exception as exc:
-                    logger.warning("Failed to collect NASA POWER agro metrics for %s: %s", region_name, exc)
+                            except (ValueError, TypeError):
+                                continue
         return records
-
-
 
     def normalize(self, record: dict[str, Any]) -> ObservationCreate | None:
         if record.get("value") is None or not record.get("year"):
@@ -243,10 +254,14 @@ class AgricultureAgent(BaseAgent):
         ref_date = date(yr, mo, dy)
         unit_str = str(record.get("unit", "unit"))[:30]
 
+        val = float(record["value"])
+        if not val.is_integer():
+            val = round(val, 2)
+
         return ObservationCreate(
             sector="agriculture",
             indicator=str(record["indicator"]),
-            value=float(record["value"]),
+            value=val,
             unit=unit_str,
             reference_date=ref_date,
             region=str(record.get("region", "national")),

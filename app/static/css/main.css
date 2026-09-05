@@ -1,0 +1,235 @@
+/* ============================================================
+   FreeData.td — Design System Tokens & Global Reset (OFFICIAL BLUE THEME)
+   ============================================================ */
+
+:root {
+  /* ── Palette (Official Logo Blue & Clean Light Mode) ── */
+  --bg:             #ffffff;
+  --surface:        #f8f9fa;
+  --surface-hover:  #f1f3f5;
+  --border:         #e9ecef;
+  --border-strong:  #dee2e6;
+  --text:           #1a1d20;
+  --text-muted:     #6c757d;
+  --accent:         #2563eb; /* Official Logo Blue */
+  --accent-hover:   #1d4ed8;
+  --cyan:           #0284c7; /* Cyan / Accent Blue */
+  --green:          #16a34a;
+  --green-bg:       #dcfce7;
+  --amber:          #d97706;
+  --blue:           #2563eb;
+  --purple:         #7c3aed;
+  --red:            #dc2626;
+
+  /* ── Typography ── */
+  --font-sans:  'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:  'Roboto Mono', ui-monospace, monospace;
+
+  /* ── Spacing ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ── Radii ── */
+  --radius-sm: 4px;
+  --radius:    6px;
+  --radius-lg: 8px;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Typography ── */
+h1, h2, h3, h4, h5 { font-weight: 600; letter-spacing: -0.02em; color: var(--text); }
+.mono        { font-family: var(--font-mono); }
+.uppercase   { text-transform: uppercase; letter-spacing: 0.05em; }
+.hero-title  { font-family: var(--font-mono); font-size: 28px; margin-bottom: 12px; }
+.hero-subtitle { font-size: 16px; color: var(--text-muted); margin-bottom: 32px; }
+
+/* ── Utility ── */
+.text-muted  { color: var(--text-muted); }
+.text-accent { color: var(--accent); }
+.text-cyan   { color: var(--cyan); }
+.text-green  { color: var(--green); }
+
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-4 { margin-bottom: var(--space-4); }
+.mb-6 { margin-bottom: var(--space-6); }
+.mt-2 { margin-top:    var(--space-2); }
+.mt-4 { margin-top:    var(--space-4); }
+
+.flex            { display: flex; }
+.flex-col        { flex-direction: column; }
+.items-center    { align-items: center; }
+.items-start     { align-items: flex-start; }
+.items-end       { align-items: flex-end; }
+.justify-between { justify-content: space-between; }
+.justify-center  { justify-content: center; }
+.flex-wrap       { flex-wrap: wrap; }
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+
+.w-full { width: 100%; }
+.cursor-pointer { cursor: pointer; }
+
+/* ── Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Hamburger Button ── */
+.hamburger-btn {
+  display: none;           /* hidden on desktop */
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  width: 38px;
+  height: 38px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s;
+}
+.hamburger-btn:hover { background: var(--surface-hover); }
+.hamburger-bar {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+  transition: transform 0.25s, opacity 0.25s;
+}
+/* Animate to X when open */
+.hamburger-btn[aria-expanded="true"] .hamburger-bar:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.hamburger-btn[aria-expanded="true"] .hamburger-bar:nth-child(2) {
+  opacity: 0;
+}
+.hamburger-btn[aria-expanded="true"] .hamburger-bar:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+/* ── Mobile Nav Drawer ── */
+.mobile-nav {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 280px;
+  height: 100%;
+  background: #ffffff;
+  box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+}
+.mobile-nav.open {
+  transform: translateX(0);
+}
+.mobile-nav-inner {
+  padding: var(--space-5) var(--space-5);
+}
+.mobile-nav-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.mobile-nav-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.mobile-nav-close:hover { background: var(--surface-hover); color: var(--text); }
+.mobile-nav-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mobile-nav-tab {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.15s, color 0.15s;
+  letter-spacing: 0.02em;
+}
+.mobile-nav-tab:hover { background: var(--surface-hover); color: var(--accent); }
+.mobile-nav-tab.active { background: #eff6ff; color: var(--accent); }
+
+/* ── Overlay backdrop ── */
+.mobile-nav-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 999;
+  animation: fadeIn 0.2s ease;
+}
+.mobile-nav-overlay.open { display: block; }
+
+/* ── Responsive: Mobile breakpoint ── */
+@media (max-width: 767px) {
+  /* Show hamburger, hide desktop nav */
+  .hamburger-btn { display: flex; }
+  .nav-tabs { display: none; }
+
+  /* Compact header on mobile */
+  .app-header { padding: var(--space-3) var(--space-4); }
+  .app-main { padding: var(--space-4); }
+
+  /* Stack grids on mobile */
+  .grid-2, .grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-title { font-size: 20px; }
+  .stat-value { font-size: 24px; }
+}

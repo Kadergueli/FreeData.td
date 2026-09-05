@@ -79,38 +79,44 @@ class EnvironmentAgent(BaseAgent):
                     "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,precipitation_sum",
                     "timezone": "Africa/Ndjamena",
                 }
-                try:
-                    res = await client.get(url, params=params)
-                    res.raise_for_status()
-                    daily = res.json().get("daily", {})
-                    dates = daily.get("time", [])
-                    temp_mean = daily.get("temperature_2m_mean", [])
-                    temp_max = daily.get("temperature_2m_max", [])
-                    temp_min = daily.get("temperature_2m_min", [])
-                    precip = daily.get("precipitation_sum", [])
+                res_json = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.2)
+                if not isinstance(res_json, dict):
+                    continue
+                daily = res_json.get("daily", {})
+                if not isinstance(daily, dict):
+                    continue
 
-                    for i, dt_str in enumerate(dates):
-                        yr = int(dt_str[:4])
-                        mo = int(dt_str[5:7])
-                        dy = int(dt_str[8:10])
-                        base = {
-                            "year": yr, "month": mo, "day": dy,
-                            "region": region_name,
-                            "source": "Open-Meteo Archive",
-                            "url": url,
-                        }
+                dates = daily.get("time", []) or []
+                temp_mean = daily.get("temperature_2m_mean", []) or []
+                temp_max = daily.get("temperature_2m_max", []) or []
+                temp_min = daily.get("temperature_2m_min", []) or []
+                precip = daily.get("precipitation_sum", []) or []
 
-                        if i < len(temp_mean) and temp_mean[i] is not None:
-                            records.append({**base, "indicator": "Daily mean temperature", "value": float(temp_mean[i]), "unit": "°C"})
-                        if i < len(temp_max) and temp_max[i] is not None:
-                            records.append({**base, "indicator": "Daily max temperature", "value": float(temp_max[i]), "unit": "°C"})
-                        if i < len(temp_min) and temp_min[i] is not None:
-                            records.append({**base, "indicator": "Daily min temperature", "value": float(temp_min[i]), "unit": "°C"})
-                        if i < len(precip) and precip[i] is not None:
-                            records.append({**base, "indicator": "Daily precipitation", "value": float(precip[i]), "unit": "mm"})
+                for i, dt_str in enumerate(dates):
+                    try:
+                        yr, mo, dy = int(dt_str[:4]), int(dt_str[5:7]), int(dt_str[8:10])
+                    except (ValueError, TypeError, IndexError):
+                        continue
+                    base = {
+                        "year": yr, "month": mo, "day": dy,
+                        "region": region_name,
+                        "source": "Open-Meteo Archive",
+                        "url": url,
+                    }
 
-                except Exception as exc:
-                    logger.warning("Open-Meteo weather failed for %s: %s", region_name, exc)
+                    if i < len(temp_mean) and temp_mean[i] is not None:
+                        try: records.append({**base, "indicator": "Daily mean temperature", "value": float(temp_mean[i]), "unit": "°C"})
+                        except (ValueError, TypeError): pass
+                    if i < len(temp_max) and temp_max[i] is not None:
+                        try: records.append({**base, "indicator": "Daily max temperature", "value": float(temp_max[i]), "unit": "°C"})
+                        except (ValueError, TypeError): pass
+                    if i < len(temp_min) and temp_min[i] is not None:
+                        try: records.append({**base, "indicator": "Daily min temperature", "value": float(temp_min[i]), "unit": "°C"})
+                        except (ValueError, TypeError): pass
+                    if i < len(precip) and precip[i] is not None:
+                        try: records.append({**base, "indicator": "Daily precipitation", "value": float(precip[i]), "unit": "mm"})
+                        except (ValueError, TypeError): pass
+
         logger.info("Open-Meteo weather: collected %d records.", len(records))
         return records
 
@@ -130,30 +136,36 @@ class EnvironmentAgent(BaseAgent):
                     "end": "2024",
                     "format": "JSON",
                 }
-                try:
-                    res = await client.get(url, params=params)
-                    res.raise_for_status()
-                    data = res.json()
-                    parameters = data.get("properties", {}).get("parameter", {})
+                res_json = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.2)
+                if not isinstance(res_json, dict):
+                    continue
+                data = res_json.get("properties", {})
+                if not isinstance(data, dict):
+                    continue
+                parameters = data.get("parameter", {})
+                if not isinstance(parameters, dict):
+                    continue
 
-                    param_map = {
-                        "T2M": ("Monthly mean temperature", "°C"),
-                        "T2M_MAX": ("Monthly max temperature", "°C"),
-                        "T2M_MIN": ("Monthly min temperature", "°C"),
-                        "PRECTOTCORR": ("Monthly precipitation", "mm/day"),
-                    }
+                param_map = {
+                    "T2M": ("Monthly mean temperature", "°C"),
+                    "T2M_MAX": ("Monthly max temperature", "°C"),
+                    "T2M_MIN": ("Monthly min temperature", "°C"),
+                    "PRECTOTCORR": ("Monthly precipitation", "mm/day"),
+                }
 
-                    for param_key, (indicator_name, unit) in param_map.items():
-                        param_data = parameters.get(param_key, {})
-                        for date_key, val in param_data.items():
-                            if val is None or val == -999.0:
-                                continue
-                            # date_key format: "YYYYMM" (e.g., "202301") or "YYYY13" for annual
-                            if len(date_key) == 6 and date_key[:4].isdigit():
+                for param_key, (indicator_name, unit) in param_map.items():
+                    param_data = parameters.get(param_key, {})
+                    if not isinstance(param_data, dict):
+                        continue
+                    for date_key, val in param_data.items():
+                        if val is None or val == -999.0:
+                            continue
+                        if len(date_key) == 6 and date_key[:4].isdigit():
+                            try:
                                 yr = int(date_key[:4])
                                 mo = int(date_key[4:6])
                                 if mo < 1 or mo > 12:
-                                    continue  # Skip annual summaries (month=13)
+                                    continue
                                 records.append({
                                     "year": yr,
                                     "month": mo,
@@ -165,8 +177,8 @@ class EnvironmentAgent(BaseAgent):
                                     "region": region_name,
                                     "url": url,
                                 })
-                except Exception as exc:
-                    logger.warning("NASA POWER failed for %s: %s", region_name, exc)
+                            except (ValueError, TypeError):
+                                continue
         logger.info("NASA POWER: collected %d records.", len(records))
         return records
 
@@ -276,10 +288,14 @@ class EnvironmentAgent(BaseAgent):
         if meta:
             notes += f" [lat={meta.get('lat')}, lon={meta.get('lon')}, confidence={meta.get('confidence')}]"
 
+        val = float(record["value"])
+        if not val.is_integer():
+            val = round(val, 2)
+
         return ObservationCreate(
             sector="environment",
             indicator=str(record["indicator"]),
-            value=float(record["value"]),
+            value=val,
             unit=unit_str,
             reference_date=ref_date,
             region=str(record.get("region", "national")),
