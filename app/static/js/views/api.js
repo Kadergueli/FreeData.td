@@ -42,9 +42,9 @@ export const ApiView = {
   render() {
     const docs = t('api.docs');
     const docList = Array.isArray(docs) ? docs : [
-      { id: 'swagger', icon: 'file-text', name: 'Spécification API OpenAPI et Swagger', desc: 'Full endpoint specifications at /docs', link: '/docs' },
-      { id: 'redoc',   icon: 'book-open', name: 'Documentation ReDoc', desc: 'Clean ReDoc documentation at /redoc', link: '/redoc' },
-      { id: 'health',  icon: 'activity',  name: 'Point d\'Accès Santé Système', desc: 'Test API system status live at /api/v1/health', link: '/api/v1/health' },
+      { id: 'swagger', icon: 'file-text', name: 'Spécification API OpenAPI et Swagger', desc: 'Spécifications complètes des points d\'accès et schémas interactifs au /docs', link: '/docs' },
+      { id: 'redoc',   icon: 'book-open', name: 'Documentation ReDoc', desc: 'Documentation ReDoc et visionneuse de schémas au /redoc', link: '/redoc' },
+      { id: 'health',  icon: 'activity',  name: 'Point d\'Accès Santé Système', desc: 'Tester le statut live du système à /api/v1/health', link: '/api/v1/health' },
     ];
 
     const currentKey = sessionStorage.getItem('fd_api_key');

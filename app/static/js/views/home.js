@@ -12,7 +12,9 @@ import {
   triggerEconomyHarvest
 } from '../api_client.js';
 import { navigateTo } from '../router.js';
-import { t } from '../i18n.js';
+import { t, getLang } from '../i18n.js';
+import { OFFICIAL_SOURCES } from '../sources_catalog.js';
+import { escapeHtml } from '../sanitize.js';
 
 export const HomeView = {
   render() {
@@ -60,60 +62,80 @@ export const HomeView = {
         </div>
       </div>
 
+      <!-- Sources strip: transparently lists WHERE data is aggregated from (not partners) -->
+      <div class="sources-strip">
+        <span class="sources-strip__label">${t('home.sources_strip_label')}</span>
+        ${OFFICIAL_SOURCES.slice(0, 8).map(s => `<span class="sources-strip__chip">${escapeHtml(s.name)}</span>`).join('')}
+      </div>
+
       <!-- Quick Stats -->
       <div class="grid-3 mb-6">
         <div class="stat-card">
-          <div class="stat-value text-accent" id="stat-obs-count">...</div>
+          <div class="stat-value text-accent" id="stat-obs-count"><span class="skeleton"></span></div>
           <div class="stat-label">${t('home.stat_obs')}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value text-green" id="stat-validation-score">98.5%</div>
+          <div class="stat-value text-green" id="stat-validation-score"><span class="skeleton"></span></div>
           <div class="stat-label">${t('home.stat_score')}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value text-cyan" id="stat-sectors-count">...</div>
+          <div class="stat-value text-cyan" id="stat-sectors-count"><span class="skeleton"></span></div>
           <div class="stat-label">${t('home.stat_sectors')}</div>
         </div>
       </div>
 
-      <!-- Mission & Core Capabilities -->
-      <div class="card card--transparent mb-6">
-        <h4 class="section-label text-cyan mb-3 flex items-center gap-2">
-          <i data-lucide="target" style="width:16px;height:16px;"></i> ${t('home.mission_title')}
-        </h4>
-        <p class="mono-sm text-muted mb-4" style="line-height:1.6;font-size:13px;">
-          ${t('home.mission_text')}
-        </p>
-
-        <!-- Capabilities Grid -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px;" class="mt-4">
-          ${capList.map(cap => `
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px;">
-              <div class="flex items-center gap-2 mb-2">
-                <i data-lucide="${cap.icon}" style="width:15px;height:15px;" class="text-cyan"></i>
-                <h5 class="mono-xs fw-700 uppercase" style="color:var(--text);">${cap.title}</h5>
-              </div>
-              <p class="mono-xs text-muted" style="line-height:1.5;margin:0;">${cap.desc}</p>
+      <!-- Mission & Core Capabilities (accordion — opens on demand) -->
+      <div class="card card--transparent mb-6 accordion-section" data-accordion="mission">
+        <button type="button" class="accordion-trigger" data-accordion-trigger="mission" aria-expanded="false">
+          <div class="flex items-center gap-2">
+            <i data-lucide="target" style="width:16px;height:16px;" class="text-cyan"></i>
+            <div>
+              <div class="accordion-title">${t('home.mission_title')}</div>
+              <div class="accordion-teaser">${t('home.mission_teaser')}</div>
             </div>
-          `).join('')}
-        </div>
+          </div>
+          <i data-lucide="chevron-down" style="width:18px;height:18px;" class="accordion-chevron"></i>
+        </button>
+        <div class="accordion-panel"><div><div class="accordion-panel-inner">
+          <p class="body-text mb-4">${t('home.mission_text')}</p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px;">
+            ${capList.map(cap => `
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px;">
+                <div class="flex items-center gap-2 mb-2">
+                  <i data-lucide="${cap.icon}" style="width:15px;height:15px;" class="text-cyan"></i>
+                  <h5 class="fw-700" style="font-family:var(--font-sans);font-size:13px;color:var(--text);">${cap.title}</h5>
+                </div>
+                <p class="body-text" style="font-size:13px;margin:0;">${cap.desc}</p>
+              </div>
+            `).join('')}
+          </div>
+        </div></div></div>
       </div>
 
-      <!-- Data Pipeline -->
-      <div class="card card--transparent mb-6">
-        <h4 class="section-label text-cyan mb-6 flex items-center gap-2">
-          <i data-lucide="git-merge" style="width:16px;height:16px;"></i> ${t('home.pipeline_title')}
-        </h4>
-        <div class="flex flex-col gap-4">
-          ${pipelineList.map(item => `
-            <div class="flex gap-4 items-start">
-              <div class="mono-sm fw-700" style="background:var(--surface-hover);color:var(--text);padding:4px 8px;border-radius:2px;border:1px solid var(--border);">${item.num}</div>
-              <div>
-                <h5 class="uppercase" style="font-size:14px;margin-bottom:4px;">${item.title}</h5>
-                <p class="text-muted mono-sm">${item.desc}</p>
-              </div>
-            </div>`).join('')}
-        </div>
+      <!-- Data Pipeline (accordion — opens on demand) -->
+      <div class="card card--transparent mb-6 accordion-section" data-accordion="pipeline">
+        <button type="button" class="accordion-trigger" data-accordion-trigger="pipeline" aria-expanded="false">
+          <div class="flex items-center gap-2">
+            <i data-lucide="git-merge" style="width:16px;height:16px;" class="text-cyan"></i>
+            <div>
+              <div class="accordion-title">${t('home.pipeline_title')}</div>
+              <div class="accordion-teaser">${t('home.pipeline_teaser')}</div>
+            </div>
+          </div>
+          <i data-lucide="chevron-down" style="width:18px;height:18px;" class="accordion-chevron"></i>
+        </button>
+        <div class="accordion-panel"><div><div class="accordion-panel-inner">
+          <div class="pipeline-grid">
+            ${pipelineList.map(item => `
+              <div class="flex gap-4 items-start">
+                <div class="mono-sm fw-700" style="background:var(--surface-hover);color:var(--text);padding:4px 8px;border-radius:2px;border:1px solid var(--border);">${item.num}</div>
+                <div>
+                  <h5 style="font-family:var(--font-sans);font-size:14px;margin-bottom:4px;">${item.title}</h5>
+                  <p class="body-text">${item.desc}</p>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div></div></div>
       </div>
 
       <!-- Active Sectors -->
@@ -158,6 +180,16 @@ export const HomeView = {
     if (btnExplore) {
       btnExplore.addEventListener('click', () => navigateTo('data'));
     }
+
+    // 1b. Wire accordion sections (Mission & Capabilities / Data Pipeline)
+    document.querySelectorAll('[data-accordion-trigger]').forEach(trigger => {
+      trigger.addEventListener('click', () => {
+        const section = trigger.closest('.accordion-section');
+        if (!section) return;
+        const isOpen = section.classList.toggle('is-open');
+        trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+    });
 
     // 2. Wire "COLLECT LIVE DATA" button
     const btnHarvest = document.getElementById('btn-home-harvest');
@@ -226,11 +258,11 @@ export const HomeView = {
       if (pipelineCountEl) pipelineCountEl.textContent = `${logsCount}`;
 
       // Update validation score
+      const scoreEl = document.getElementById('stat-validation-score');
       if (audit && audit.reports_summary && audit.reports_summary.score_global !== undefined) {
-        const scoreEl = document.getElementById('stat-validation-score');
-        if (scoreEl) {
-          scoreEl.textContent = `${(audit.reports_summary.score_global * 100).toFixed(1)}%`;
-        }
+        if (scoreEl) scoreEl.textContent = `${(audit.reports_summary.score_global * 100).toFixed(1)}%`;
+      } else if (scoreEl && scoreEl.querySelector('.skeleton')) {
+        scoreEl.textContent = 'N/A';
       }
 
       // Update latest validated observation from DB
@@ -243,12 +275,12 @@ export const HomeView = {
         const valEl = document.getElementById('latest-value');
 
         if (indEl) indEl.textContent = (latest.indicator || 'Observation').toUpperCase();
-        if (locEl) locEl.innerHTML = `<i data-lucide="map-pin" style="width:14px;height:14px;"></i> ${latest.region || 'Logone'}, ${latest.country_code || 'TCH'}`;
-        if (dateEl) dateEl.innerHTML = `<i data-lucide="calendar" style="width:14px;height:14px;"></i> ${latest.reference_date || latest.collected_at || 'Recent'}`;
+        if (locEl) locEl.innerHTML = `<i data-lucide="map-pin" style="width:14px;height:14px;"></i> ${escapeHtml(latest.region || 'Logone')}, ${escapeHtml(latest.country_code || 'TCH')}`;
+        if (dateEl) dateEl.innerHTML = `<i data-lucide="calendar" style="width:14px;height:14px;"></i> ${escapeHtml(latest.reference_date || latest.collected_at || 'Recent')}`;
         if (srcEl) srcEl.textContent = `${t('common.source')}: ${(latest.source || 'Open Data').toUpperCase()}`;
         const numVal = Number(latest.value);
-        const formattedVal = !isNaN(numVal) ? (Number.isInteger(numVal) ? numVal.toLocaleString() : numVal.toLocaleString(undefined, { maximumFractionDigits: 2 })) : latest.value;
-        if (valEl) valEl.innerHTML = `${formattedVal} <span class="mono-lg">${latest.unit || ''}</span>`;
+        const formattedVal = !isNaN(numVal) ? (Number.isInteger(numVal) ? numVal.toLocaleString() : numVal.toLocaleString(undefined, { maximumFractionDigits: 2 })) : escapeHtml(latest.value);
+        if (valEl) valEl.innerHTML = `${formattedVal} <span class="mono-lg">${escapeHtml(latest.unit || '')}</span>`;
         if (window.lucide) window.lucide.createIcons();
       } else {
         const cardContainer = document.getElementById('latest-obs-card');
@@ -263,9 +295,9 @@ export const HomeView = {
     } catch (err) {
       console.warn('HomeView init dynamic load error:', err);
       const obsCountEl = document.getElementById('stat-obs-count');
-      if (obsCountEl && obsCountEl.textContent === '...') obsCountEl.textContent = '0';
+      if (obsCountEl && obsCountEl.querySelector('.skeleton')) obsCountEl.textContent = '0';
       const secEl = document.getElementById('stat-sectors-count');
-      if (secEl && secEl.textContent === '...') secEl.textContent = '06';
+      if (secEl && secEl.querySelector('.skeleton')) secEl.textContent = '06';
     }
   }
 };

@@ -458,4 +458,127 @@
   .hamburger-btn { display: none !important; }
   .mobile-nav    { display: none !important; }
   .mobile-nav-overlay { display: none !important; }
+
+  /* Pipeline steps: grid on desktop, stacked (default) on mobile */
+  .pipeline-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+}
+.pipeline-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ============================================================
+   Homepage — Sources strip, accordion sections, skeleton loader
+   ============================================================ */
+
+/* Sources strip: what the data is aggregated FROM — never "partners" */
+.sources-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.sources-strip__label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.sources-strip__chip {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+/* Accordion: closed by default, opens with a smooth height/opacity transition */
+.accordion-section {
+  border-bottom: 1px solid var(--border);
+}
+.accordion-section:last-child { border-bottom: none; }
+
+.accordion-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 14px 0;
+  font-family: var(--font-sans);
+}
+.accordion-trigger:hover .accordion-title { color: var(--accent); }
+.accordion-title {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  transition: color 0.15s ease;
+}
+.accordion-teaser {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.accordion-chevron {
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+  color: var(--text-muted);
+}
+.accordion-section.is-open .accordion-chevron { transform: rotate(180deg); }
+
+.accordion-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.3s ease, opacity 0.25s ease;
+}
+.accordion-section.is-open .accordion-panel {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.accordion-panel > div { overflow: hidden; }
+.accordion-panel-inner { padding-bottom: 20px; }
+
+/* Body copy inside accordions: readable sans-serif, not monospace */
+.body-text {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+
+/* Skeleton loader for stats while first fetch is in flight */
+.skeleton {
+  display: inline-block;
+  min-width: 48px;
+  height: 1em;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--border) 25%, var(--surface-hover) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  vertical-align: middle;
+}
+@keyframes skeleton-pulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
