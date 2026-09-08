@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.3-70b-versatile"
     analysis_api_key: str | None = None
     analysis_rate_limit_per_hour: int = 5
+    collection_api_key: str | None = None
+    collection_rate_limit_per_hour: int = 10
     nasa_firms_key: str | None = None
     database_path: str = "data/freedatatd.db"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"

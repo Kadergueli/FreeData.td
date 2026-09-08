@@ -5,6 +5,7 @@
 import { generateStudy, fetchObservations } from '../api_client.js';
 import { initChartDensity } from '../charts.js';
 import { t } from '../i18n.js';
+import { escapeHtml } from '../sanitize.js';
 
 let activeInsightSector = 'all';
 
@@ -157,15 +158,20 @@ export const InsightsView = {
           if (window.lucide) window.lucide.createIcons();
 
           if (result && studyContainer) {
-            const reportText = result.report || JSON.stringify(result, null, 2);
+            // The report comes from the LLM (and, transitively, from harvested external
+            // data) — never trust it as HTML. Always escape before inserting.
+            const reportText = escapeHtml(result.report || JSON.stringify(result, null, 2));
+            const modelName = escapeHtml(result.model || 'Gemini');
+            const sectorLabel = escapeHtml((result.sector || t('insights.sectors.all')).toUpperCase());
+            const obsCount = escapeHtml(result.observations_used ?? 'N/A');
             studyContainer.innerHTML = `
               <div class="card card--accent-border mb-4" style="padding:20px;">
                 <div class="flex justify-between items-center mb-3">
                   <span class="badge badge--valid">${t('insights.result_badge')}</span>
-                  <span class="mono-xs text-green">${t('insights.result_model')}: ${result.model || 'Gemini'}</span>
+                  <span class="mono-xs text-green">${t('insights.result_model')}: ${modelName}</span>
                 </div>
-                <h4 class="mono-lg mb-2">${t('insights.result_title')} (${(result.sector || t('insights.sectors.all')).toUpperCase()})</h4>
-                <p class="mono-xs text-muted mb-4">${t('insights.result_obs')}: ${result.observations_used || 'N/A'}</p>
+                <h4 class="mono-lg mb-2">${t('insights.result_title')} (${sectorLabel})</h4>
+                <p class="mono-xs text-muted mb-4">${t('insights.result_obs')}: ${obsCount}</p>
                 <div class="mono-sm" style="background:var(--surface);padding:16px;border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;max-height:400px;overflow-y:auto;line-height:1.6;color:var(--text);">${reportText}</div>
               </div>
             `;
@@ -183,7 +189,7 @@ export const InsightsView = {
           if (studyContainer) {
             studyContainer.innerHTML = `
               <div class="card" style="padding:16px;border-color:var(--red);">
-                <p class="mono-sm text-accent mb-1 flex items-center gap-1"><i data-lucide="alert-triangle" style="width:16px;height:16px;"></i> ${t('insights.err_msg')}: ${err.message}</p>
+                <p class="mono-sm text-accent mb-1 flex items-center gap-1"><i data-lucide="alert-triangle" style="width:16px;height:16px;"></i> ${t('insights.err_msg')}: ${escapeHtml(err.message)}</p>
                 <p class="mono-xs text-muted">${t('insights.err_hint')}</p>
               </div>
             `;

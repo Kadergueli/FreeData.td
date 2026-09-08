@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
@@ -16,6 +16,7 @@ from app.agents import (
     TransportAgent,
 )
 from app.config import settings
+from app.security import require_analysis_access, require_collection_access
 from app.services.export import observations_to_csv, observations_to_json
 from app.services.scheduler import scheduler_service
 from app.services.storage import ObservationRepository
@@ -106,7 +107,7 @@ def export_json(sector: str | None = None) -> JSONResponse:
     )
 
 
-@app.post("/api/v1/collection/agriculture", status_code=202)
+@app.post("/api/v1/collection/agriculture", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_agriculture(source: str = "all") -> dict:
     try:
         return (await AgricultureAgent(repository).run(source)).model_dump(mode="json")
@@ -114,7 +115,7 @@ async def collect_agriculture(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/environment", status_code=202)
+@app.post("/api/v1/collection/environment", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_environment(source: str = "all") -> dict:
     try:
         return (await EnvironmentAgent(repository).run(source)).model_dump(mode="json")
@@ -122,7 +123,7 @@ async def collect_environment(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/markets", status_code=202)
+@app.post("/api/v1/collection/markets", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_markets(source: str = "all") -> dict:
     try:
         return (await MarketsAgent(repository).run(source)).model_dump(mode="json")
@@ -130,7 +131,7 @@ async def collect_markets(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/economy", status_code=202)
+@app.post("/api/v1/collection/economy", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_economy(source: str = "all") -> dict:
     try:
         return (await EconomyAgent(repository).run(source)).model_dump(mode="json")
@@ -138,7 +139,7 @@ async def collect_economy(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/transport", status_code=202)
+@app.post("/api/v1/collection/transport", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_transport(source: str = "all") -> dict:
     try:
         return (await TransportAgent(repository).run(source)).model_dump(mode="json")
@@ -146,7 +147,7 @@ async def collect_transport(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/education", status_code=202)
+@app.post("/api/v1/collection/education", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_education(source: str = "all") -> dict:
     try:
         return (await EducationAgent(repository).run(source)).model_dump(mode="json")
@@ -159,12 +160,12 @@ def scheduler_status() -> dict:
     return scheduler_service.get_status()
 
 
-@app.post("/api/v1/collection/run-scheduled-harvest")
+@app.post("/api/v1/collection/run-scheduled-harvest", dependencies=[Depends(require_collection_access)])
 async def trigger_harvest() -> dict:
     return await scheduler_service.run_harvest_job()
 
 
-@app.post("/api/v1/studies")
+@app.post("/api/v1/studies", dependencies=[Depends(require_analysis_access)])
 async def generate_study(sector: str | None = None) -> dict:
     try:
         return (await AnalysisAgent(repository).study(sector)).model_dump()

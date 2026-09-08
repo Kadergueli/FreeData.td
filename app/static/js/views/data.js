@@ -11,6 +11,7 @@ import {
 } from '../api_client.js';
 import { initChartMais } from '../charts.js';
 import { t } from '../i18n.js';
+import { escapeHtml } from '../sanitize.js';
 
 function getSectorsFilter() {
   return [
@@ -33,27 +34,37 @@ let currentObsData = [];
 
 function formatObsValue(val) {
   const num = Number(val);
-  if (isNaN(num)) return val;
+  if (isNaN(num)) return escapeHtml(val);
   if (Number.isInteger(num)) return num.toLocaleString();
   return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 function renderObservationCard(o) {
-  const badgeText = o.status || t('common.validated');
-  const badgeClass = badgeText === t('common.validated') || badgeText === 'VALIDÉ' || badgeText === 'validated' ? 'badge--valid' : 'badge--cyan';
+  // Every field below can originate from an external, third-party data source
+  // (harvested via the collection agents) — never trust it as HTML.
+  const badgeTextRaw = o.status || t('common.validated');
+  const badgeClass = badgeTextRaw === t('common.validated') || badgeTextRaw === 'VALIDÉ' || badgeTextRaw === 'validated' ? 'badge--valid' : 'badge--cyan';
+  const badgeText = escapeHtml(badgeTextRaw.toUpperCase());
+  const sector = escapeHtml((o.sector || 'GENERAL').toUpperCase());
+  const unit = escapeHtml(o.unit || '');
+  const indicator = escapeHtml(o.indicator || 'Observation');
+  const region = escapeHtml(o.region || t('common.location'));
+  const date = escapeHtml(o.reference_date || o.collected_at || t('common.date'));
+  const source = escapeHtml((o.source || 'FreeData').toUpperCase());
+  const countryCode = escapeHtml(o.country_code || 'TCH');
 
   return `
     <div class="card obs-card-item" style="padding:16px;">
       <div class="flex justify-between items-start mb-2">
-        <span class="badge ${badgeClass}">${badgeText.toUpperCase()}</span>
-        <span class="mono-xs text-muted">${(o.sector || 'GENERAL').toUpperCase()}</span>
+        <span class="badge ${badgeClass}">${badgeText}</span>
+        <span class="mono-xs text-muted">${sector}</span>
       </div>
-      <div class="mono-2xl fw-700 mb-2" style="color:var(--text);">${formatObsValue(o.value)} <span class="mono-lg" style="color:var(--text-muted);">${o.unit || ''}</span></div>
-      <p class="mono-sm flex items-center gap-1"><i data-lucide="map-pin" style="width:14px;height:14px;" class="text-accent"></i> ${o.indicator || 'Observation'} — ${o.region || t('common.location')}</p>
-      <p class="mono-xs text-muted mb-4 flex items-center gap-1"><i data-lucide="calendar" style="width:12px;height:12px;"></i> ${o.reference_date || o.collected_at || t('common.date')}</p>
+      <div class="mono-2xl fw-700 mb-2" style="color:var(--text);">${formatObsValue(o.value)} <span class="mono-lg" style="color:var(--text-muted);">${unit}</span></div>
+      <p class="mono-sm flex items-center gap-1"><i data-lucide="map-pin" style="width:14px;height:14px;" class="text-accent"></i> ${indicator} — ${region}</p>
+      <p class="mono-xs text-muted mb-4 flex items-center gap-1"><i data-lucide="calendar" style="width:12px;height:12px;"></i> ${date}</p>
       <div class="separator flex justify-between items-center pt-2">
-        <span class="mono-xs text-muted">${t('common.source')}: ${(o.source || 'FreeData').toUpperCase()}</span>
-        <span class="mono-xs text-muted">${o.country_code || 'TCH'}</span>
+        <span class="mono-xs text-muted">${t('common.source')}: ${source}</span>
+        <span class="mono-xs text-muted">${countryCode}</span>
       </div>
     </div>`;
 }
