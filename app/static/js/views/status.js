@@ -5,6 +5,7 @@
 import { fetchHealth, fetchAudit } from '../api_client.js';
 import { initChartLoad } from '../charts.js';
 import { t } from '../i18n.js';
+import { escapeHtml } from '../sanitize.js';
 
 export const StatusView = {
   render() {
@@ -24,14 +25,14 @@ export const StatusView = {
       <div class="grid-2 mb-6">
         <div class="card" style="padding:16px;">
           <h4 class="mono-xs text-muted uppercase mb-2">${t('home.stat_score')}</h4>
-          <div class="mono-2xl fw-700 mb-1" id="status-val-score">...</div>
+          <div class="mono-2xl fw-700 mb-1" id="status-val-score"><span class="skeleton"></span></div>
           <div class="mono-xs text-green fw-700 flex items-center gap-1" id="status-val-trend">
             <i data-lucide="shield-check" style="width:14px;height:14px;"></i> AUDIT DE L'INFRASTRUCTURE
           </div>
         </div>
         <div class="card" style="padding:16px;">
           <h4 class="mono-xs text-muted uppercase mb-2">${t('home.stat_obs')}</h4>
-          <div class="mono-2xl fw-700 mb-1" id="status-total-obs">...</div>
+          <div class="mono-2xl fw-700 mb-1" id="status-total-obs"><span class="skeleton"></span></div>
           <div class="mono-xs text-accent fw-700 flex items-center gap-1" id="status-anomalies-count">
             <i data-lucide="check-circle" style="width:14px;height:14px;"></i> ANOMALIES : 0
           </div>
@@ -48,9 +49,9 @@ export const StatusView = {
             <h5 class="uppercase flex items-center gap-2" style="font-size:14px;">
               <i data-lucide="table" style="width:14px;height:14px;"></i> Table Brute (Raw)
             </h5>
-            <span class="mono-sm fw-700" id="raw-count-tag">...</span>
+            <span class="mono-sm fw-700" id="raw-count-tag"><span class="skeleton"></span></span>
           </div>
-          <p class="mono-xs text-muted">Données brutes capturées automatiquement par les agents de collecte.</p>
+          <p class="body-text" style="font-size:12px;">Données brutes capturées automatiquement par les agents de collecte.</p>
         </div>
 
         <div class="card pipeline-card">
@@ -58,9 +59,9 @@ export const StatusView = {
             <h5 class="uppercase flex items-center gap-2" style="font-size:14px;">
               <i data-lucide="check-square" style="width:14px;height:14px;"></i> Table Nettoyée (Clean)
             </h5>
-            <span class="mono-sm fw-700" id="clean-count-tag">...</span>
+            <span class="mono-sm fw-700" id="clean-count-tag"><span class="skeleton"></span></span>
           </div>
-          <p class="mono-xs text-muted">Observations normalisées et validées par le moteur Data Science (10 règles).</p>
+          <p class="body-text" style="font-size:12px;">Observations normalisées et validées par le moteur Data Science (10 règles).</p>
         </div>
 
         <div class="card pipeline-card">
@@ -68,9 +69,9 @@ export const StatusView = {
             <h5 class="uppercase flex items-center gap-2" style="font-size:14px;">
               <i data-lucide="globe" style="width:14px;height:14px;"></i> Table Publique (Public)
             </h5>
-            <span class="mono-sm fw-700" id="public-count-tag">...</span>
+            <span class="mono-sm fw-700" id="public-count-tag"><span class="skeleton"></span></span>
           </div>
-          <p class="mono-xs text-muted">Données publiques prêtes pour l'exportation et les requêtes API.</p>
+          <p class="body-text" style="font-size:12px;">Données publiques prêtes pour l'exportation et les requêtes API.</p>
         </div>
       </div>
 
@@ -152,9 +153,9 @@ export const StatusView = {
         if (audit && audit.logs && audit.logs.length > 0) {
           logsContainer.innerHTML = audit.logs.map(log => `
             <div class="flex justify-between items-center" style="padding:6px 0;border-bottom:1px solid var(--border);">
-              <span class="mono-xs text-muted">[${log.agent || 'Agent'}] ${log.type_operation || 'op'}</span>
-              <span class="mono-xs text-cyan">${log.valeur_apres || ''}</span>
-              <span class="mono-xs text-muted">${log.timestamp || ''}</span>
+              <span class="mono-xs text-muted">[${escapeHtml(log.agent || 'Agent')}] ${escapeHtml(log.type_operation || 'op')}</span>
+              <span class="mono-xs text-cyan">${escapeHtml(log.valeur_apres || '')}</span>
+              <span class="mono-xs text-muted">${escapeHtml(log.timestamp || '')}</span>
             </div>
           `).join('');
         } else {
@@ -163,6 +164,10 @@ export const StatusView = {
       }
     } catch (err) {
       console.warn('StatusView live load error:', err);
+      ['status-val-score', 'status-total-obs', 'raw-count-tag', 'clean-count-tag', 'public-count-tag'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.querySelector('.skeleton')) el.textContent = 'N/A';
+      });
     }
   }
 };

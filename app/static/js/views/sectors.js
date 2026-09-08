@@ -70,7 +70,7 @@ export const SectorsView = {
         </div>
         <div class="card" style="text-align:center;padding:16px;">
           <div class="stat-label" style="font-size:10px;margin-bottom:8px;">${t('sectors.val_score')}</div>
-          <div class="stat-value text-green" style="font-size:24px;" id="stat-val-score">...</div>
+          <div class="stat-value text-green" style="font-size:24px;" id="stat-val-score"><span class="skeleton"></span></div>
         </div>
         <div class="card" style="text-align:center;padding:16px;">
           <div class="stat-label" style="font-size:10px;margin-bottom:8px;">${t('common.uptime')}</div>
