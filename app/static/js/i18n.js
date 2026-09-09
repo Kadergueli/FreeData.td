@@ -104,6 +104,8 @@ const TRANSLATIONS = {
         transport:   'TRANSPORT',
         education:   'ÉDUCATION',
         economy:     'ÉCONOMIE',
+        health:      'SANTÉ',
+        energy:      'ÉNERGIE',
       },
     },
 
@@ -169,6 +171,8 @@ const TRANSLATIONS = {
         environment: 'ENVIRONNEMENT',
         markets:     'MARCHÉS',
         economy:     'ÉCONOMIE',
+        health:      'SANTÉ',
+        energy:      'ÉNERGIE',
       },
     },
 
@@ -330,6 +334,8 @@ const TRANSLATIONS = {
         transport:   'TRANSPORT',
         education:   'EDUCATION',
         economy:     'ECONOMY',
+        health:      'HEALTH',
+        energy:      'ENERGY',
       },
     },
 
@@ -391,6 +397,8 @@ const TRANSLATIONS = {
         environment: 'ENVIRONMENT',
         markets:     'MARKETS',
         economy:     'ECONOMY',
+        health:      'HEALTH',
+        energy:      'ENERGY',
       },
     },
     api: {

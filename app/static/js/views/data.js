@@ -7,7 +7,9 @@ import {
   triggerAgricultureHarvest,
   triggerEnvironmentHarvest,
   triggerMarketsHarvest,
-  triggerEconomyHarvest
+  triggerEconomyHarvest,
+  triggerHealthHarvest,
+  triggerEnergyHarvest
 } from '../api_client.js';
 import { initChartMais } from '../charts.js';
 import { t } from '../i18n.js';
@@ -19,6 +21,8 @@ function getSectorsFilter() {
     { id: 'agriculture', label: t('sectors.names.agriculture') },
     { id: 'environment', label: t('sectors.names.environment') },
     { id: 'markets', label: t('sectors.names.markets') },
+    { id: 'health', label: t('sectors.names.health') },
+    { id: 'energy', label: t('sectors.names.energy') },
     { id: 'transport', label: t('sectors.names.transport') },
     { id: 'education', label: t('sectors.names.education') },
     { id: 'economy', label: t('sectors.names.economy') },
@@ -220,6 +224,10 @@ export const DataView = {
             await triggerMarketsHarvest('all');
           } else if (activeSector === 'economy') {
             await triggerEconomyHarvest('all');
+          } else if (activeSector === 'health') {
+            await triggerHealthHarvest('all');
+          } else if (activeSector === 'energy') {
+            await triggerEnergyHarvest('all');
           } else {
             await triggerAgricultureHarvest('all');
           }

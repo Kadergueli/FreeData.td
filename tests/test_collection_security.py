@@ -16,18 +16,21 @@ from app.main import (
     AgricultureAgent,
     EconomyAgent,
     EducationAgent,
+    EnergyAgent,
     EnvironmentAgent,
+    HealthAgent,
     MarketsAgent,
     TransportAgent,
     app,
 )
 from app.security import rate_limiter
 
-PUBLIC_SECTORS = ["agriculture", "environment", "markets", "economy"]
+PUBLIC_SECTORS = ["agriculture", "environment", "markets", "economy", "health", "energy"]
 ADMIN_ONLY_SECTORS = ["transport", "education"]
 ALL_AGENT_CLASSES = [
     AgricultureAgent, EnvironmentAgent, MarketsAgent,
     EconomyAgent, TransportAgent, EducationAgent,
+    HealthAgent, EnergyAgent,
 ]
 
 

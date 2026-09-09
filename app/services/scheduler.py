@@ -9,7 +9,9 @@ from app.agents import (
     AgricultureAgent,
     EconomyAgent,
     EducationAgent,
+    EnergyAgent,
     EnvironmentAgent,
+    HealthAgent,
     MarketsAgent,
     TransportAgent,
 )
@@ -72,6 +74,8 @@ class AutonomousHarvesterScheduler:
             ("environment", EnvironmentAgent(self.repository)),
             ("markets", MarketsAgent(self.repository)),
             ("economy", EconomyAgent(self.repository)),
+            ("health", HealthAgent(self.repository)),
+            ("energy", EnergyAgent(self.repository)),
             ("transport", TransportAgent(self.repository)),
             ("education", EducationAgent(self.repository)),
         ]

@@ -9,7 +9,9 @@ import {
   triggerAgricultureHarvest,
   triggerEnvironmentHarvest,
   triggerMarketsHarvest,
-  triggerEconomyHarvest
+  triggerEconomyHarvest,
+  triggerHealthHarvest,
+  triggerEnergyHarvest
 } from '../api_client.js';
 import { navigateTo } from '../router.js';
 import { t, getLang } from '../i18n.js';
@@ -204,7 +206,9 @@ export const HomeView = {
             triggerAgricultureHarvest('all'),
             triggerEnvironmentHarvest('all'),
             triggerMarketsHarvest('all'),
-            triggerEconomyHarvest('all')
+            triggerEconomyHarvest('all'),
+            triggerHealthHarvest('all'),
+            triggerEnergyHarvest('all')
           ]);
           alert(t('common.harvest_ok'));
           await HomeView.init();

@@ -390,7 +390,7 @@ class ObservationRepository:
         if self._supabase:
             # Query distinct catalog entries by sector to ensure all sectors are represented
             rows = []
-            for sec in ["agriculture", "environment", "markets", "transport", "education", "economy"]:
+            for sec in ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"]:
                 res = self._supabase.table("table_public").select("secteur,indicateur,source_api,date_reference").eq("secteur", sec).order("date_reference", desc=True).limit(1000).execute()
                 if res.data:
                     for item in res.data:

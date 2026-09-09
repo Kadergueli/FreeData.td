@@ -107,6 +107,32 @@ export async function triggerEconomyHarvest(source = 'all') {
   }
 }
 
+export async function triggerHealthHarvest(source = 'all') {
+  try {
+    const res = await fetch(`${BASE_URL}/collection/health?source=${encodeURIComponent(source)}`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('triggerHealthHarvest error:', err);
+    throw err;
+  }
+}
+
+export async function triggerEnergyHarvest(source = 'all') {
+  try {
+    const res = await fetch(`${BASE_URL}/collection/energy?source=${encodeURIComponent(source)}`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('triggerEnergyHarvest error:', err);
+    throw err;
+  }
+}
+
 export async function triggerTransportHarvest(source = 'all') {
   try {
     const res = await fetch(`${BASE_URL}/collection/transport?source=${encodeURIComponent(source)}`, {

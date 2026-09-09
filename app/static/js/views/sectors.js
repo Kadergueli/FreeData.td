@@ -11,6 +11,8 @@ function getKnownSectors() {
     { id: 'agriculture', icon: 'sprout', name: t('sectors.names.agriculture'), defaultHealth: 98, status: 'active', badge: 'ACTIVE' },
     { id: 'environment', icon: 'leaf', name: t('sectors.names.environment'), defaultHealth: 88, status: 'active', badge: 'ACTIVE' },
     { id: 'markets', icon: 'shopping-cart', name: t('sectors.names.markets'), defaultHealth: 92, status: 'active', badge: 'ACTIVE' },
+    { id: 'health', icon: 'heart-pulse', name: t('sectors.names.health'), defaultHealth: 90, status: 'active', badge: 'ACTIVE' },
+    { id: 'energy', icon: 'zap', name: t('sectors.names.energy'), defaultHealth: 90, status: 'active', badge: 'ACTIVE' },
     { id: 'transport', icon: 'truck', name: t('sectors.names.transport'), defaultHealth: 65, status: 'beta', badge: 'BETA' },
     { id: 'education', icon: 'graduation-cap', name: t('sectors.names.education'), defaultHealth: 42, status: 'planned', badge: 'PLANNED' },
     { id: 'economy', icon: 'trending-up', name: t('sectors.names.economy'), defaultHealth: 94, status: 'active', badge: 'ACTIVE' },

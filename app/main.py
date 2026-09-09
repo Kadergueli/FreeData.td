@@ -11,7 +11,9 @@ from app.agents import (
     AnalysisAgent,
     EconomyAgent,
     EducationAgent,
+    EnergyAgent,
     EnvironmentAgent,
+    HealthAgent,
     MarketsAgent,
     TransportAgent,
 )
@@ -156,6 +158,22 @@ async def collect_markets(source: str = "all") -> dict:
 async def collect_economy(source: str = "all") -> dict:
     try:
         return (await EconomyAgent(repository).run(source)).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/collection/health", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
+async def collect_health(source: str = "all") -> dict:
+    try:
+        return (await HealthAgent(repository).run(source)).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/collection/energy", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
+async def collect_energy(source: str = "all") -> dict:
+    try:
+        return (await EnergyAgent(repository).run(source)).model_dump(mode="json")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

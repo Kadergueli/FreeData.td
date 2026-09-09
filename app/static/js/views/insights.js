@@ -16,6 +16,8 @@ function getInsightSectorTabs() {
     { id: 'environment', label: t('insights.sectors.environment') },
     { id: 'markets', label: t('insights.sectors.markets') },
     { id: 'economy', label: t('insights.sectors.economy') },
+    { id: 'health', label: t('insights.sectors.health') },
+    { id: 'energy', label: t('insights.sectors.energy') },
   ];
 }
 
