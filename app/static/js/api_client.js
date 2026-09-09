@@ -133,6 +133,22 @@ export async function triggerEducationHarvest(source = 'all') {
   }
 }
 
+export async function fetchStudies(sector = null, limit = 10) {
+  try {
+    let url = `${BASE_URL}/studies?limit=${limit}`;
+    if (sector && sector.toLowerCase() !== 'all') {
+      url += `&sector=${encodeURIComponent(sector.toLowerCase())}`;
+    }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    const data = await res.json();
+    return data.studies || [];
+  } catch (err) {
+    console.error('fetchStudies error:', err);
+    return [];
+  }
+}
+
 export async function generateStudy(sector = null) {
   try {
     let url = `${BASE_URL}/studies`;

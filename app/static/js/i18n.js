@@ -158,6 +158,11 @@ const TRANSLATIONS = {
       result_obs:      'Observations analysées',
       err_msg:         'Génération de l\'étude impossible',
       err_hint:        'Vérifiez la présence d\'observations en base et la configuration de la clé API Gemini.',
+      library_title:   'Rapports Disponibles',
+      no_reports_yet:  'Aucun rapport généré pour ce secteur pour le moment. Soyez le premier à en générer un ci-dessous.',
+      fresh_badge:     'À JOUR',
+      stale_badge:     'NOUVELLES DONNÉES',
+      unknown_date:    'Date inconnue',
       sectors: {
         all:         'TOUS LES SECTEURS',
         agriculture: 'AGRICULTURE',
@@ -375,6 +380,11 @@ const TRANSLATIONS = {
       result_obs:      'Observations analysed',
       err_msg:         'Study generation failed',
       err_hint:        'Check that observations exist in the database and that the Gemini API key is configured.',
+      library_title:   'Available Reports',
+      no_reports_yet:  'No report generated for this sector yet. Be the first to generate one below.',
+      fresh_badge:     'UP TO DATE',
+      stale_badge:     'NEW DATA',
+      unknown_date:    'Unknown date',
       sectors: {
         all:         'ALL SECTORS',
         agriculture: 'AGRICULTURE',

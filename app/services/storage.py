@@ -310,6 +310,71 @@ class ObservationRepository:
 
         return deduped
 
+    def count_observations(self, sector: str | None = None) -> int:
+        """Cheap live count used to detect whether a sector has new data since a study
+        was generated — no LLM call involved, safe to call on every page load."""
+        if self._supabase:
+            try:
+                query = self._supabase.table("table_public").select("id", count="exact")
+                if sector:
+                    query = query.eq("secteur", sector)
+                response = query.execute()
+                if response.count is not None:
+                    return response.count
+            except Exception as exc:
+                logger.debug("Supabase count_observations failed (%s), falling back to SQLite", exc)
+
+        try:
+            query = "SELECT COUNT(*) FROM observations"
+            parameters: list[Any] = []
+            if sector:
+                query += " WHERE sector = ?"
+                parameters.append(sector)
+            with self._connection() as connection:
+                row = connection.execute(query, parameters).fetchone()
+                return int(row[0]) if row else 0
+        except Exception as exc:
+            logger.warning("SQLite count_observations failed: %s", exc)
+            return 0
+
+    def list_studies(self, sector: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        """List previously generated studies (the report library), most recent first.
+        Read-only, no LLM call — safe to display before anyone clicks 'generate'."""
+        if self._supabase:
+            try:
+                query = self._supabase.table("table_etudes").select("*")
+                if sector:
+                    query = query.eq("secteur", sector)
+                query = query.order("date_creation", desc=True).limit(limit)
+                return [
+                    {
+                        "id": row["id"],
+                        "sector": row.get("secteur"),
+                        "model": row.get("modele"),
+                        "observations_used": row.get("nb_observations"),
+                        "report": row.get("rapport"),
+                        "created_at": row.get("date_creation"),
+                    }
+                    for row in query.execute().data
+                ]
+            except Exception as exc:
+                logger.debug("Supabase list_studies failed (%s), falling back to SQLite", exc)
+
+        try:
+            query = "SELECT id, sector, model, observations_used, report, created_at FROM studies"
+            parameters: list[Any] = []
+            if sector:
+                query += " WHERE sector = ?"
+                parameters.append(sector)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            parameters.append(limit)
+            with self._connection() as connection:
+                self._initialize_sqlite()
+                return [dict(row) for row in connection.execute(query, parameters).fetchall()]
+        except Exception as exc:
+            logger.warning("SQLite list_studies failed: %s", exc)
+            return []
+
     @staticmethod
     def _public_to_observation(row: dict[str, Any]) -> dict[str, Any]:
         """Keep one English API contract while Supabase retains French field names."""

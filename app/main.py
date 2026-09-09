@@ -79,6 +79,27 @@ def catalog() -> list[dict]:
     return repository.catalog()
 
 
+@app.get("/api/v1/studies")
+def list_studies(sector: str | None = None, limit: int = Query(default=20, ge=1, le=100)) -> dict:
+    """Public, read-only report library — no LLM call, safe to fetch on every page load.
+
+    For each study, also reports the *live* observation count for its sector so the
+    frontend can flag whether new data has arrived since the report was generated,
+    without ever triggering a regeneration automatically.
+    """
+    studies = repository.list_studies(sector=sector, limit=limit)
+    live_counts: dict[str, int] = {}
+    for study in studies:
+        study_sector = study.get("sector") or "all"
+        if study_sector not in live_counts:
+            live_counts[study_sector] = repository.count_observations(
+                sector=None if study_sector == "all" else study_sector
+            )
+        study["live_observations_count"] = live_counts[study_sector]
+        study["is_stale"] = live_counts[study_sector] > (study.get("observations_used") or 0)
+    return {"studies": studies}
+
+
 @app.get("/api/v1/pipeline/audit")
 def pipeline_audit() -> dict:
     return repository.get_pipeline_audit()
