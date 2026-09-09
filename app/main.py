@@ -16,7 +16,7 @@ from app.agents import (
     TransportAgent,
 )
 from app.config import settings
-from app.security import require_analysis_rate_limit, require_collection_access
+from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
 from app.services.export import observations_to_csv, observations_to_json
 from app.services.scheduler import scheduler_service
 from app.services.storage import ObservationRepository
@@ -128,7 +128,7 @@ def export_json(sector: str | None = None) -> JSONResponse:
     )
 
 
-@app.post("/api/v1/collection/agriculture", status_code=202, dependencies=[Depends(require_collection_access)])
+@app.post("/api/v1/collection/agriculture", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
 async def collect_agriculture(source: str = "all") -> dict:
     try:
         return (await AgricultureAgent(repository).run(source)).model_dump(mode="json")
@@ -136,7 +136,7 @@ async def collect_agriculture(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/environment", status_code=202, dependencies=[Depends(require_collection_access)])
+@app.post("/api/v1/collection/environment", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
 async def collect_environment(source: str = "all") -> dict:
     try:
         return (await EnvironmentAgent(repository).run(source)).model_dump(mode="json")
@@ -144,7 +144,7 @@ async def collect_environment(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/markets", status_code=202, dependencies=[Depends(require_collection_access)])
+@app.post("/api/v1/collection/markets", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
 async def collect_markets(source: str = "all") -> dict:
     try:
         return (await MarketsAgent(repository).run(source)).model_dump(mode="json")
@@ -152,7 +152,7 @@ async def collect_markets(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/economy", status_code=202, dependencies=[Depends(require_collection_access)])
+@app.post("/api/v1/collection/economy", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
 async def collect_economy(source: str = "all") -> dict:
     try:
         return (await EconomyAgent(repository).run(source)).model_dump(mode="json")

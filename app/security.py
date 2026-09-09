@@ -47,12 +47,31 @@ def require_analysis_rate_limit(request: Request) -> None:
         raise HTTPException(status_code=429, detail="Study-generation rate limit reached. Try again later.")
 
 
+def require_collection_rate_limit(request: Request) -> None:
+    """Rate-limit data-collection runs per IP — no secret key.
+
+    Used only for the sectors actually wired to a public frontend button
+    (agriculture/environment/markets/economy — see data.js and home.js). Same
+    reasoning as require_analysis_rate_limit: a public button can't hold a
+    secret without exposing it to every visitor, so rate limiting is the
+    honest protection here.
+    """
+    client_id = request.client.host if request.client else "unknown"
+    if not rate_limiter.allow(f"collection:{client_id}", settings.collection_rate_limit_per_hour):
+        raise HTTPException(status_code=429, detail="Collection rate limit reached. Try again later.")
+
+
 def require_collection_access(request: Request, x_collection_key: str | None = Header(default=None)) -> None:
-    """Require a server-side secret and limit manual/triggered data-collection runs."""
+    """Require a server-side secret and limit manual/triggered data-collection runs.
+
+    Reserved for endpoints NOT wired to any public UI button (transport,
+    education, and the scheduled-harvest trigger) — these are admin/ops tools,
+    so a secret key is an appropriate, non-conflicting protection.
+    """
     if not settings.collection_api_key:
         raise HTTPException(status_code=503, detail="COLLECTION_API_KEY is not configured on the server.")
     if not x_collection_key or not compare_digest(x_collection_key, settings.collection_api_key):
         raise HTTPException(status_code=401, detail="A valid X-Collection-Key is required.")
     client_id = request.client.host if request.client else "unknown"
-    if not rate_limiter.allow(f"collection:{client_id}", settings.collection_rate_limit_per_hour):
+    if not rate_limiter.allow(f"collection-admin:{client_id}", settings.collection_rate_limit_per_hour):
         raise HTTPException(status_code=429, detail="Collection rate limit reached. Try again later.")
