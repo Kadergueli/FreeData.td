@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
     groq_api_key: str | None = None
     groq_model: str = "llama-3.3-70b-versatile"
-    analysis_api_key: str | None = None
     analysis_rate_limit_per_hour: int = 5
     collection_api_key: str | None = None
     collection_rate_limit_per_hour: int = 10

@@ -16,7 +16,7 @@ from app.agents import (
     TransportAgent,
 )
 from app.config import settings
-from app.security import require_analysis_access, require_collection_access
+from app.security import require_analysis_rate_limit, require_collection_access
 from app.services.export import observations_to_csv, observations_to_json
 from app.services.scheduler import scheduler_service
 from app.services.storage import ObservationRepository
@@ -165,7 +165,7 @@ async def trigger_harvest() -> dict:
     return await scheduler_service.run_harvest_job()
 
 
-@app.post("/api/v1/studies", dependencies=[Depends(require_analysis_access)])
+@app.post("/api/v1/studies", dependencies=[Depends(require_analysis_rate_limit)])
 async def generate_study(sector: str | None = None) -> dict:
     try:
         return (await AnalysisAgent(repository).study(sector)).model_dump()

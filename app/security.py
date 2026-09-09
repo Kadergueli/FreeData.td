@@ -33,12 +33,15 @@ rate_limiter = RateLimiter()
 analysis_rate_limiter = rate_limiter
 
 
-def require_analysis_access(request: Request, x_analysis_key: str | None = Header(default=None)) -> None:
-    """Require a server-side secret and limit study generation (costly LLM calls)."""
-    if not settings.analysis_api_key:
-        raise HTTPException(status_code=503, detail="ANALYSIS_API_KEY is not configured on the server.")
-    if not x_analysis_key or not compare_digest(x_analysis_key, settings.analysis_api_key):
-        raise HTTPException(status_code=401, detail="A valid X-Analysis-Key is required.")
+def require_analysis_rate_limit(request: Request) -> None:
+    """Rate-limit study generation per IP — no secret key.
+
+    This endpoint is called by a public, unauthenticated frontend button, so a
+    shared secret can't protect it without being exposed to every visitor (which
+    would defeat the point). Rate limiting alone is the honest trade-off: it
+    won't stop a determined abuser rotating IPs, but it caps the cost of casual
+    repeated clicks, which is the actual risk for a public "Generate Report" button.
+    """
     client_id = request.client.host if request.client else "unknown"
     if not rate_limiter.allow(f"analysis:{client_id}", settings.analysis_rate_limit_per_hour):
         raise HTTPException(status_code=429, detail="Study-generation rate limit reached. Try again later.")
