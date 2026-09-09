@@ -59,7 +59,7 @@ export const InsightsView = {
         </div>
       </div>
 
-      <div style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:12px 0;" class="flex gap-2 mb-6" id="insights-sector-tabs">
+      <div style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:12px 0;" class="flex gap-2 mb-6 scrollable-tabs" id="insights-sector-tabs">
         ${tabs.map((s, i) =>
           `<button class="btn ${i === 0 ? 'btn-cyan' : 'btn-ghost'} insights-tab-btn mono-sm" data-sector="${s.id}" style="padding:6px 12px;">${s.label}</button>`
         ).join('')}

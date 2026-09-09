@@ -392,6 +392,9 @@
 .scrollable-tabs::-webkit-scrollbar {
   display: none;
 }
+.scrollable-tabs > * {
+  flex-shrink: 0; /* prevent buttons from being squished before the row scrolls */
+}
 
 /* ── Word Break Helper ── */
 .word-break-all {
@@ -526,21 +529,27 @@
   font-family: var(--font-sans);
 }
 .accordion-trigger:hover .accordion-title { color: var(--accent); }
+.accordion-trigger > .flex {
+  min-width: 0; /* allow long titles/teasers to wrap instead of overflowing on mobile */
+  flex: 1 1 auto;
+}
 .accordion-title {
   font-family: var(--font-sans);
   font-weight: 600;
   font-size: 15px;
   color: var(--text);
   transition: color 0.15s ease;
+  overflow-wrap: break-word;
 }
 .accordion-teaser {
   font-family: var(--font-sans);
   font-size: 13px;
   color: var(--text-muted);
   margin-top: 2px;
+  overflow-wrap: break-word;
 }
 .accordion-chevron {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   transition: transform 0.25s ease;
   color: var(--text-muted);
 }
