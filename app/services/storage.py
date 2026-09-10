@@ -388,10 +388,18 @@ class ObservationRepository:
 
     def catalog(self) -> list[dict[str, Any]]:
         if self._supabase:
-            # Query distinct catalog entries by sector to ensure all sectors are represented
+            # Query distinct catalog entries by sector to ensure all sectors are represented.
+            # Each sector is queried independently and wrapped in its own try/except: a
+            # transient network failure on one sector (e.g. a flaky Windows socket read)
+            # must not take down the whole endpoint with a 500 — it should just be skipped,
+            # the same way get_pipeline_audit() below degrades gracefully instead of raising.
             rows = []
             for sec in ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"]:
-                res = self._supabase.table("table_public").select("secteur,indicateur,source_api,date_reference").eq("secteur", sec).order("date_reference", desc=True).limit(1000).execute()
+                try:
+                    res = self._supabase.table("table_public").select("secteur,indicateur,source_api,date_reference").eq("secteur", sec).order("date_reference", desc=True).limit(1000).execute()
+                except Exception as exc:
+                    logger.warning("Failed to retrieve Supabase catalog for sector '%s': %s", sec, exc)
+                    continue
                 if res.data:
                     for item in res.data:
                         rows.append({"sector": item["secteur"], "indicator": item["indicateur"], "source": item["source_api"], "reference_date": item["date_reference"]})
