@@ -257,6 +257,8 @@
   font-size: 32px;
   font-weight: 700;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   margin-bottom: var(--space-1);
 }
 
@@ -575,14 +577,13 @@
   line-height: 1.65;
   color: var(--text-muted);
 }
-
-/* Skeleton loader for stats while first fetch is in flight */
+/* Skeleton loader for stats & tables while fetch is in flight */
 .skeleton {
   display: inline-block;
-  min-width: 48px;
+  min-width: 32px;
   height: 1em;
   border-radius: 4px;
-  background: linear-gradient(90deg, var(--border) 25%, var(--surface-hover) 50%, var(--border) 75%);
+  background: linear-gradient(90deg, #e2e8f0 25%, #cbd5e1 50%, #e2e8f0 75%);
   background-size: 200% 100%;
   animation: skeleton-pulse 1.4s ease-in-out infinite;
   vertical-align: middle;
@@ -591,3 +592,71 @@
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* Executive Analytical Report Styling */
+.report-content {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: 24px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.7;
+  max-height: 520px;
+  overflow-y: auto;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.report-heading-xl {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 20px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--cyan);
+}
+
+.report-heading-lg {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 18px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-heading {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e40af; /* Deep Executive Blue */
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.report-paragraph {
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.report-list {
+  margin-top: 4px;
+  margin-bottom: 12px;
+  padding-left: 20px;
+}
+
+.report-list li {
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.report-content strong {
+  color: var(--text);
+  font-weight: 600;
+}
+

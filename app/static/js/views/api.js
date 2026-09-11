@@ -1,6 +1,4 @@
-/**
- * View: Export & API — Developer Central
- */
+
 
 import { getExportUrl } from '../api_client.js';
 import { t } from '../i18n.js';
@@ -42,9 +40,9 @@ export const ApiView = {
   render() {
     const docs = t('api.docs');
     const docList = Array.isArray(docs) ? docs : [
-      { id: 'swagger', icon: 'file-text', name: 'Spécification API OpenAPI et Swagger', desc: 'Spécifications complètes des points d\'accès et schémas interactifs au /docs', link: '/docs' },
-      { id: 'redoc',   icon: 'book-open', name: 'Documentation ReDoc', desc: 'Documentation ReDoc et visionneuse de schémas au /redoc', link: '/redoc' },
-      { id: 'health',  icon: 'activity',  name: 'Point d\'Accès Santé Système', desc: 'Tester le statut live du système à /api/v1/health', link: '/api/v1/health' },
+      { id: 'swagger', icon: 'file-text', name: 'Spécification API OpenAPI et Swagger', desc: 'Full endpoint specifications at /docs', link: '/docs' },
+      { id: 'redoc', icon: 'book-open', name: 'Documentation ReDoc', desc: 'Clean ReDoc documentation at /redoc', link: '/redoc' },
+      { id: 'health', icon: 'activity', name: 'Point d\'Accès Santé Système', desc: 'Test API system status live at /api/v1/health', link: '/api/v1/health' },
     ];
 
     const currentKey = sessionStorage.getItem('fd_api_key');
@@ -98,22 +96,22 @@ export const ApiView = {
         <h4 class="mono-xs text-muted uppercase mb-2">${t('api.format_label')}</h4>
         <div class="flex gap-2 flex-wrap mb-4" id="export-format-buttons">
           ${FORMATS.map(f =>
-            `<button class="btn ${f === selectedFormat ? 'btn-cyan' : 'btn-ghost'} export-fmt-btn mono-sm" data-fmt="${f}">${f}</button>`
-          ).join('')}
+      `<button class="btn ${f === selectedFormat ? 'btn-cyan' : 'btn-ghost'} export-fmt-btn mono-sm" data-fmt="${f}">${f}</button>`
+    ).join('')}
         </div>
 
         <h4 class="mono-xs text-muted uppercase mb-2">Secteur à exporter</h4>
         <div class="flex gap-2 flex-wrap mb-4" id="export-sector-buttons">
           ${SECTORS.map(s =>
-            `<button class="btn ${s.id === selectedSector ? 'btn-cyan' : 'btn-ghost'} export-sec-btn mono-sm" data-sec="${s.id}">${s.label}</button>`
-          ).join('')}
+      `<button class="btn ${s.id === selectedSector ? 'btn-cyan' : 'btn-ghost'} export-sec-btn mono-sm" data-sec="${s.id}">${s.label}</button>`
+    ).join('')}
         </div>
 
         <h4 class="mono-xs text-muted uppercase mb-2">Région à exporter</h4>
         <div class="flex gap-2 flex-wrap mb-6" id="export-region-buttons">
           ${REGIONS.map(r =>
-            `<button class="btn ${r.id === selectedRegion ? 'btn-cyan' : 'btn-ghost'} export-reg-btn mono-sm" data-reg="${r.id}">${r.label}</button>`
-          ).join('')}
+      `<button class="btn ${r.id === selectedRegion ? 'btn-cyan' : 'btn-ghost'} export-reg-btn mono-sm" data-reg="${r.id}">${r.label}</button>`
+    ).join('')}
         </div>
 
         <h4 class="mono-xs text-muted uppercase mb-2">${t('api.filters_label')}</h4>

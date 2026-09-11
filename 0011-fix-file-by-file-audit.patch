@@ -1,0 +1,693 @@
+From 5c709a118fbd95424fb4414b24e3b26d42e36c0d Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.local>
+Date: Fri, 11 Sep 2026 09:31:52 +0000
+Subject: [PATCH] fix(security): file-by-file audit - NaN validation, CSV
+ injection, write resilience
+
+Full audit of every backend file, prioritized and fixed in order:
+
+1. storage.py - write-path resilience (most critical finding)
+   store_raw_batch() and store_validation_report() had NO error handling at
+   all around their Supabase calls, unlike catalog()/list_studies()/
+   count_observations() which already degrade gracefully. These two run on
+   EVERY collection call for EVERY agent - a single transient network blip
+   (the same WinError 10035 already seen in production) would crash the
+   whole POST /api/v1/collection/{sector} request.
+   Correction to an earlier overstatement: table_clean and table_public
+   writes in _store_supabase_pipeline_batch already HAD try/except with a
+   clear RuntimeError on failure - that part of the initial finding was
+   wrong. What was genuinely missing there was retry-before-giving-up: a
+   single blip failed immediately with no second chance.
+   Fix: added a shared _with_retry() helper (3 attempts, short backoff).
+   Best-effort writes (raw archive, audit log) retry then log-and-continue.
+   The critical writes (table_clean, table_public) retry then still raise
+   RuntimeError if truly persistent - real data loss must stay visible,
+   not be silently swallowed.
+   main.py: all 8 collection endpoints now also catch RuntimeError -> 503
+   (they only caught ValueError before), so a persistent failure returns a
+   clear "temporarily unavailable" response instead of an unhandled 500.
+
+2. schemas/observation.py - reject non-finite values
+   `value: float` accepted NaN/Infinity with no constraint. agents/base.py's
+   own outlier-detection code already anticipated NaN (math.isnan checks),
+   confirming this is a real scenario, not theoretical - yet such a value
+   would still reach the DB and the public API. json.dumps() emits the
+   literal tokens NaN/Infinity for these, which is invalid per the JSON
+   spec and would silently break strict parsers used by researchers
+   exporting this data. Added a field_validator rejecting non-finite values
+   (a ValidationError, which agents/base.py already catches as ValueError,
+   so a single bad record is skipped rather than crashing the batch).
+   Also added a source_url validator: not rendered as a clickable link
+   anywhere today, but a bare, unvalidated string field is exactly the kind
+   of latent gap that becomes an XSS/javascript: URI vector the day someone
+   adds a "view source" link without re-checking this field.
+
+3. storage.py list_observations() - sanitize legacy bad data
+   Since the validator above only prevents *new* NaN/Infinity from being
+   written, added a sanitization pass in list_observations() (the common
+   path feeding both /api/v1/observations and both export endpoints) that
+   nulls out any non-finite value already in the DB from before this fix,
+   rather than trusting allow_nan=False and letting the export endpoints
+   500 on legacy rows.
+
+4. services/export.py - CSV/formula injection (CWE-1236)
+   csv.DictWriter wrote raw field values with no escaping. A cell value
+   starting with =, +, - or @ is interpreted as a formula by Excel/Sheets/
+   LibreOffice when the exported CSV is opened - relevant here specifically
+   because these exports are aimed at researchers/students who will open
+   them in a spreadsheet app. Values from external sources (indicator/
+   source/notes) aren't fully trusted. Fixed by prefixing any such cell
+   with a leading single-quote (the standard mitigation), applied per-cell
+   via csv.DictWriter's row-by-row path instead of writerows().
+
+5. main.py - Content-Disposition filename injection
+   The `sector` query param (unvalidated) was interpolated directly into
+   the Content-Disposition header for CSV/JSON exports. Added
+   _safe_filename_part() stripping anything but alphanumeric/hyphen/
+   underscore before it reaches the header value.
+
+6. agents/base.py - silent archival failures
+   _archive_raw()'s `except Exception: pass` gave zero trace if local
+   archival ever failed (disk full, permissions, ...). Now logs a warning
+   instead - still non-fatal, but no longer invisible.
+
+7. cli.py - path traversal via --sector
+   The export command built a filesystem path directly from --sector with
+   no validation (e.g. --sector "../../.env" could write outside
+   data/exports/). Low severity (requires local shell access to the CLI
+   already), fixed by sanitizing to alphanumeric/hyphen/underscore only,
+   same helper pattern as the main.py fix.
+
+Flagged but NOT fixed here (need your input / infra access, not a code
+patch):
+- Render deployment has no committed Procfile/render.yaml, so I can't
+  verify --forwarded-allow-ips trusts Render's proxy. If it doesn't,
+  request.client.host (used as the rate-limit key everywhere) may resolve
+  to Render's proxy IP for every visitor, meaning all visitors could share
+  one rate-limit bucket. Needs checking directly in the Render dashboard.
+- No SQL file in the repo actually creates table_public/table_raw/
+  table_clean/table_logs/table_rapports - schema.sql defines an unrelated,
+  seemingly-unused `observations` table instead. The real schema exists
+  only in the live Supabase project. Whether table_public.secteur has a
+  CHECK constraint blocking 'health'/'energy' needs to be checked directly
+  in Supabase (query provided in the previous message).
+- The synchronous Supabase client (create_client) called from async FastAPI
+  routes (via run_in_threadpool) is the likely root cause of the recurring
+  WinError 10035, beyond just the missing try/except this patch fixes.
+  A real fix would mean migrating to create_async_client and making
+  storage.py's methods properly async - a significant rewrite, not
+  something to do inside a single patch without confirming first.
+
+Tests (tests/test_data_integrity_fixes.py, 10 new, all passing):
+- NaN/Infinity rejected, finite values still accepted.
+- javascript: URI source_url neutralized to None, https:// URL kept as-is.
+- CSV export escapes =/+/-/@-prefixed cells, leaves normal text untouched.
+- _with_retry: succeeds first try, retries-then-succeeds, and exhausts all
+  attempts before raising (verified call counts, not just outcomes).
+
+Full suite: 29/29 passing. Also verified end-to-end via TestClient: a demo
+health collection stores correctly, the resulting CSV export has a clean
+Content-Disposition header, and GET /observations returns the data.
+---
+ app/agents/base.py                 |   7 +-
+ app/cli.py                         |   5 +-
+ app/main.py                        |  30 ++++++-
+ app/schemas/observation.py         |  26 +++++-
+ app/services/export.py             |  17 +++-
+ app/services/storage.py            | 137 ++++++++++++++++++++++-------
+ tests/test_data_integrity_fixes.py | 131 +++++++++++++++++++++++++++
+ 7 files changed, 311 insertions(+), 42 deletions(-)
+ create mode 100644 tests/test_data_integrity_fixes.py
+
+diff --git a/app/agents/base.py b/app/agents/base.py
+index 524a4c1..374db4f 100644
+--- a/app/agents/base.py
++++ b/app/agents/base.py
+@@ -247,5 +247,8 @@ class BaseAgent(ABC):
+             raw_directory.mkdir(parents=True, exist_ok=True)
+             filename = f"{self.sector}_{source}_{collected_at.strftime('%Y%m%dT%H%M%S')}.json"
+             (raw_directory / filename).write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+-        except Exception:
+-            pass
++        except Exception as exc:
++            # Best-effort local archival copy - never block a collection run over
++            # this, but a silent `pass` here means a real problem (disk full,
++            # permissions) leaves zero trace anywhere. Log it instead.
++            logger.warning("Failed to archive raw records for %s/%s: %s", self.sector, source, exc)
+diff --git a/app/cli.py b/app/cli.py
+index 8d80a21..494674a 100644
+--- a/app/cli.py
++++ b/app/cli.py
+@@ -37,7 +37,10 @@ def main() -> None:
+     if args.command == "export":
+         rows = repository.list_observations(sector=args.sector, limit=5000)
+         ext = args.format
+-        target = Path("data/exports") / f"{args.sector or 'all'}-observations.{ext}"
++        # Sanitize before using in a filesystem path: --sector is free text, and
++        # without this a value like '../../.env' could write outside data/exports/.
++        safe_sector = "".join(c for c in (args.sector or "all") if c.isalnum() or c in "-_") or "all"
++        target = Path("data/exports") / f"{safe_sector}-observations.{ext}"
+         target.parent.mkdir(parents=True, exist_ok=True)
+         if ext == "json":
+             content = observations_to_json(rows)
+diff --git a/app/main.py b/app/main.py
+index 37b2922..cf7134d 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -108,11 +108,21 @@ def pipeline_audit() -> dict:
+ 
+ 
+ 
++def _safe_filename_part(sector: str | None) -> str:
++    """Sanitize a query param before it goes into an HTTP header value
++    (Content-Disposition filename) - strips anything that isn't alphanumeric,
++    hyphen or underscore, preventing header-value/quote injection."""
++    if not sector:
++        return "all"
++    cleaned = "".join(c for c in sector if c.isalnum() or c in "-_")
++    return cleaned or "all"
++
++
+ @app.get("/api/v1/export/csv", response_class=PlainTextResponse)
+ def export_csv(sector: str | None = None) -> PlainTextResponse:
+     rows = repository.list_observations(sector=sector, limit=5000)
+     content = observations_to_csv(rows)
+-    filename = f"freedatatd-{sector or 'all'}-export.csv"
++    filename = f"freedatatd-{_safe_filename_part(sector)}-export.csv"
+     return PlainTextResponse(
+         content,
+         headers={"Content-Disposition": f"attachment; filename={filename}"},
+@@ -123,7 +133,7 @@ def export_csv(sector: str | None = None) -> PlainTextResponse:
+ @app.get("/api/v1/export/json")
+ def export_json(sector: str | None = None) -> JSONResponse:
+     rows = repository.list_observations(sector=sector, limit=5000)
+-    filename = f"freedatatd-{sector or 'all'}-export.json"
++    filename = f"freedatatd-{_safe_filename_part(sector)}-export.json"
+     return JSONResponse(
+         content=rows,
+         headers={"Content-Disposition": f"attachment; filename={filename}"},
+@@ -134,6 +144,8 @@ def export_json(sector: str | None = None) -> JSONResponse:
+ async def collect_agriculture(source: str = "all") -> dict:
+     try:
+         return (await AgricultureAgent(repository).run(source)).model_dump(mode="json")
++    except RuntimeError as exc:
++        raise HTTPException(status_code=503, detail=str(exc)) from exc
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+@@ -142,6 +154,8 @@ async def collect_agriculture(source: str = "all") -> dict:
+ async def collect_environment(source: str = "all") -> dict:
+     try:
+         return (await EnvironmentAgent(repository).run(source)).model_dump(mode="json")
++    except RuntimeError as exc:
++        raise HTTPException(status_code=503, detail=str(exc)) from exc
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+@@ -150,6 +164,8 @@ async def collect_environment(source: str = "all") -> dict:
+ async def collect_markets(source: str = "all") -> dict:
+     try:
+         return (await MarketsAgent(repository).run(source)).model_dump(mode="json")
++    except RuntimeError as exc:
++        raise HTTPException(status_code=503, detail=str(exc)) from exc
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+@@ -158,6 +174,8 @@ async def collect_markets(source: str = "all") -> dict:
+ async def collect_economy(source: str = "all") -> dict:
+     try:
+         return (await EconomyAgent(repository).run(source)).model_dump(mode="json")
++    except RuntimeError as exc:
++        raise HTTPException(status_code=503, detail=str(exc)) from exc
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+@@ -166,6 +184,8 @@ async def collect_economy(source: str = "all") -> dict:
+ async def collect_health(source: str = "all") -> dict:
+     try:
+         return (await HealthAgent(repository).run(source)).model_dump(mode="json")
++    except RuntimeError as exc:
++        raise HTTPException(status_code=503, detail=str(exc)) from exc
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+@@ -174,6 +194,8 @@ async def collect_health(source: str = "all") -> dict:
+ async def collect_energy(source: str = "all") -> dict:
+     try:
+         return (await EnergyAgent(repository).run(source)).model_dump(mode="json")
++    except RuntimeError as exc:
++        raise HTTPException(status_code=503, detail=str(exc)) from exc
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+@@ -182,6 +204,8 @@ async def collect_energy(source: str = "all") -> dict:
+ async def collect_transport(source: str = "all") -> dict:
+     try:
+         return (await TransportAgent(repository).run(source)).model_dump(mode="json")
++    except RuntimeError as exc:
++        raise HTTPException(status_code=503, detail=str(exc)) from exc
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+@@ -190,6 +214,8 @@ async def collect_transport(source: str = "all") -> dict:
+ async def collect_education(source: str = "all") -> dict:
+     try:
+         return (await EducationAgent(repository).run(source)).model_dump(mode="json")
++    except RuntimeError as exc:
++        raise HTTPException(status_code=503, detail=str(exc)) from exc
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+diff --git a/app/schemas/observation.py b/app/schemas/observation.py
+index 3543c7d..1da2a94 100644
+--- a/app/schemas/observation.py
++++ b/app/schemas/observation.py
+@@ -1,7 +1,7 @@
+ from datetime import UTC, date, datetime
+ from typing import Literal
+ 
+-from pydantic import BaseModel, Field
++from pydantic import BaseModel, Field, field_validator
+ 
+ 
+ class ObservationCreate(BaseModel):
+@@ -13,12 +13,34 @@ class ObservationCreate(BaseModel):
+     country_code: str = Field(default="TCD", min_length=3, max_length=3)
+     region: str = Field(default="national", max_length=80)
+     source: str = Field(min_length=2, max_length=80)
+-    source_url: str | None = None
++    source_url: str | None = Field(default=None, max_length=500)
+     license: str = Field(default="CC BY 4.0", max_length=80)
+     notes: str | None = None
+     flags: list[str] = Field(default_factory=list)
+     collected_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+ 
++    @field_validator("value")
++    @classmethod
++    def value_must_be_finite(cls, v: float) -> float:
++        # NaN/Infinity break strict JSON parsers (json.dumps emits the literal
++        # tokens NaN/Infinity, which are invalid per the JSON spec) - this would
++        # silently corrupt the public CSV/JSON exports researchers rely on.
++        if v != v or v in (float("inf"), float("-inf")):  # v != v is the classic NaN check
++            raise ValueError("value must be a finite number (NaN/Infinity are not allowed)")
++        return v
++
++    @field_validator("source_url")
++    @classmethod
++    def source_url_must_be_http(cls, v: str | None) -> str | None:
++        # Not rendered as a clickable link anywhere today, but validating now
++        # prevents a javascript:/data: URI from becoming exploitable the day
++        # someone adds a "view source" link without re-checking this field.
++        if v is None or v == "":
++            return None
++        if not (v.startswith("http://") or v.startswith("https://")):
++            return None
++        return v
++
+ 
+ class CollectionResult(BaseModel):
+     agent: str
+diff --git a/app/services/export.py b/app/services/export.py
+index a7c028d..035310f 100644
+--- a/app/services/export.py
++++ b/app/services/export.py
+@@ -1,6 +1,20 @@
+ import csv
+ import json
+ from io import StringIO
++from typing import Any
++
++# Characters that spreadsheet apps (Excel, Google Sheets, LibreOffice) treat as
++# the start of a formula when a cell value begins with them. A malicious or
++# compromised external data source (indicator/source/notes text) could smuggle
++# a formula (e.g. "=HYPERLINK(...)") into the CSV, which executes when a
++# researcher opens the export - this is CWE-1236 (CSV/Formula Injection).
++_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@")
++
++
++def _escape_csv_cell(value: Any) -> Any:
++    if isinstance(value, str) and value.startswith(_FORMULA_TRIGGER_CHARS):
++        return "'" + value
++    return value
+ 
+ 
+ def observations_to_csv(rows: list[dict]) -> str:
+@@ -8,7 +22,8 @@ def observations_to_csv(rows: list[dict]) -> str:
+     fieldnames = ["id", "sector", "indicator", "value", "unit", "reference_date", "country_code", "region", "source", "source_url", "license", "notes", "collected_at"]
+     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+     writer.writeheader()
+-    writer.writerows(rows)
++    for row in rows:
++        writer.writerow({key: _escape_csv_cell(val) for key, val in row.items()})
+     return output.getvalue()
+ 
+ 
+diff --git a/app/services/storage.py b/app/services/storage.py
+index c8d2272..a62531d 100644
+--- a/app/services/storage.py
++++ b/app/services/storage.py
+@@ -2,6 +2,7 @@ from __future__ import annotations
+ 
+ import logging
+ import sqlite3
++import time
+ from collections.abc import Iterable
+ from pathlib import Path
+ from typing import Any
+@@ -12,6 +13,27 @@ from app.schemas import ObservationCreate
+ logger = logging.getLogger(__name__)
+ 
+ 
++def _with_retry(operation: Any, *, attempts: int = 3, base_delay: float = 0.3, label: str = "Supabase operation"):
++    """Run a zero-arg callable, retrying on transient network errors (the same
++    class of Windows socket flakiness — httpx.ReadError / WinError 10035 —
++    observed in production). Re-raises the last exception if every attempt
++    fails, so callers can decide whether that failure is safe to swallow
++    (best-effort archival) or must be surfaced (the actual data write)."""
++    last_exc: Exception | None = None
++    for attempt in range(1, attempts + 1):
++        try:
++            return operation()
++        except Exception as exc:  # noqa: BLE001 - intentionally broad: network/transport errors vary by platform
++            last_exc = exc
++            if attempt < attempts:
++                logger.warning("%s failed (attempt %d/%d): %s — retrying", label, attempt, attempts, exc)
++                time.sleep(base_delay * attempt)
++            else:
++                logger.warning("%s failed after %d attempts: %s", label, attempts, exc)
++    assert last_exc is not None
++    raise last_exc
++
++
+ class ObservationRepository:
+     """Writes to Supabase when configured, otherwise to a local SQLite database."""
+ 
+@@ -63,41 +85,64 @@ class ObservationRepository:
+         return payload
+ 
+     def store_raw_batch(self, sector: str, source: str, records: list[dict[str, Any]]) -> int | None:
+-        """Persist a source response in table_raw when Supabase is active."""
++        """Persist a source response in table_raw when Supabase is active.
++
++        Best-effort: this is an audit/archival copy, not the actual clean data.
++        Retries transient network errors; if it still fails, logs a warning and
++        returns None rather than crashing the whole collection run over an
++        archival step (downstream code already treats raw_record_id as optional).
++        """
+         if not self._supabase:
+             return None
+-        response = self._supabase.table("table_raw").insert(
+-            {
+-                "secteur": sector,
+-                "source_api": source,
+-                "donnee_brute": records,
+-                "statut": "brut",
+-                "nb_lignes": len(records),
+-                "notes_agent": "Recorded automatically by FreeDatatd before normalization.",
+-            }
+-        ).execute()
+-        return response.data[0]["id"]
++        try:
++            response = _with_retry(
++                lambda: self._supabase.table("table_raw").insert(
++                    {
++                        "secteur": sector,
++                        "source_api": source,
++                        "donnee_brute": records,
++                        "statut": "brut",
++                        "nb_lignes": len(records),
++                        "notes_agent": "Recorded automatically by FreeDatatd before normalization.",
++                    }
++                ).execute(),
++                label=f"store_raw_batch({sector})",
++            )
++            return response.data[0]["id"]
++        except Exception:
++            return None
+ 
+     def upsert_many(self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None) -> int:
+         return self._upsert_many(observations, raw_record_id)
+ 
+     def store_validation_report(self, raw_record_id: int | None, received: int, accepted: int, rejected: int, errors: list[str]) -> None:
+-        """Complete the raw-to-published audit trail in table_rapports."""
++        """Complete the raw-to-published audit trail in table_rapports.
++
++        Best-effort: an audit-trail write, not the actual data. Retries
++        transient failures; logs and gives up rather than crashing the
++        collection run over an audit-log entry.
++        """
+         if not self._supabase or raw_record_id is None:
+             return
+         completeness = accepted / received if received else 0.0
+-        self._supabase.table("table_rapports").insert(
+-            {
+-                "id_raw": raw_record_id,
+-                "score_global": completeness,
+-                "score_completude": completeness,
+-                "score_coherence": 1.0 if not errors else max(0.0, 1.0 - rejected / max(received, 1)),
+-                "nb_anomalies": len(errors),
+-                "nb_doublons": 0,
+-                "statut_final": "published" if accepted else "rejected",
+-                "commentaire": "; ".join(errors) if errors else "Validation passed automatically.",
+-            }
+-        ).execute()
++        try:
++            _with_retry(
++                lambda: self._supabase.table("table_rapports").insert(
++                    {
++                        "id_raw": raw_record_id,
++                        "score_global": completeness,
++                        "score_completude": completeness,
++                        "score_coherence": 1.0 if not errors else max(0.0, 1.0 - rejected / max(received, 1)),
++                        "nb_anomalies": len(errors),
++                        "nb_doublons": 0,
++                        "statut_final": "published" if accepted else "rejected",
++                        "commentaire": "; ".join(errors) if errors else "Validation passed automatically.",
++                    }
++                ).execute(),
++                label="store_validation_report",
++            )
++        except Exception:
++            pass
+ 
+     def save_study(self, sector: str | None, model: str, observations_used: int, report: str) -> int | None:
+         """Keep generated LLM studies separate from the verified source data."""
+@@ -188,9 +233,12 @@ class ObservationRepository:
+             })
+ 
+         try:
+-            clean_response = self._supabase.table("table_clean").insert(clean_payloads).execute()
++            clean_response = _with_retry(
++                lambda: self._supabase.table("table_clean").insert(clean_payloads).execute(),
++                label="table_clean batch insert",
++            )
+         except Exception as exc:
+-            logger.error("Supabase table_clean batch insert failed: %s", exc)
++            logger.error("Supabase table_clean batch insert failed after retries: %s", exc)
+             raise RuntimeError(f"Storage error writing to table_clean: {exc}") from exc
+ 
+         clean_ids = [item["id"] for item in clean_response.data]
+@@ -209,7 +257,11 @@ class ObservationRepository:
+             for clean_id, row in zip(clean_ids, rows)
+         ]
+         try:
+-            self._supabase.table("table_logs").insert(log_payloads).execute()
++            _with_retry(
++                lambda: self._supabase.table("table_logs").insert(log_payloads).execute(),
++                attempts=2,
++                label="table_logs batch insert",
++            )
+         except Exception as exc:
+             logger.warning("Supabase table_logs batch insert failed (non-fatal): %s", exc)
+ 
+@@ -237,10 +289,13 @@ class ObservationRepository:
+                 "notes_publiques": notes,
+             })
+         try:
+-            self._supabase.table("table_public").upsert(
+-                public_payloads,
+-                on_conflict="secteur,source_api,date_reference,indicateur,region",
+-            ).execute()
++            _with_retry(
++                lambda: self._supabase.table("table_public").upsert(
++                    public_payloads,
++                    on_conflict="secteur,source_api,date_reference,indicateur,region",
++                ).execute(),
++                label="table_public upsert",
++            )
+         except Exception:
+             # Delete any existing matching rows before inserting to avoid duplicates if upsert fails
+             for p in public_payloads:
+@@ -249,9 +304,12 @@ class ObservationRepository:
+                 except Exception:
+                     pass
+             try:
+-                self._supabase.table("table_public").insert(public_payloads).execute()
++                _with_retry(
++                    lambda: self._supabase.table("table_public").insert(public_payloads).execute(),
++                    label="table_public fallback insert",
++                )
+             except Exception as exc:
+-                logger.error("Supabase table_public batch insert failed: %s", exc)
++                logger.error("Supabase table_public batch insert failed after retries: %s", exc)
+                 raise RuntimeError(f"Storage error writing to table_public: {exc}") from exc
+ 
+         return len(rows)
+@@ -308,6 +366,17 @@ class ObservationRepository:
+                 if limit and len(deduped) >= limit:
+                     break
+ 
++        # Sanitize any non-finite values (NaN/Infinity) before returning. These
++        # should never be written going forward (ObservationCreate.value now
++        # rejects them at write time), but this protects against any row that
++        # slipped in before that validator existed - json.dumps() emits the
++        # literal tokens NaN/Infinity for such values, which is invalid JSON
++        # and would silently break strict parsers used by API consumers.
++        for o in deduped:
++            val = o.get("value")
++            if isinstance(val, float) and (val != val or val in (float("inf"), float("-inf"))):
++                o["value"] = None
++
+         return deduped
+ 
+     def count_observations(self, sector: str | None = None) -> int:
+diff --git a/tests/test_data_integrity_fixes.py b/tests/test_data_integrity_fixes.py
+new file mode 100644
+index 0000000..81b3d6b
+--- /dev/null
++++ b/tests/test_data_integrity_fixes.py
+@@ -0,0 +1,131 @@
++"""Regression tests for the file-by-file security/data-integrity pass:
++- ObservationCreate rejects NaN/Infinity and neutralizes non-http(s) source_url.
++- CSV export escapes formula-injection-triggering cell values (CWE-1236).
++- The Supabase retry helper actually retries transient failures before
++  giving up, instead of failing on the very first blip.
++"""
++
++from datetime import date
++
++import pytest
++from pydantic import ValidationError
++
++from app.schemas import ObservationCreate
++from app.services.export import observations_to_csv
++from app.services.storage import _with_retry
++
++
++def _make(**overrides):
++    base = dict(
++        sector="health",
++        indicator="Test indicator",
++        value=1.0,
++        unit="units",
++        reference_date=date(2024, 1, 1),
++        source="World Bank",
++    )
++    base.update(overrides)
++    return ObservationCreate(**base)
++
++
++def test_nan_value_is_rejected():
++    with pytest.raises(ValidationError):
++        _make(value=float("nan"))
++
++
++def test_infinity_value_is_rejected():
++    with pytest.raises(ValidationError):
++        _make(value=float("inf"))
++    with pytest.raises(ValidationError):
++        _make(value=float("-inf"))
++
++
++def test_finite_value_is_accepted():
++    obs = _make(value=53.5)
++    assert obs.value == 53.5
++
++
++def test_javascript_uri_source_url_is_neutralized():
++    obs = _make(source_url="javascript:alert(1)")
++    assert obs.source_url is None
++
++
++def test_http_source_url_is_kept():
++    obs = _make(source_url="https://api.worldbank.org/v2/country/TCD")
++    assert obs.source_url == "https://api.worldbank.org/v2/country/TCD"
++
++
++def test_csv_export_escapes_formula_trigger_chars():
++    rows = [
++        {
++            "id": 1,
++            "sector": "health",
++            "indicator": "=HYPERLINK(\"http://evil.example\",\"click me\")",
++            "value": 1.0,
++            "unit": "u",
++            "reference_date": "2024-01-01",
++            "country_code": "TCD",
++            "region": "national",
++            "source": "@SUM(1+1)",
++            "source_url": None,
++            "license": "CC BY 4.0",
++            "notes": "+cmd|'/c calc'!A1",
++            "collected_at": "2024-01-01T00:00:00Z",
++        }
++    ]
++    csv_text = observations_to_csv(rows)
++    assert '="HYPERLINK' not in csv_text  # never left bare/unescaped after the = sign in the raw cell
++    assert "'=HYPERLINK" in csv_text
++    assert "'@SUM" in csv_text
++    assert "'+cmd" in csv_text
++
++
++def test_csv_export_leaves_normal_values_untouched():
++    rows = [
++        {
++            "id": 1, "sector": "health", "indicator": "Life expectancy",
++            "value": 53.0, "unit": "years", "reference_date": "2024-01-01",
++            "country_code": "TCD", "region": "national", "source": "World Bank",
++            "source_url": None, "license": "CC BY 4.0", "notes": None,
++            "collected_at": "2024-01-01T00:00:00Z",
++        }
++    ]
++    csv_text = observations_to_csv(rows)
++    assert "Life expectancy" in csv_text
++    assert "'Life expectancy" not in csv_text
++
++
++def test_with_retry_succeeds_on_first_try():
++    calls = []
++
++    def op():
++        calls.append(1)
++        return "ok"
++
++    assert _with_retry(op, attempts=3, base_delay=0) == "ok"
++    assert len(calls) == 1
++
++
++def test_with_retry_retries_then_succeeds():
++    calls = []
++
++    def op():
++        calls.append(1)
++        if len(calls) < 2:
++            raise ConnectionError("simulated transient failure")
++        return "ok"
++
++    assert _with_retry(op, attempts=3, base_delay=0) == "ok"
++    assert len(calls) == 2
++
++
++def test_with_retry_raises_after_exhausting_attempts():
++    calls = []
++
++    def op():
++        calls.append(1)
++        raise ConnectionError("persistent failure")
++
++    with pytest.raises(ConnectionError):
++        _with_retry(op, attempts=3, base_delay=0)
++    assert len(calls) == 3
+-- 
+2.43.0
+

@@ -15,14 +15,12 @@ def test_demo_collection_is_stored(tmp_path: Path) -> None:
     assert rows[0]["country_code"] == "TCD"
 
 
-def test_unknown_source_raises() -> None:
-    from tempfile import TemporaryDirectory
+def test_unknown_source_raises(tmp_path: Path) -> None:
+    repository = ObservationRepository(database_path=tmp_path / "test.db")
+    agent = HealthAgent(repository)
+    try:
+        asyncio.run(agent.collect("not-a-real-source"))
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "Unknown source" in str(exc)
 
-    with TemporaryDirectory() as tmp:
-        repository = ObservationRepository(database_path=Path(tmp) / "test.db")
-        agent = HealthAgent(repository)
-        try:
-            asyncio.run(agent.collect("not-a-real-source"))
-            assert False, "expected ValueError"
-        except ValueError as exc:
-            assert "Unknown source" in str(exc)

@@ -132,8 +132,35 @@ export const OFFICIAL_SOURCES = [
     url: 'https://www.openstreetmap.org/',
     desc_fr: 'Réseau routier open source, voies de communication et cartographie des infrastructures du Tchad.',
     desc_en: 'Open source road transport network, airports, river ports, and geographical mapping for Chad.'
+  },
+  {
+    id: 'world-bank-health',
+    name: 'World Bank Health (WDI)',
+    org_fr: 'Groupe de la Banque Mondiale — Indicateurs de Développement Mondial',
+    org_en: 'World Bank Group — World Development Indicators',
+    sector_fr: 'Santé & Développement Humain',
+    sector_en: 'Health & Human Development',
+    sectorId: 'health',
+    license: 'CC BY 4.0 Open Data',
+    url: 'https://data.worldbank.org/indicator?tab=all',
+    desc_fr: 'Espérance de vie, mortalité maternelle et infantile, dépenses de santé et accès aux services de base au Tchad.',
+    desc_en: 'Life expectancy, maternal & child mortality, health expenditure, and access to water and sanitation for Chad.'
+  },
+  {
+    id: 'world-bank-energy',
+    name: 'World Bank Energy (SE4ALL)',
+    org_fr: 'Groupe de la Banque Mondiale — Sustainable Energy for All',
+    org_en: 'World Bank Group — Sustainable Energy for All (SE4ALL)',
+    sector_fr: 'Énergie & Électricité',
+    sector_en: 'Energy & Electricity Access',
+    sectorId: 'energy',
+    license: 'CC BY 4.0 Open Data',
+    url: 'https://data.worldbank.org/topic/energy-and-mining',
+    desc_fr: 'Accès à l\'électricité (national, rural, urbain), énergies renouvelables et combustibles propres au Tchad.',
+    desc_en: 'Access to electricity (national, rural, urban), renewable energy share, and clean cooking fuels for Chad.'
   }
 ];
+
 
 export function getSourceByQuery(sourceStr = '') {
   const q = String(sourceStr).toLowerCase();

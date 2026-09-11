@@ -111,10 +111,10 @@ const TRANSLATIONS = {
 
     // ── Sources ──
     sources: {
-      title:        'RÉPERTOIRE DES 10 SOURCES OFFICIELLES',
+      title:        'RÉPERTOIRE DES 12 SOURCES OFFICIELLES',
       subtitle:     'TRANSPARENCE, CONDITIONS D\'UTILISATION ET ACCÈS DIRECT AUX PORTAILS OFFICIELS',
       search:       'RECHERCHER UNE SOURCE, UN ORGANISME OU UNE LICENCE…',
-      badge_count:  '10 SOURCES OFFICIELLES VÉRIFIÉES',
+      badge_count:  '12 SOURCES OFFICIELLES VÉRIFIÉES',
       open_portal:  'ACCÉDER AU PORTAIL OFFICIEL',
       org_label:    'Organisme émetteur',
       license_label: 'Licence d\'utilisation',
@@ -341,10 +341,10 @@ const TRANSLATIONS = {
 
     // ── Sources ──
     sources: {
-      title:        'OFFICIAL 10 DATA SOURCES DIRECTORY',
+      title:        'OFFICIAL 12 DATA SOURCES DIRECTORY',
       subtitle:     'TRANSPARENCY, TERMS OF USE AND DIRECT ACCESS TO OFFICIAL PORTALS',
       search:       'SEARCH SOURCE, ORGANIZATION OR LICENSE…',
-      badge_count:  '10 VERIFIED OFFICIAL SOURCES',
+      badge_count:  '12 VERIFIED OFFICIAL SOURCES',
       open_portal:  'OPEN OFFICIAL PORTAL',
       org_label:    'Issuing Organization',
       license_label: 'Usage License',

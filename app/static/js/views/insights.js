@@ -52,24 +52,90 @@ function formatStudyDate(raw) {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+/** Formats raw report markdown text into structured executive HTML. */
+function formatReportMarkdown(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+  let listType = null;
+
+  const closeList = () => {
+    if (inList) {
+      html += listType === 'ol' ? '</ol>' : '</ul>';
+      inList = false;
+      listType = null;
+    }
+  };
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      closeList();
+      return;
+    }
+
+    if (trimmed.startsWith('### ')) {
+      closeList();
+      const content = escapeHtml(trimmed.slice(4)).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html += `<h4 class="report-heading">${content}</h4>`;
+    } else if (trimmed.startsWith('## ')) {
+      closeList();
+      const content = escapeHtml(trimmed.slice(3)).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html += `<h3 class="report-heading-lg">${content}</h3>`;
+    } else if (trimmed.startsWith('# ')) {
+      closeList();
+      const content = escapeHtml(trimmed.slice(2)).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html += `<h2 class="report-heading-xl">${content}</h2>`;
+    } else if (/^\d+\.\s+/.test(trimmed)) {
+      if (!inList || listType !== 'ol') {
+        closeList();
+        html += '<ol class="report-list">';
+        inList = true;
+        listType = 'ol';
+      }
+      const rawText = trimmed.replace(/^\d+\.\s+/, '');
+      const content = escapeHtml(rawText).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html += `<li>${content}</li>`;
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (!inList || listType !== 'ul') {
+        closeList();
+        html += '<ul class="report-list">';
+        inList = true;
+        listType = 'ul';
+      }
+      const rawText = trimmed.replace(/^[-*]\s+/, '');
+      const content = escapeHtml(rawText).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html += `<li>${content}</li>`;
+    } else {
+      closeList();
+      const content = escapeHtml(trimmed).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      html += `<p class="report-paragraph">${content}</p>`;
+    }
+  });
+
+  closeList();
+  return html;
+}
+
 /** Renders the full report block — shared by "just generated" and "opened from
  * the library" code paths. All fields are escaped: they come from the LLM and/or
  * harvested external data, never trusted as HTML. */
 function renderReportBlock(result) {
-  const reportText = escapeHtml(result.report || '');
+  const formattedReport = formatReportMarkdown(result.report || '');
   const modelName = escapeHtml(result.model || 'N/A');
   const sectorLabel = escapeHtml((result.sector || t('insights.sectors.all')).toUpperCase());
   const obsCount = escapeHtml(result.observations_used ?? 'N/A');
   const dateLabel = escapeHtml(formatStudyDate(result.created_at));
   return `
-    <div class="card card--accent-border mb-4" style="padding:20px;">
+    <div class="card card--accent-border mb-4" style="padding:24px;">
       <div class="flex justify-between items-center mb-3">
         <span class="badge badge--valid">${t('insights.result_badge')}</span>
-        <span class="mono-xs text-green">${t('insights.result_model')}: ${modelName}</span>
+        <span class="mono-xs text-muted" style="font-weight:600;">Moteur d'analyse: ${modelName}</span>
       </div>
-      <h4 class="mono-lg mb-2">${t('insights.result_title')} (${sectorLabel})</h4>
-      <p class="mono-xs text-muted mb-4">${t('insights.result_obs')}: ${obsCount} · ${dateLabel}</p>
-      <div class="mono-sm" style="background:var(--surface);padding:16px;border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;max-height:400px;overflow-y:auto;line-height:1.6;color:var(--text);">${reportText}</div>
+      <h4 class="mono-lg mb-1" style="font-weight:700;font-family:var(--font-sans);">${t('insights.result_title')} — ${sectorLabel}</h4>
+      <p class="mono-xs text-muted mb-4">${t('insights.result_obs')}: ${obsCount} observations · ${dateLabel}</p>
+      <div class="report-content">${formattedReport}</div>
     </div>
   `;
 }

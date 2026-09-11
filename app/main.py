@@ -49,10 +49,25 @@ app.add_middleware(
 )
 
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+
+class NoCacheJSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/static/js/") or path.startswith("/static/css/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
 repository = ObservationRepository()
 STATIC_DIR = Path(__file__).parent / "static"
 DASHBOARD = STATIC_DIR / "index.html"
+
+app.add_middleware(NoCacheJSMiddleware)
 
 
 @app.get("/", include_in_schema=False)

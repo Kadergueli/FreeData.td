@@ -1,3 +1,4 @@
+
 import { getLang, t } from '../i18n.js';
 
 export const TermsView = {
@@ -8,7 +9,10 @@ export const TermsView = {
       : 'Source : [Organisme Primaire, ex: INSEED / Banque Mondiale] via FreeData.td (https://freedata.td), Licence CC BY 4.0.';
 
     return `
+      <!-- Professional Document Container -->
       <div style="max-width: 860px; margin: 0 auto; padding: 12px 0 40px 0;">
+        
+        <!-- Header -->
         <div style="border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 30px;">
           <div class="mono-xs text-muted mb-2 uppercase" style="letter-spacing: 0.05em;">
             ${t('terms.badge')} &bull; ${t('terms.last_updated')}
@@ -21,7 +25,10 @@ export const TermsView = {
           </p>
         </div>
 
+        <!-- Document Body / Legal Sections -->
         <div class="flex flex-col gap-6" style="color: var(--text);">
+          
+          <!-- Section 1 -->
           <section>
             <h2 class="mono-md fw-700 mb-2" style="color: var(--cyan); border-bottom: 1px dashed var(--border); padding-bottom: 6px;">
               ${t('terms.sec1_title')}
@@ -31,6 +38,7 @@ export const TermsView = {
             </p>
           </section>
 
+          <!-- Section 2 -->
           <section>
             <h2 class="mono-md fw-700 mb-2" style="color: var(--cyan); border-bottom: 1px dashed var(--border); padding-bottom: 6px;">
               ${t('terms.sec2_title')}
@@ -52,6 +60,7 @@ export const TermsView = {
             </div>
           </section>
 
+          <!-- Section 3 -->
           <section>
             <h2 class="mono-md fw-700 mb-2" style="color: var(--cyan); border-bottom: 1px dashed var(--border); padding-bottom: 6px;">
               ${t('terms.sec3_title')}
@@ -61,6 +70,7 @@ export const TermsView = {
             </p>
           </section>
 
+          <!-- Section 4 -->
           <section>
             <h2 class="mono-md fw-700 mb-2" style="color: var(--cyan); border-bottom: 1px dashed var(--border); padding-bottom: 6px;">
               ${t('terms.sec4_title')}
@@ -70,6 +80,7 @@ export const TermsView = {
             </p>
           </section>
 
+          <!-- Section 5 -->
           <section>
             <h2 class="mono-md fw-700 mb-2" style="color: var(--cyan); border-bottom: 1px dashed var(--border); padding-bottom: 6px;">
               ${t('terms.sec5_title')}
@@ -79,6 +90,7 @@ export const TermsView = {
             </p>
           </section>
 
+          <!-- Section 6 -->
           <section>
             <h2 class="mono-md fw-700 mb-2" style="color: var(--cyan); border-bottom: 1px dashed var(--border); padding-bottom: 6px;">
               ${t('terms.sec6_title')}
@@ -87,6 +99,7 @@ export const TermsView = {
               ${t('terms.sec6_text')}
             </p>
           </section>
+
         </div>
       </div>
     `;
@@ -95,6 +108,7 @@ export const TermsView = {
   init() {
     if (window.lucide) window.lucide.createIcons();
 
+    // Copy citation button handler
     const copyBtn = document.getElementById('copy-citation-btn');
     const copyTxt = document.getElementById('copy-citation-txt');
     const citationCode = document.getElementById('citation-code');

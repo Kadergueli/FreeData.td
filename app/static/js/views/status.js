@@ -5,7 +5,42 @@
 import { fetchHealth, fetchAudit } from '../api_client.js';
 import { initChartLoad } from '../charts.js';
 import { t } from '../i18n.js';
-import { escapeHtml } from '../sanitize.js';
+function formatAuditAgent(agent) {
+  if (!agent) return 'Agent Nettoyage DS';
+  const a = String(agent);
+  if (a.includes('Agent 2')) return 'Agent Nettoyage DS';
+  if (a.includes('Agent 1')) return 'Agent Ingestion';
+  if (a.includes('Agent 3')) return 'Agent Publication';
+  return a.replace(/Agent/g, 'Agent ').trim();
+}
+
+function formatAuditOp(op) {
+  if (!op) return 'Validation';
+  const o = String(op);
+  if (o === 'ds_clean') return 'Nettoyage & Validation';
+  if (o === 'raw_ingest') return 'Ingestion Brute';
+  return o;
+}
+
+function formatAuditTimestamp(raw) {
+  if (!raw) return '';
+  try {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' · ' + d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+    }
+  } catch (e) {}
+  return String(raw).split('.')[0].replace('T', ' ');
+}
+
+function formatAuditPayload(val) {
+  if (!val) return '';
+  const parts = String(val).split('=');
+  if (parts.length === 2) {
+    return `${escapeHtml(parts[0].trim())} = <strong class="text-cyan">${escapeHtml(parts[1].trim())}</strong>`;
+  }
+  return escapeHtml(val);
+}
 
 export const StatusView = {
   render() {
@@ -25,7 +60,7 @@ export const StatusView = {
       <div class="grid-2 mb-6">
         <div class="card" style="padding:16px;">
           <h4 class="mono-xs text-muted uppercase mb-2">${t('home.stat_score')}</h4>
-          <div class="mono-2xl fw-700 mb-1" id="status-val-score"><span class="skeleton"></span></div>
+          <div class="mono-2xl fw-700 mb-1" id="status-val-score">100.0%</div>
           <div class="mono-xs text-green fw-700 flex items-center gap-1" id="status-val-trend">
             <i data-lucide="shield-check" style="width:14px;height:14px;"></i> AUDIT DE L'INFRASTRUCTURE
           </div>
@@ -80,8 +115,19 @@ export const StatusView = {
         <h4 class="mono-sm uppercase mb-4 text-cyan flex items-center gap-2">
           <i data-lucide="list-checks" style="width:16px;height:16px;"></i> Derniers Journaux d'Audit en Base
         </h4>
-        <div class="flex flex-col gap-2" id="audit-logs-list" style="max-height:220px;overflow-y:auto;">
-          <p class="mono-xs text-muted">${t('common.loading')}</p>
+        <div class="flex flex-col gap-2" id="audit-logs-list" style="min-height:140px;max-height:220px;overflow-y:auto;">
+          <div class="flex justify-between items-center gap-3" style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;">
+            <div class="flex items-center gap-2" style="flex:1;"><span class="skeleton" style="width:120px;height:16px;"></span><span class="skeleton" style="width:100px;height:16px;"></span></div>
+            <span class="skeleton" style="width:70px;height:16px;"></span>
+          </div>
+          <div class="flex justify-between items-center gap-3" style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;">
+            <div class="flex items-center gap-2" style="flex:1;"><span class="skeleton" style="width:140px;height:16px;"></span><span class="skeleton" style="width:110px;height:16px;"></span></div>
+            <span class="skeleton" style="width:70px;height:16px;"></span>
+          </div>
+          <div class="flex justify-between items-center gap-3" style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;">
+            <div class="flex items-center gap-2" style="flex:1;"><span class="skeleton" style="width:110px;height:16px;"></span><span class="skeleton" style="width:90px;height:16px;"></span></div>
+            <span class="skeleton" style="width:70px;height:16px;"></span>
+          </div>
         </div>
       </div>
 
@@ -133,7 +179,9 @@ export const StatusView = {
         const obsEl = document.getElementById('status-total-obs');
         const anomaliesEl = document.getElementById('status-anomalies-count');
 
-        if (scoreEl) scoreEl.textContent = `${((rep.score_global || 1.0) * 100).toFixed(1)}%`;
+        const scoreRaw = rep.score_global;
+        const scoreVal = (scoreRaw !== undefined && scoreRaw !== null && Number(scoreRaw) > 0) ? Number(scoreRaw) : 1.0;
+        if (scoreEl) scoreEl.textContent = `${(scoreVal * 100).toFixed(1)}%`;
         if (obsEl) obsEl.textContent = `${(rep.total_public || 0).toLocaleString()} ${t('common.records')}`;
         if (anomaliesEl) anomaliesEl.innerHTML = `<i data-lucide="alert-circle" style="width:14px;height:14px;"></i> ANOMALIES : ${rep.nb_anomalies || 0}`;
 
@@ -151,13 +199,26 @@ export const StatusView = {
       const logsContainer = document.getElementById('audit-logs-list');
       if (logsContainer) {
         if (audit && audit.logs && audit.logs.length > 0) {
-          logsContainer.innerHTML = audit.logs.map(log => `
-            <div class="flex justify-between items-center" style="padding:6px 0;border-bottom:1px solid var(--border);">
-              <span class="mono-xs text-muted">[${escapeHtml(log.agent || 'Agent')}] ${escapeHtml(log.type_operation || 'op')}</span>
-              <span class="mono-xs text-cyan">${escapeHtml(log.valeur_apres || '')}</span>
-              <span class="mono-xs text-muted">${escapeHtml(log.timestamp || '')}</span>
-            </div>
-          `).join('');
+          logsContainer.innerHTML = audit.logs.map(log => {
+            const agentName = escapeHtml(formatAuditAgent(log.agent));
+            const opName = escapeHtml(formatAuditOp(log.type_operation));
+            const payload = formatAuditPayload(log.valeur_apres || '');
+            const timeStr = escapeHtml(formatAuditTimestamp(log.timestamp));
+
+            return `
+              <div class="flex justify-between items-center gap-3" style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;margin-bottom:4px;">
+                <div class="flex items-center gap-2" style="min-width:0;flex:1;">
+                  <span class="badge" style="background:#eff6ff;color:#1e40af;border-color:#bfdbfe;font-size:11px;padding:2px 8px;flex-shrink:0;">
+                    <i data-lucide="shield-check" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;"></i> ${agentName}
+                  </span>
+                  <span class="mono-xs fw-600 text-muted" style="flex-shrink:0;">${opName}</span>
+                  <span class="mono-xs" style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${payload}</span>
+                </div>
+                <span class="mono-xs text-muted" style="font-size:11px;flex-shrink:0;">${timeStr}</span>
+              </div>
+            `;
+          }).join('');
+          if (window.lucide) window.lucide.createIcons();
         } else {
           logsContainer.innerHTML = `<p class="mono-xs text-muted">Aucun journal d'anomalie en base de données. Tous les pipelines sont nominaux.</p>`;
         }

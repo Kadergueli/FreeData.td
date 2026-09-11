@@ -52,7 +52,7 @@ export const SourcesView = {
           <p class="hero-subtitle mono-sm text-muted mt-1">${t('sources.subtitle')}</p>
         </div>
         <span class="badge badge--valid mono-sm flex items-center gap-1" style="padding:6px 12px;">
-          <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> 10/10 OK
+          <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> 12/12 OK
         </span>
       </div>
 

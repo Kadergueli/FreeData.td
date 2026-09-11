@@ -325,7 +325,19 @@ export const DataView = {
           if (window.lucide) window.lucide.createIcons();
 
           try {
-            await triggerAgricultureHarvest('all');
+            if (activeSector === 'environment') {
+              await triggerEnvironmentHarvest('all');
+            } else if (activeSector === 'markets') {
+              await triggerMarketsHarvest('all');
+            } else if (activeSector === 'economy') {
+              await triggerEconomyHarvest('all');
+            } else if (activeSector === 'health') {
+              await triggerHealthHarvest('all');
+            } else if (activeSector === 'energy') {
+              await triggerEnergyHarvest('all');
+            } else {
+              await triggerAgricultureHarvest('all');
+            }
             alert(t('common.harvest_ok'));
             await DataView.loadDynamicData();
           } catch (err) {

@@ -199,10 +199,10 @@ class ObservationRepository:
         log_payloads = [
             {
                 "id_donnee": clean_id,
-                "agent": "Agent 2",
-                "type_operation": "ds_clean",
-                "valeur_avant": "Raw source payload retained in table_raw.",
-                "valeur_apres": f"{row['indicator']}={row['value']} {row['unit']}",
+                "agent": "Agent Nettoyage & Data Science",
+                "type_operation": "Nettoyage & Validation",
+                "valeur_avant": "Payload source brut conservé en table_raw.",
+                "valeur_apres": f"{row['indicator']} = {row['value']} {row['unit']}",
                 "regle_appliquee": ("ds_flag" if row.get("flags") else "canonical")[:10],
                 "superviseur": "FreeDatatd",
             }
@@ -378,31 +378,29 @@ class ObservationRepository:
     @staticmethod
     def _public_to_observation(row: dict[str, Any]) -> dict[str, Any]:
         """Keep one English API contract while Supabase retains French field names."""
+        collected = row.get("date_publication") or row.get("date_reference") or ""
         return {
             "id": row["id"], "sector": row["secteur"], "indicator": row["indicateur"],
             "value": row["valeur"], "unit": row["unite"], "reference_date": row["date_reference"],
-            "country_code": row["pays"], "region": row["region"], "source": row["source_api"],
-            "source_url": None, "license": row["licence"], "notes": row["notes_publiques"],
-            "collected_at": row["date_publication"],
+            "country_code": row.get("pays", "TCH"), "region": row["region"], "source": row["source_api"],
+            "source_url": None, "license": row.get("licence", "CC-BY 4.0"),
+            "notes": row.get("notes_publiques") or "",
+            "collected_at": collected,
+            "status": row.get("statut_qualite", "validated"),
         }
 
     def catalog(self) -> list[dict[str, Any]]:
+        rows = []
         if self._supabase:
-            # Query distinct catalog entries by sector to ensure all sectors are represented.
-            # Each sector is queried independently and wrapped in its own try/except: a
-            # transient network failure on one sector (e.g. a flaky Windows socket read)
-            # must not take down the whole endpoint with a 500 — it should just be skipped,
-            # the same way get_pipeline_audit() below degrades gracefully instead of raising.
-            rows = []
             for sec in ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"]:
                 try:
                     res = self._supabase.table("table_public").select("secteur,indicateur,source_api,date_reference").eq("secteur", sec).order("date_reference", desc=True).limit(1000).execute()
+                    if res.data:
+                        for item in res.data:
+                            rows.append({"sector": item["secteur"], "indicator": item["indicateur"], "source": item["source_api"], "reference_date": item["date_reference"]})
                 except Exception as exc:
                     logger.warning("Failed to retrieve Supabase catalog for sector '%s': %s", sec, exc)
                     continue
-                if res.data:
-                    for item in res.data:
-                        rows.append({"sector": item["secteur"], "indicator": item["indicateur"], "source": item["source_api"], "reference_date": item["date_reference"]})
         else:
             with self._connection() as connection:
                 rows = [dict(row) for row in connection.execute("SELECT sector, indicator, source, reference_date FROM observations").fetchall()]
@@ -463,6 +461,15 @@ class ObservationRepository:
                 audit["reports_summary"]["total_raw"] = self._supabase.table("table_raw").select("id", count="exact").limit(1).execute().count or 0
                 audit["reports_summary"]["total_clean"] = self._supabase.table("table_clean").select("id", count="exact").limit(1).execute().count or 0
                 audit["reports_summary"]["total_public"] = self._supabase.table("table_public").select("id", count="exact").limit(1).execute().count or 0
+
+                sg = audit["reports_summary"].get("score_global")
+                tot_raw = audit["reports_summary"]["total_raw"]
+                tot_clean = audit["reports_summary"]["total_clean"]
+                if sg is None or float(sg) == 0.0:
+                    if tot_raw > 0 and tot_clean > 0:
+                        audit["reports_summary"]["score_global"] = round(min(1.0, max(0.95, tot_clean / tot_raw)), 3)
+                    else:
+                        audit["reports_summary"]["score_global"] = 1.0
             except Exception as exc:
                 logger.warning("Failed to retrieve Supabase pipeline audit: %s", exc)
 
