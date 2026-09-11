@@ -230,6 +230,10 @@ export const StatusView = {
         const el = document.getElementById(id);
         if (el && el.querySelector('.skeleton')) el.textContent = 'N/A';
       });
+      const logsContainer = document.getElementById('audit-logs-list');
+      if (logsContainer && logsContainer.querySelector('.skeleton')) {
+        logsContainer.innerHTML = `<p class="mono-xs text-muted">Aucun journal d'audit en base de données.</p>`;
+      }
     }
   }
 };

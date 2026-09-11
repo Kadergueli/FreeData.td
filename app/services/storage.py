@@ -145,22 +145,32 @@ class ObservationRepository:
             pass
 
     def save_study(self, sector: str | None, model: str, observations_used: int, report: str) -> int | None:
-        """Keep generated LLM studies separate from the verified source data."""
+        """Keep generated LLM studies separate from the verified source data.
+
+        Uses _with_retry for Supabase to handle transient network failures.
+        If both Supabase and SQLite fail, raises RuntimeError so the API
+        can return a proper 503 instead of silently losing the report.
+        """
         if self._supabase:
             try:
-                response = self._supabase.table("table_etudes").insert(
-                    {
-                        "secteur": sector,
-                        "modele": model,
-                        "nb_observations": observations_used,
-                        "rapport": report,
-                        "statut": "generated",
-                    }
-                ).execute()
+                response = _with_retry(
+                    lambda: self._supabase.table("table_etudes").insert(
+                        {
+                            "secteur": sector,
+                            "modele": model,
+                            "nb_observations": observations_used,
+                            "rapport": report,
+                            "statut": "generated",
+                        }
+                    ).execute(),
+                    label="save_study (table_etudes)",
+                )
                 if response.data:
                     return response.data[0]["id"]
             except Exception as exc:
-                logger.debug("Supabase table_etudes insert skipped: %s", exc)
+                logger.warning(
+                    "Supabase table_etudes insert failed after retries (%s) — falling back to SQLite", exc
+                )
 
         try:
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -173,7 +183,7 @@ class ObservationRepository:
             return cursor.lastrowid
         except Exception as exc:
             logger.warning("SQLite save_study failed: %s", exc)
-            return None
+            raise RuntimeError(f"Impossible de persister le rapport d'analyse : {exc}") from exc
 
     def _upsert_many(self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None) -> int:
         rows = [self._serialise(observation) for observation in observations]

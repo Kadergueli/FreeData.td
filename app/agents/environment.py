@@ -22,14 +22,31 @@ class EnvironmentAgent(BaseAgent):
     sector = "environment"
     name = "EnvironmentAgent"
 
-    # ─── Chad regions with GPS coordinates ────────────────────────────────────
+    # ─── All 23 official provinces of Chad with GPS coordinates ────────────────
     CHAD_REGIONS = {
-        "N'Djamena (Chari-Baguirmi)": {"lat": 12.11, "lon": 15.05},
+        "N'Djamena (N'Djamena)": {"lat": 12.11, "lon": 15.05},
         "Moundou (Logone Occidental)": {"lat": 8.56, "lon": 16.08},
+        "Doba (Logone Oriental)": {"lat": 8.65, "lon": 16.85},
         "Sarh (Moyen-Chari)": {"lat": 9.15, "lon": 18.39},
+        "Koumra (Mandoul)": {"lat": 8.93, "lon": 17.55},
+        "Laï (Tandjilé)": {"lat": 9.40, "lon": 16.30},
+        "Bongor (Mayo-Kebbi Est)": {"lat": 10.28, "lon": 15.37},
+        "Pala (Mayo-Kebbi Ouest)": {"lat": 9.36, "lon": 14.90},
         "Abéché (Ouaddaï)": {"lat": 13.82, "lon": 20.83},
+        "Biltine (Wadi Fira)": {"lat": 14.53, "lon": 20.92},
+        "Goz Beïda (Sila)": {"lat": 12.22, "lon": 21.41},
+        "Am Timan (Salamat)": {"lat": 11.04, "lon": 20.28},
+        "Mongo (Guéra)": {"lat": 12.18, "lon": 18.69},
+        "Ati (Batha)": {"lat": 13.21, "lon": 18.34},
         "Mao (Kanem)": {"lat": 14.12, "lon": 15.31},
+        "Moussoro (Barh El Gazel)": {"lat": 13.64, "lon": 16.49},
+        "Bol (Lac)": {"lat": 13.46, "lon": 14.71},
+        "Massakory (Hadjer-Lamis)": {"lat": 13.00, "lon": 15.73},
+        "Massenya (Chari-Baguirmi)": {"lat": 11.40, "lon": 16.17},
         "Faya-Largeau (Borkou)": {"lat": 17.93, "lon": 19.11},
+        "Am-Djarass (Ennedi Est)": {"lat": 16.07, "lon": 22.84},
+        "Fada (Ennedi Ouest)": {"lat": 17.18, "lon": 21.58},
+        "Bardaï (Tibesti)": {"lat": 21.35, "lon": 17.00},
     }
 
     # Chad bounding box for NASA FIRMS (lat/lon)

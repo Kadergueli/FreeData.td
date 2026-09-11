@@ -31,9 +31,17 @@ class AgricultureAgent(BaseAgent):
     # Key agricultural regions in Chad with GPS coordinates for agrometeorology
     CHAD_AGRICULTURAL_REGIONS = {
         "Moundou (Logone Occidental)": {"lat": 8.56, "lon": 16.08, "zone": "Sud - Zone vivrière et cotonnier"},
+        "Doba (Logone Oriental)": {"lat": 8.65, "lon": 16.85, "zone": "Sud - Zone agricole pétrolière & céréalière"},
         "Sarh (Moyen-Chari)": {"lat": 9.15, "lon": 18.39, "zone": "Sud-Est - Zone agricole humide"},
-        "N'Djamena (Chari-Baguirmi)": {"lat": 12.11, "lon": 15.05, "zone": "Centre - Zone maraîchère et fluviatile"},
+        "Koumra (Mandoul)": {"lat": 8.93, "lon": 17.55, "zone": "Sud - Plaines rizicoles & manioc"},
+        "Bongor (Mayo-Kebbi Est)": {"lat": 10.28, "lon": 15.37, "zone": "Sud-Ouest - Vallée rizicole du Logone"},
+        "Pala (Mayo-Kebbi Ouest)": {"lat": 9.36, "lon": 14.90, "zone": "Sud-Ouest - Culture du coton & sorgho"},
+        "N'Djamena (N'Djamena)": {"lat": 12.11, "lon": 15.05, "zone": "Centre - Zone maraîchère et fluviatile"},
+        "Mongo (Guéra)": {"lat": 12.18, "lon": 18.69, "zone": "Centre - Zone céréalière (Péni & Sorgho)"},
+        "Ati (Batha)": {"lat": 13.21, "lon": 18.34, "zone": "Centre - Zone agropastorale sahelienne"},
         "Abéché (Ouaddaï)": {"lat": 13.82, "lon": 20.83, "zone": "Est - Zone agropastorale sahelienne"},
+        "Mao (Kanem)": {"lat": 14.12, "lon": 15.31, "zone": "Ouest - Oasis & agropastoralisme"},
+        "Bol (Lac)": {"lat": 13.46, "lon": 14.71, "zone": "Lac Tchad - Polders & cultures de contre-saison"},
     }
 
     async def collect(self, source: str) -> list[dict[str, Any]]:

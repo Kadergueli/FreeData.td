@@ -72,7 +72,7 @@ export function initChartDensity(dynamicDensity = null) {
   let validatedCounts = [35, 45, 85, 90, 75, 0];
 
   if (dynamicDensity && typeof dynamicDensity === 'object') {
-    labels = Object.keys(dynamicDensity).slice(0, 7);
+    labels = Object.keys(dynamicDensity);
     rawCounts = labels.map(k => (typeof dynamicDensity[k] === 'object' ? dynamicDensity[k].total : dynamicDensity[k]) || 0);
     validatedCounts = labels.map(k => (typeof dynamicDensity[k] === 'object' ? dynamicDensity[k].validated : dynamicDensity[k]) || 0);
   }

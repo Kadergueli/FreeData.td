@@ -60,3 +60,4 @@ class StudyResult(BaseModel):
     model: str
     observations_used: int
     report: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

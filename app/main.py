@@ -17,6 +17,12 @@ from app.agents import (
     MarketsAgent,
     TransportAgent,
 )
+from app.agents.ds_insights import (
+    compute_cross_sector_correlations,
+    compute_freshness_scores,
+    compute_seasonal_anomalies,
+    compute_spatial_coverage,
+)
 from app.config import settings
 from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
 from app.services.export import observations_to_csv, observations_to_json
@@ -53,6 +59,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
 class NoCacheJSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
@@ -67,6 +83,7 @@ repository = ObservationRepository()
 STATIC_DIR = Path(__file__).parent / "static"
 DASHBOARD = STATIC_DIR / "index.html"
 
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(NoCacheJSMiddleware)
 
 
@@ -248,11 +265,39 @@ async def trigger_harvest() -> dict:
 @app.post("/api/v1/studies", dependencies=[Depends(require_analysis_rate_limit)])
 async def generate_study(sector: str | None = None) -> dict:
     try:
-        return (await AnalysisAgent(repository).study(sector)).model_dump()
+        result = await AnalysisAgent(repository).study(sector)
+        return result.model_dump(mode="json")
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/insights/cross-sector")
+def cross_sector_insights() -> dict:
+    """Analyse DS multi-secteurs : fraîcheur, corrélations, couverture spatiale, anomalies saisonnières.
+
+    Toutes les métriques sont calculées en Python pur sur les observations déjà publiées.
+    Aucun appel LLM — sûr à appeler à chaque chargement de page.
+    """
+    try:
+        observations = repository.list_observations(sector=None, limit=2000)
+        return {
+            "freshness": compute_freshness_scores(observations),
+            "correlations": compute_cross_sector_correlations(observations),
+            "spatial_coverage": compute_spatial_coverage(observations),
+            "seasonal_anomalies": compute_seasonal_anomalies(observations),
+            "total_observations_analyzed": len(observations),
+        }
+    except Exception as exc:
+        logger.warning("cross_sector_insights failed: %s", exc)
+        return {
+            "freshness": {},
+            "correlations": [],
+            "spatial_coverage": {},
+            "seasonal_anomalies": [],
+            "total_observations_analyzed": 0,
+        }
 
 
 # Mount static assets (css, js, images) to serve static directory

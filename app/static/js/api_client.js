@@ -159,7 +159,7 @@ export async function triggerEducationHarvest(source = 'all') {
   }
 }
 
-export async function fetchStudies(sector = null, limit = 10) {
+export async function fetchStudies(sector = null, limit = 100) {
   try {
     let url = `${BASE_URL}/studies?limit=${limit}`;
     if (sector && sector.toLowerCase() !== 'all') {
@@ -199,4 +199,15 @@ export function getExportUrl(format = 'csv', sector = null) {
     url += `?sector=${encodeURIComponent(sector.toLowerCase())}`;
   }
   return url;
+}
+
+export async function fetchCrossSector() {
+  try {
+    const res = await fetch(`${BASE_URL}/insights/cross-sector`);
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('fetchCrossSector error:', err);
+    return null;
+  }
 }
