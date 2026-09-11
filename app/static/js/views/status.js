@@ -5,6 +5,7 @@
 import { fetchHealth, fetchAudit } from '../api_client.js';
 import { initChartLoad } from '../charts.js';
 import { t } from '../i18n.js';
+import { escapeHtml } from '../sanitize.js';
 function formatAuditAgent(agent) {
   if (!agent) return 'Agent Nettoyage DS';
   const a = String(agent);
@@ -29,7 +30,7 @@ function formatAuditTimestamp(raw) {
     if (!isNaN(d.getTime())) {
       return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' · ' + d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
     }
-  } catch (e) {}
+  } catch (e) { }
   return String(raw).split('.')[0].replace('T', ' ');
 }
 
