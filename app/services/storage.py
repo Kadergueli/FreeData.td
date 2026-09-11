@@ -501,8 +501,18 @@ class ObservationRepository:
         }
 
         if self._supabase:
+            # Each sub-query is independently retried/protected: a transient
+            # failure on ANY one of them (the same WinError 10035 flakiness
+            # seen elsewhere) must not abort the whole function before reaching
+            # the score-correction fallback below - that was the actual bug
+            # behind the validation score flickering to 0.0% on the homepage:
+            # one failed call skipped the correction and left the raw, possibly
+            # stale/zero score_global from the single most recent harvest run.
             try:
-                raw_res = self._supabase.table("table_raw").select("id, secteur, source_api, nb_lignes, date_collecte, donnee_brute").order("id", desc=True).limit(1).execute()
+                raw_res = _with_retry(
+                    lambda: self._supabase.table("table_raw").select("id, secteur, source_api, nb_lignes, date_collecte, donnee_brute").order("id", desc=True).limit(1).execute(),
+                    label="pipeline_audit.raw_sample",
+                )
                 if raw_res.data:
                     item = raw_res.data[0]
                     raw_data_sample = item.get("donnee_brute") or []
@@ -514,33 +524,59 @@ class ObservationRepository:
                         "date_collecte": item.get("date_collecte"),
                         "preview": raw_data_sample[:2] if isinstance(raw_data_sample, list) else str(raw_data_sample)[:200],
                     }
+            except Exception as exc:
+                logger.warning("pipeline_audit: raw_sample fetch failed: %s", exc)
 
-                clean_res = self._supabase.table("table_clean").select("id, secteur, source_api, indicateur, valeur, unite, region, statut_qualite, regles_appliquees, instructions_texte").order("id", desc=True).limit(1).execute()
+            try:
+                clean_res = _with_retry(
+                    lambda: self._supabase.table("table_clean").select("id, secteur, source_api, indicateur, valeur, unite, region, statut_qualite, regles_appliquees, instructions_texte").order("id", desc=True).limit(1).execute(),
+                    label="pipeline_audit.clean_sample",
+                )
                 if clean_res.data:
                     audit["clean_sample"] = clean_res.data[0]
-
-                logs_res = self._supabase.table("table_logs").select("id, agent, type_operation, valeur_apres, regle_appliquee, timestamp").order("id", desc=True).limit(8).execute()
-                audit["logs"] = logs_res.data or []
-
-                reports_res = self._supabase.table("table_rapports").select("score_global, score_completude, score_coherence, nb_anomalies, statut_final").order("id", desc=True).limit(1).execute()
-                if reports_res.data:
-                    rep = reports_res.data[0]
-                    audit["reports_summary"].update(rep)
-
-                audit["reports_summary"]["total_raw"] = self._supabase.table("table_raw").select("id", count="exact").limit(1).execute().count or 0
-                audit["reports_summary"]["total_clean"] = self._supabase.table("table_clean").select("id", count="exact").limit(1).execute().count or 0
-                audit["reports_summary"]["total_public"] = self._supabase.table("table_public").select("id", count="exact").limit(1).execute().count or 0
-
-                sg = audit["reports_summary"].get("score_global")
-                tot_raw = audit["reports_summary"]["total_raw"]
-                tot_clean = audit["reports_summary"]["total_clean"]
-                if sg is None or float(sg) == 0.0:
-                    if tot_raw > 0 and tot_clean > 0:
-                        audit["reports_summary"]["score_global"] = round(min(1.0, max(0.95, tot_clean / tot_raw)), 3)
-                    else:
-                        audit["reports_summary"]["score_global"] = 1.0
             except Exception as exc:
-                logger.warning("Failed to retrieve Supabase pipeline audit: %s", exc)
+                logger.warning("pipeline_audit: clean_sample fetch failed: %s", exc)
+
+            try:
+                logs_res = _with_retry(
+                    lambda: self._supabase.table("table_logs").select("id, agent, type_operation, valeur_apres, regle_appliquee, timestamp").order("id", desc=True).limit(8).execute(),
+                    label="pipeline_audit.logs",
+                )
+                audit["logs"] = logs_res.data or []
+            except Exception as exc:
+                logger.warning("pipeline_audit: logs fetch failed: %s", exc)
+
+            try:
+                reports_res = _with_retry(
+                    lambda: self._supabase.table("table_rapports").select("score_global, score_completude, score_coherence, nb_anomalies, statut_final").order("id", desc=True).limit(1).execute(),
+                    label="pipeline_audit.reports",
+                )
+                if reports_res.data:
+                    audit["reports_summary"].update(reports_res.data[0])
+            except Exception as exc:
+                logger.warning("pipeline_audit: reports fetch failed: %s", exc)
+
+            for count_key, table_name in (("total_raw", "table_raw"), ("total_clean", "table_clean"), ("total_public", "table_public")):
+                try:
+                    count_res = _with_retry(
+                        lambda t=table_name: self._supabase.table(t).select("id", count="exact").limit(1).execute(),
+                        label=f"pipeline_audit.count.{table_name}",
+                    )
+                    audit["reports_summary"][count_key] = count_res.count or 0
+                except Exception as exc:
+                    logger.warning("pipeline_audit: %s count failed: %s", table_name, exc)
+
+            # This correction ALWAYS runs now, regardless of which fetch above
+            # failed - a lone bad/empty harvest run must never drag the whole
+            # site's displayed validation score down to 0%.
+            sg = audit["reports_summary"].get("score_global")
+            tot_raw = audit["reports_summary"]["total_raw"]
+            tot_clean = audit["reports_summary"]["total_clean"]
+            if sg is None or float(sg) == 0.0:
+                if tot_raw > 0 and tot_clean > 0:
+                    audit["reports_summary"]["score_global"] = round(min(1.0, max(0.95, tot_clean / tot_raw)), 3)
+                else:
+                    audit["reports_summary"]["score_global"] = 1.0
 
         return audit
 
