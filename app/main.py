@@ -123,11 +123,21 @@ def pipeline_audit() -> dict:
 
 
 
+def _safe_filename_part(sector: str | None) -> str:
+    """Sanitize a query param before it goes into an HTTP header value
+    (Content-Disposition filename) - strips anything that isn't alphanumeric,
+    hyphen or underscore, preventing header-value/quote injection."""
+    if not sector:
+        return "all"
+    cleaned = "".join(c for c in sector if c.isalnum() or c in "-_")
+    return cleaned or "all"
+
+
 @app.get("/api/v1/export/csv", response_class=PlainTextResponse)
 def export_csv(sector: str | None = None) -> PlainTextResponse:
     rows = repository.list_observations(sector=sector, limit=5000)
     content = observations_to_csv(rows)
-    filename = f"freedatatd-{sector or 'all'}-export.csv"
+    filename = f"freedatatd-{_safe_filename_part(sector)}-export.csv"
     return PlainTextResponse(
         content,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
@@ -138,7 +148,7 @@ def export_csv(sector: str | None = None) -> PlainTextResponse:
 @app.get("/api/v1/export/json")
 def export_json(sector: str | None = None) -> JSONResponse:
     rows = repository.list_observations(sector=sector, limit=5000)
-    filename = f"freedatatd-{sector or 'all'}-export.json"
+    filename = f"freedatatd-{_safe_filename_part(sector)}-export.json"
     return JSONResponse(
         content=rows,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
@@ -149,6 +159,8 @@ def export_json(sector: str | None = None) -> JSONResponse:
 async def collect_agriculture(source: str = "all") -> dict:
     try:
         return (await AgricultureAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -157,6 +169,8 @@ async def collect_agriculture(source: str = "all") -> dict:
 async def collect_environment(source: str = "all") -> dict:
     try:
         return (await EnvironmentAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -165,6 +179,8 @@ async def collect_environment(source: str = "all") -> dict:
 async def collect_markets(source: str = "all") -> dict:
     try:
         return (await MarketsAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -173,6 +189,8 @@ async def collect_markets(source: str = "all") -> dict:
 async def collect_economy(source: str = "all") -> dict:
     try:
         return (await EconomyAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -181,6 +199,8 @@ async def collect_economy(source: str = "all") -> dict:
 async def collect_health(source: str = "all") -> dict:
     try:
         return (await HealthAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -189,6 +209,8 @@ async def collect_health(source: str = "all") -> dict:
 async def collect_energy(source: str = "all") -> dict:
     try:
         return (await EnergyAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -197,6 +219,8 @@ async def collect_energy(source: str = "all") -> dict:
 async def collect_transport(source: str = "all") -> dict:
     try:
         return (await TransportAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -205,6 +229,8 @@ async def collect_transport(source: str = "all") -> dict:
 async def collect_education(source: str = "all") -> dict:
     try:
         return (await EducationAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

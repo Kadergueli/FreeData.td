@@ -37,7 +37,10 @@ def main() -> None:
     if args.command == "export":
         rows = repository.list_observations(sector=args.sector, limit=5000)
         ext = args.format
-        target = Path("data/exports") / f"{args.sector or 'all'}-observations.{ext}"
+        # Sanitize before using in a filesystem path: --sector is free text, and
+        # without this a value like '../../.env' could write outside data/exports/.
+        safe_sector = "".join(c for c in (args.sector or "all") if c.isalnum() or c in "-_") or "all"
+        target = Path("data/exports") / f"{safe_sector}-observations.{ext}"
         target.parent.mkdir(parents=True, exist_ok=True)
         if ext == "json":
             content = observations_to_json(rows)

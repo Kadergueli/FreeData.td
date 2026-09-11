@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import time
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,27 @@ from app.config import settings
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
+
+
+def _with_retry(operation: Any, *, attempts: int = 3, base_delay: float = 0.3, label: str = "Supabase operation"):
+    """Run a zero-arg callable, retrying on transient network errors (the same
+    class of Windows socket flakiness — httpx.ReadError / WinError 10035 —
+    observed in production). Re-raises the last exception if every attempt
+    fails, so callers can decide whether that failure is safe to swallow
+    (best-effort archival) or must be surfaced (the actual data write)."""
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return operation()
+        except Exception as exc:  # noqa: BLE001 - intentionally broad: network/transport errors vary by platform
+            last_exc = exc
+            if attempt < attempts:
+                logger.warning("%s failed (attempt %d/%d): %s — retrying", label, attempt, attempts, exc)
+                time.sleep(base_delay * attempt)
+            else:
+                logger.warning("%s failed after %d attempts: %s", label, attempts, exc)
+    assert last_exc is not None
+    raise last_exc
 
 
 class ObservationRepository:
@@ -63,41 +85,64 @@ class ObservationRepository:
         return payload
 
     def store_raw_batch(self, sector: str, source: str, records: list[dict[str, Any]]) -> int | None:
-        """Persist a source response in table_raw when Supabase is active."""
+        """Persist a source response in table_raw when Supabase is active.
+
+        Best-effort: this is an audit/archival copy, not the actual clean data.
+        Retries transient network errors; if it still fails, logs a warning and
+        returns None rather than crashing the whole collection run over an
+        archival step (downstream code already treats raw_record_id as optional).
+        """
         if not self._supabase:
             return None
-        response = self._supabase.table("table_raw").insert(
-            {
-                "secteur": sector,
-                "source_api": source,
-                "donnee_brute": records,
-                "statut": "brut",
-                "nb_lignes": len(records),
-                "notes_agent": "Recorded automatically by FreeDatatd before normalization.",
-            }
-        ).execute()
-        return response.data[0]["id"]
+        try:
+            response = _with_retry(
+                lambda: self._supabase.table("table_raw").insert(
+                    {
+                        "secteur": sector,
+                        "source_api": source,
+                        "donnee_brute": records,
+                        "statut": "brut",
+                        "nb_lignes": len(records),
+                        "notes_agent": "Recorded automatically by FreeDatatd before normalization.",
+                    }
+                ).execute(),
+                label=f"store_raw_batch({sector})",
+            )
+            return response.data[0]["id"]
+        except Exception:
+            return None
 
     def upsert_many(self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None) -> int:
         return self._upsert_many(observations, raw_record_id)
 
     def store_validation_report(self, raw_record_id: int | None, received: int, accepted: int, rejected: int, errors: list[str]) -> None:
-        """Complete the raw-to-published audit trail in table_rapports."""
+        """Complete the raw-to-published audit trail in table_rapports.
+
+        Best-effort: an audit-trail write, not the actual data. Retries
+        transient failures; logs and gives up rather than crashing the
+        collection run over an audit-log entry.
+        """
         if not self._supabase or raw_record_id is None:
             return
         completeness = accepted / received if received else 0.0
-        self._supabase.table("table_rapports").insert(
-            {
-                "id_raw": raw_record_id,
-                "score_global": completeness,
-                "score_completude": completeness,
-                "score_coherence": 1.0 if not errors else max(0.0, 1.0 - rejected / max(received, 1)),
-                "nb_anomalies": len(errors),
-                "nb_doublons": 0,
-                "statut_final": "published" if accepted else "rejected",
-                "commentaire": "; ".join(errors) if errors else "Validation passed automatically.",
-            }
-        ).execute()
+        try:
+            _with_retry(
+                lambda: self._supabase.table("table_rapports").insert(
+                    {
+                        "id_raw": raw_record_id,
+                        "score_global": completeness,
+                        "score_completude": completeness,
+                        "score_coherence": 1.0 if not errors else max(0.0, 1.0 - rejected / max(received, 1)),
+                        "nb_anomalies": len(errors),
+                        "nb_doublons": 0,
+                        "statut_final": "published" if accepted else "rejected",
+                        "commentaire": "; ".join(errors) if errors else "Validation passed automatically.",
+                    }
+                ).execute(),
+                label="store_validation_report",
+            )
+        except Exception:
+            pass
 
     def save_study(self, sector: str | None, model: str, observations_used: int, report: str) -> int | None:
         """Keep generated LLM studies separate from the verified source data."""
@@ -188,9 +233,12 @@ class ObservationRepository:
             })
 
         try:
-            clean_response = self._supabase.table("table_clean").insert(clean_payloads).execute()
+            clean_response = _with_retry(
+                lambda: self._supabase.table("table_clean").insert(clean_payloads).execute(),
+                label="table_clean batch insert",
+            )
         except Exception as exc:
-            logger.error("Supabase table_clean batch insert failed: %s", exc)
+            logger.error("Supabase table_clean batch insert failed after retries: %s", exc)
             raise RuntimeError(f"Storage error writing to table_clean: {exc}") from exc
 
         clean_ids = [item["id"] for item in clean_response.data]
@@ -209,7 +257,11 @@ class ObservationRepository:
             for clean_id, row in zip(clean_ids, rows)
         ]
         try:
-            self._supabase.table("table_logs").insert(log_payloads).execute()
+            _with_retry(
+                lambda: self._supabase.table("table_logs").insert(log_payloads).execute(),
+                attempts=2,
+                label="table_logs batch insert",
+            )
         except Exception as exc:
             logger.warning("Supabase table_logs batch insert failed (non-fatal): %s", exc)
 
@@ -237,10 +289,13 @@ class ObservationRepository:
                 "notes_publiques": notes,
             })
         try:
-            self._supabase.table("table_public").upsert(
-                public_payloads,
-                on_conflict="secteur,source_api,date_reference,indicateur,region",
-            ).execute()
+            _with_retry(
+                lambda: self._supabase.table("table_public").upsert(
+                    public_payloads,
+                    on_conflict="secteur,source_api,date_reference,indicateur,region",
+                ).execute(),
+                label="table_public upsert",
+            )
         except Exception:
             # Delete any existing matching rows before inserting to avoid duplicates if upsert fails
             for p in public_payloads:
@@ -249,9 +304,12 @@ class ObservationRepository:
                 except Exception:
                     pass
             try:
-                self._supabase.table("table_public").insert(public_payloads).execute()
+                _with_retry(
+                    lambda: self._supabase.table("table_public").insert(public_payloads).execute(),
+                    label="table_public fallback insert",
+                )
             except Exception as exc:
-                logger.error("Supabase table_public batch insert failed: %s", exc)
+                logger.error("Supabase table_public batch insert failed after retries: %s", exc)
                 raise RuntimeError(f"Storage error writing to table_public: {exc}") from exc
 
         return len(rows)
@@ -307,6 +365,17 @@ class ObservationRepository:
                 deduped.append(o)
                 if limit and len(deduped) >= limit:
                     break
+
+        # Sanitize any non-finite values (NaN/Infinity) before returning. These
+        # should never be written going forward (ObservationCreate.value now
+        # rejects them at write time), but this protects against any row that
+        # slipped in before that validator existed - json.dumps() emits the
+        # literal tokens NaN/Infinity for such values, which is invalid JSON
+        # and would silently break strict parsers used by API consumers.
+        for o in deduped:
+            val = o.get("value")
+            if isinstance(val, float) and (val != val or val in (float("inf"), float("-inf"))):
+                o["value"] = None
 
         return deduped
 

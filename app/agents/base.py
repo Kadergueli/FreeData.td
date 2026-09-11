@@ -247,5 +247,8 @@ class BaseAgent(ABC):
             raw_directory.mkdir(parents=True, exist_ok=True)
             filename = f"{self.sector}_{source}_{collected_at.strftime('%Y%m%dT%H%M%S')}.json"
             (raw_directory / filename).write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as exc:
+            # Best-effort local archival copy - never block a collection run over
+            # this, but a silent `pass` here means a real problem (disk full,
+            # permissions) leaves zero trace anywhere. Log it instead.
+            logger.warning("Failed to archive raw records for %s/%s: %s", self.sector, source, exc)
