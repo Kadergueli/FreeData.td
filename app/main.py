@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -5,6 +6,8 @@ from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+
+logger = logging.getLogger(__name__)
 
 from app.agents import (
     AgricultureAgent,

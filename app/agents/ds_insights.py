@@ -310,8 +310,11 @@ def compute_seasonal_anomalies(observations: list[dict[str, Any]]) -> list[dict[
         if len(pairs) < 4:
             continue
         values = [p[0] for p in pairs]
-        # Seuil assoupli pendant la soudure pour agriculture et marchés
-        threshold = 2.5 if (sector in ("agriculture", "markets") and month in _SOUDURE_MONTHS) else 3.0
+        # Seuil assoupli (relevé) pendant la soudure pour agriculture et marchés :
+        # la variance des prix y est naturellement plus élevée à cette période, donc
+        # il faut un écart PLUS extrême pour déclencher une alerte (moins sensible),
+        # sans quoi la variation saisonnière normale serait signalée comme anomalie.
+        threshold = 3.5 if (sector in ("agriculture", "markets") and month in _SOUDURE_MONTHS) else 3.0
         flags = _zscore_anomaly(values, threshold=threshold)
 
         for is_anomaly, (val, obs) in zip(flags, pairs):
