@@ -107,13 +107,20 @@ def health() -> dict:
 
 
 @app.get("/api/v1/observations")
-def observations(sector: str | None = None, limit: int = Query(default=200, ge=1, le=5000)) -> list[dict]:
-    return repository.list_observations(sector=sector, limit=limit)
+def observations(sector: str | None = None, region: str | None = None, limit: int = Query(default=200, ge=1, le=5000)) -> list[dict]:
+    return repository.list_observations(sector=sector, region=region, limit=limit)
 
 
 @app.get("/api/v1/catalog")
 def catalog() -> list[dict]:
     return repository.catalog()
+
+
+@app.get("/api/v1/regions")
+def regions() -> list[str]:
+    """Distinct regions actually present in the data — lets the frontend
+    build a real, always-current region filter instead of a hardcoded list."""
+    return repository.list_regions()
 
 
 @app.get("/api/v1/studies")
@@ -154,10 +161,13 @@ def _safe_filename_part(sector: str | None) -> str:
 
 
 @app.get("/api/v1/export/csv", response_class=PlainTextResponse)
-def export_csv(sector: str | None = None) -> PlainTextResponse:
-    rows = repository.list_observations(sector=sector, limit=5000)
+def export_csv(sector: str | None = None, region: str | None = None) -> PlainTextResponse:
+    rows = repository.list_observations(sector=sector, region=region, limit=5000)
     content = observations_to_csv(rows)
-    filename = f"freedatatd-{_safe_filename_part(sector)}-export.csv"
+    name_parts = _safe_filename_part(sector)
+    if region:
+        name_parts += f"-{_safe_filename_part(region)}"
+    filename = f"freedatatd-{name_parts}-export.csv"
     return PlainTextResponse(
         content,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
@@ -166,9 +176,12 @@ def export_csv(sector: str | None = None) -> PlainTextResponse:
 
 
 @app.get("/api/v1/export/json")
-def export_json(sector: str | None = None) -> JSONResponse:
-    rows = repository.list_observations(sector=sector, limit=5000)
-    filename = f"freedatatd-{_safe_filename_part(sector)}-export.json"
+def export_json(sector: str | None = None, region: str | None = None) -> JSONResponse:
+    rows = repository.list_observations(sector=sector, region=region, limit=5000)
+    name_parts = _safe_filename_part(sector)
+    if region:
+        name_parts += f"-{_safe_filename_part(region)}"
+    filename = f"freedatatd-{name_parts}-export.json"
     return JSONResponse(
         content=rows,
         headers={"Content-Disposition": f"attachment; filename={filename}"},

@@ -324,7 +324,7 @@ class ObservationRepository:
 
         return len(rows)
 
-    def list_observations(self, sector: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    def list_observations(self, sector: str | None = None, region: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         raw_obs: list[dict[str, Any]] = []
         fetch_limit = limit * 4 if limit else 1000
         if self._supabase:
@@ -332,16 +332,28 @@ class ObservationRepository:
                 query = self._supabase.table("table_public").select("*")
                 if sector:
                     query = query.eq("secteur", sector)
+                if region:
+                    # Substring match (case-insensitive): lets a filter like "Logone"
+                    # match "Moundou (Logone Occidental)" without requiring the exact
+                    # "City (Province)" string. Uses `ilike` (Postgres ILIKE) which
+                    # Supabase parameterizes safely - not string-built SQL.
+                    query = query.ilike("region", f"%{region}%")
                 query = query.order("date_reference", desc=True).limit(fetch_limit)
                 raw_obs = [self._public_to_observation(row) for row in query.execute().data]
             except Exception as exc:
                 logger.warning("Supabase list_observations query failed (%s), falling back to SQLite", exc)
                 try:
                     query = "SELECT * FROM observations"
+                    conditions: list[str] = []
                     parameters: list[Any] = []
                     if sector:
-                        query += " WHERE sector = ?"
+                        conditions.append("sector = ?")
                         parameters.append(sector)
+                    if region:
+                        conditions.append("region LIKE ? COLLATE NOCASE")
+                        parameters.append(f"%{region}%")
+                    if conditions:
+                        query += " WHERE " + " AND ".join(conditions)
                     query += " ORDER BY reference_date DESC LIMIT ?"
                     parameters.append(fetch_limit)
                     with self._connection() as connection:
@@ -350,10 +362,16 @@ class ObservationRepository:
                     raw_obs = []
         else:
             query = "SELECT * FROM observations"
+            conditions: list[str] = []
             parameters: list[Any] = []
             if sector:
-                query += " WHERE sector = ?"
+                conditions.append("sector = ?")
                 parameters.append(sector)
+            if region:
+                conditions.append("region LIKE ? COLLATE NOCASE")
+                parameters.append(f"%{region}%")
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
             query += " ORDER BY reference_date DESC LIMIT ?"
             parameters.append(fetch_limit)
             with self._connection() as connection:
@@ -467,6 +485,39 @@ class ObservationRepository:
             "collected_at": collected,
             "status": row.get("statut_qualite", "validated"),
         }
+
+    def list_regions(self) -> list[str]:
+        """Distinct region values actually present in the data, most-observed
+        first. Lets the frontend build a real, always-current region filter
+        instead of a hand-maintained list that inevitably drifts out of sync
+        with whatever the collection agents actually populate."""
+        counts: dict[str, int] = {}
+        if self._supabase:
+            try:
+                res = _with_retry(
+                    lambda: self._supabase.table("table_public").select("region").not_.is_("region", "null").limit(5000).execute(),
+                    label="list_regions",
+                )
+                for row in res.data or []:
+                    reg = (row.get("region") or "").strip()
+                    if reg and reg.lower() not in ("national", "", "tcd", "tchad"):
+                        counts[reg] = counts.get(reg, 0) + 1
+            except Exception as exc:
+                logger.warning("list_regions Supabase query failed: %s", exc)
+        else:
+            try:
+                with self._connection() as connection:
+                    rows = connection.execute(
+                        "SELECT region, COUNT(*) as n FROM observations WHERE region IS NOT NULL GROUP BY region"
+                    ).fetchall()
+                    for row in rows:
+                        reg = str(row["region"] or "").strip()
+                        if reg and reg.lower() not in ("national", "", "tcd", "tchad"):
+                            counts[reg] = row["n"]
+            except Exception as exc:
+                logger.warning("list_regions SQLite query failed: %s", exc)
+
+        return sorted(counts, key=lambda r: counts[r], reverse=True)
 
     def catalog(self) -> list[dict[str, Any]]:
         rows = []

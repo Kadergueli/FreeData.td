@@ -1,11 +1,13 @@
 
 
-import { getExportUrl } from '../api_client.js';
+import { getExportUrl, fetchRegions } from '../api_client.js';
 import { t } from '../i18n.js';
+import { escapeHtml } from '../sanitize.js';
 
 let selectedFormat = 'JSON';
 let selectedSector = 'all';
 let selectedRegion = 'all';
+let availableRegions = []; // populated dynamically from real data — see loadRegions()
 
 const FORMATS = ['JSON', 'CSV', 'XML', 'PARQUET'];
 
@@ -14,16 +16,11 @@ const SECTORS = [
   { id: 'agriculture', label: 'Agriculture' },
   { id: 'environment', label: 'Environnement' },
   { id: 'markets', label: 'Marchés & Prix' },
+  { id: 'health', label: 'Santé' },
+  { id: 'energy', label: 'Énergie' },
   { id: 'economy', label: 'Économie' },
   { id: 'transport', label: 'Transport' },
   { id: 'education', label: 'Éducation' },
-];
-
-const REGIONS = [
-  { id: 'all', label: 'National / Tout le Tchad' },
-  { id: 'logone', label: 'Logone' },
-  { id: 'ndjamena', label: "N'Djamena" },
-  { id: 'kanem', label: 'Kanem / Lac' },
 ];
 
 function getSectorLabel(secId) {
@@ -32,8 +29,45 @@ function getSectorLabel(secId) {
 }
 
 function getRegionLabel(regId) {
-  const found = REGIONS.find(r => r.id === regId);
-  return found ? found.label : 'Logone / Tchad';
+  if (regId === 'all') return 'National / Tout le Tchad';
+  return regId; // real region strings (e.g. "Moundou (Logone Occidental)") ARE the label
+
+function wireRegionButtons() {
+  document.querySelectorAll('.export-reg-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      selectedRegion = e.currentTarget.getAttribute('data-reg');
+      document.querySelectorAll('.export-reg-btn').forEach(b => {
+        b.classList.remove('btn-cyan');
+        b.classList.add('btn-ghost');
+      });
+      e.currentTarget.classList.remove('btn-ghost');
+      e.currentTarget.classList.add('btn-cyan');
+
+      const badgeRegion = document.getElementById('badge-region');
+      if (badgeRegion) {
+        badgeRegion.innerHTML = `Région : <strong>${escapeHtml(getRegionLabel(selectedRegion))}</strong>`;
+      }
+    });
+  });
+}
+
+async function loadRegions() {
+  availableRegions = await fetchRegions();
+  const container = document.getElementById('export-region-buttons');
+  const loadingTag = document.getElementById('regions-loading');
+  if (loadingTag) loadingTag.remove();
+  if (!container || availableRegions.length === 0) return;
+
+  // The "National" button is already in the DOM (server-rendered) — just
+  // append the real, dynamically-discovered regions after it.
+  availableRegions.forEach(region => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost export-reg-btn mono-sm';
+    btn.setAttribute('data-reg', region);
+    btn.textContent = region;
+    container.appendChild(btn);
+  });
+  wireRegionButtons();
 }
 
 export const ApiView = {
@@ -108,10 +142,9 @@ export const ApiView = {
         </div>
 
         <h4 class="mono-xs text-muted uppercase mb-2">Région à exporter</h4>
-        <div class="flex gap-2 flex-wrap mb-6" id="export-region-buttons">
-          ${REGIONS.map(r =>
-      `<button class="btn ${r.id === selectedRegion ? 'btn-cyan' : 'btn-ghost'} export-reg-btn mono-sm" data-reg="${r.id}">${r.label}</button>`
-    ).join('')}
+        <div class="flex gap-2 flex-wrap mb-6 scrollable-tabs" id="export-region-buttons">
+          <button class="btn btn-cyan export-reg-btn mono-sm" data-reg="all">National / Tout le Tchad</button>
+          <span class="mono-xs text-muted flex items-center" id="regions-loading">${t('common.loading')}</span>
         </div>
 
         <h4 class="mono-xs text-muted uppercase mb-2">${t('api.filters_label')}</h4>
@@ -217,23 +250,10 @@ export const ApiView = {
       });
     });
 
-    // 3. Dynamic Region Selection
-    document.querySelectorAll('.export-reg-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        selectedRegion = e.currentTarget.getAttribute('data-reg');
-        document.querySelectorAll('.export-reg-btn').forEach(b => {
-          b.classList.remove('btn-cyan');
-          b.classList.add('btn-ghost');
-        });
-        e.currentTarget.classList.remove('btn-ghost');
-        e.currentTarget.classList.add('btn-cyan');
-
-        const badgeRegion = document.getElementById('badge-region');
-        if (badgeRegion) {
-          badgeRegion.innerHTML = `Région : <strong>${getRegionLabel(selectedRegion)}</strong>`;
-        }
-      });
-    });
+    // 3. Dynamic Region Selection — "National" is wired immediately (already
+    // in the DOM), real regions are appended (and wired) once loaded.
+    wireRegionButtons();
+    loadRegions();
 
     // 4. Generate Archive Button -> Trigger file download with active filters
     const archiveBtn = document.getElementById('btn-generate-archive');
@@ -241,12 +261,12 @@ export const ApiView = {
       archiveBtn.addEventListener('click', () => {
         const fmt = selectedFormat.toLowerCase();
         if (fmt === 'json' || fmt === 'csv') {
-          const downloadUrl = getExportUrl(fmt, selectedSector);
+          const downloadUrl = getExportUrl(fmt, selectedSector, selectedRegion);
           window.open(downloadUrl, '_blank');
         } else {
           const msg = t('api.premium_msg').replace('$FMT', selectedFormat);
           alert(msg);
-          window.open(getExportUrl('json', selectedSector), '_blank');
+          window.open(getExportUrl('json', selectedSector, selectedRegion), '_blank');
         }
       });
     }

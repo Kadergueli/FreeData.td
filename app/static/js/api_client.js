@@ -193,12 +193,28 @@ export async function generateStudy(sector = null) {
   }
 }
 
-export function getExportUrl(format = 'csv', sector = null) {
+export function getExportUrl(format = 'csv', sector = null, region = null) {
   let url = `${BASE_URL}/export/${format.toLowerCase()}`;
+  const params = [];
   if (sector && sector.toLowerCase() !== 'all') {
-    url += `?sector=${encodeURIComponent(sector.toLowerCase())}`;
+    params.push(`sector=${encodeURIComponent(sector.toLowerCase())}`);
   }
+  if (region && region.toLowerCase() !== 'all') {
+    params.push(`region=${encodeURIComponent(region)}`);
+  }
+  if (params.length) url += `?${params.join('&')}`;
   return url;
+}
+
+export async function fetchRegions() {
+  try {
+    const res = await fetch(`${BASE_URL}/regions`);
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('fetchRegions error:', err);
+    return [];
+  }
 }
 
 export async function fetchCrossSector() {
