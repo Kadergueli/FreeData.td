@@ -71,6 +71,15 @@ def test_parquet_endpoint_returns_503_not_500_when_pyarrow_unavailable(monkeypat
     assert "temporarily unavailable" in response.json()["detail"]
 
 
+from app.services.export import _PYARROW_AVAILABLE
+
+_requires_pyarrow = pytest.mark.skipif(
+    not _PYARROW_AVAILABLE,
+    reason="pyarrow is not installed in this environment (e.g. no cp314 wheel available yet)",
+)
+
+
+@_requires_pyarrow
 def test_parquet_export_actually_works_when_pyarrow_is_available():
     from app.services.export import observations_to_parquet
 
@@ -84,6 +93,7 @@ def test_parquet_export_actually_works_when_pyarrow_is_available():
     assert len(content) > 0
 
 
+@_requires_pyarrow
 def test_parquet_handles_a_malformed_value_without_crashing():
     """value should always be a clean float by the time it reaches export
     (ObservationCreate validates this at write time), but the export layer
