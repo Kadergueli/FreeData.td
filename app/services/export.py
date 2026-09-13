@@ -25,6 +25,30 @@ except ImportError:
 _FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@")
 
 
+# Fixed, deterministic field order shared by CSV/XML/Parquet exports. Using
+# one shared list (not each row's own keys) keeps every export format
+# structurally consistent regardless of what any individual row happens to
+# contain - e.g. previously, XML iterated `row.items()` directly and Parquet
+# inferred its schema from `rows[0].keys()`, so the exact set/order of
+# columns could silently vary between calls depending on what keys happened
+# to be present in the data at that moment.
+_EXPORT_FIELDS = [
+    "id",
+    "sector",
+    "indicator",
+    "value",
+    "unit",
+    "reference_date",
+    "country_code",
+    "region",
+    "source",
+    "source_url",
+    "license",
+    "notes",
+    "collected_at",
+]
+
+
 def _escape_csv_cell(value: Any) -> Any:
     if isinstance(value, str) and value.startswith(_FORMULA_TRIGGER_CHARS):
         return "'" + value
@@ -33,22 +57,7 @@ def _escape_csv_cell(value: Any) -> Any:
 
 def observations_to_csv(rows: list[dict]) -> str:
     output = StringIO()
-    fieldnames = [
-        "id",
-        "sector",
-        "indicator",
-        "value",
-        "unit",
-        "reference_date",
-        "country_code",
-        "region",
-        "source",
-        "source_url",
-        "license",
-        "notes",
-        "collected_at",
-    ]
-    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer = csv.DictWriter(output, fieldnames=_EXPORT_FIELDS, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
         writer.writerow({key: _escape_csv_cell(val) for key, val in row.items()})
@@ -63,9 +72,10 @@ def observations_to_xml(rows: list[dict]) -> str:
     root = ET.Element("freedatatd_export", count=str(len(rows)))
     for row in rows:
         obs_elem = ET.SubElement(root, "observation")
-        for k, v in row.items():
-            child = ET.SubElement(obs_elem, str(k))
-            child.text = str(v) if v is not None else ""
+        for key in _EXPORT_FIELDS:
+            child = ET.SubElement(obs_elem, key)
+            value = row.get(key)
+            child.text = str(value) if value is not None else ""
     return ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
 
@@ -75,36 +85,43 @@ def observations_to_parquet(rows: list[dict]) -> bytes:
             "Parquet export is temporarily unavailable on this server "
             "(the pyarrow dependency is not installed). Try CSV or JSON instead."
         )
-    if not rows:
-        schema = pa.schema([
-            ("id", pa.string()),
-            ("sector", pa.string()),
-            ("indicator", pa.string()),
-            ("value", pa.float64()),
-            ("unit", pa.string()),
-            ("reference_date", pa.string()),
-            ("country_code", pa.string()),
-            ("region", pa.string()),
-            ("source", pa.string()),
-            ("source_url", pa.string()),
-            ("license", pa.string()),
-            ("notes", pa.string()),
-            ("collected_at", pa.string()),
-        ])
-        table = pa.Table.from_batches([], schema=schema)
-    else:
-        keys = list(rows[0].keys())
-        data_dict = {}
-        for k in keys:
-            col_vals = []
-            for r in rows:
-                v = r.get(k)
-                if v is not None and not isinstance(v, (int, float, str, bool)):
-                    col_vals.append(str(v))
-                else:
-                    col_vals.append(v)
-            data_dict[k] = col_vals
-        table = pa.Table.from_pydict(data_dict)
+
+    schema = pa.schema([
+        ("id", pa.string()),
+        ("sector", pa.string()),
+        ("indicator", pa.string()),
+        ("value", pa.float64()),
+        ("unit", pa.string()),
+        ("reference_date", pa.string()),
+        ("country_code", pa.string()),
+        ("region", pa.string()),
+        ("source", pa.string()),
+        ("source_url", pa.string()),
+        ("license", pa.string()),
+        ("notes", pa.string()),
+        ("collected_at", pa.string()),
+    ])
+
+    data_dict: dict[str, list[Any]] = {}
+    for key in _EXPORT_FIELDS:
+        values = []
+        for row in rows:
+            value = row.get(key)
+            if value is None:
+                values.append(None)
+            elif key == "value":
+                try:
+                    values.append(float(value))
+                except (TypeError, ValueError):
+                    # Should not happen (ObservationCreate.value is validated
+                    # as a finite float at write time), but never let one
+                    # malformed legacy row crash the whole export.
+                    values.append(None)
+            else:
+                values.append(str(value))
+        data_dict[key] = values
+
+    table = pa.Table.from_pydict(data_dict, schema=schema)
 
     out = BytesIO()
     pq.write_table(table, out)
