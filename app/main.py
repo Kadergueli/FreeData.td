@@ -206,7 +206,10 @@ def export_xml(sector: str | None = None, region: str | None = None) -> PlainTex
 @app.get("/api/v1/export/parquet")
 def export_parquet(sector: str | None = None, region: str | None = None) -> Response:
     rows = repository.list_observations(sector=sector, region=region, limit=5000)
-    content = observations_to_parquet(rows)
+    try:
+        content = observations_to_parquet(rows)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     name_parts = _safe_filename_part(sector)
     if region:
         name_parts += f"-{_safe_filename_part(region)}"

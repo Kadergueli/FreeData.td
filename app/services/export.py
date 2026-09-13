@@ -4,8 +4,18 @@ import xml.etree.ElementTree as ET
 from io import BytesIO, StringIO
 from typing import Any
 
-import pyarrow as pa
-import pyarrow.parquet as pq
+try:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    _PYARROW_AVAILABLE = True
+except ImportError:
+    # A missing/failed pyarrow install must never take down the WHOLE app -
+    # it's a real dependency (in requirements.txt) for one export format, not
+    # a core requirement. Every other route keeps working; only
+    # observations_to_parquet() below reports a clear, contained error.
+    pa = None
+    pq = None
+    _PYARROW_AVAILABLE = False
 
 # Characters that spreadsheet apps (Excel, Google Sheets, LibreOffice) treat as
 # the start of a formula when a cell value begins with them. A malicious or
@@ -60,6 +70,11 @@ def observations_to_xml(rows: list[dict]) -> str:
 
 
 def observations_to_parquet(rows: list[dict]) -> bytes:
+    if not _PYARROW_AVAILABLE:
+        raise RuntimeError(
+            "Parquet export is temporarily unavailable on this server "
+            "(the pyarrow dependency is not installed). Try CSV or JSON instead."
+        )
     if not rows:
         schema = pa.schema([
             ("id", pa.string()),
