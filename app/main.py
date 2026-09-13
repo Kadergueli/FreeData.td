@@ -5,7 +5,7 @@ from typing import AsyncGenerator
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ from app.agents.ds_insights import (
 )
 from app.config import settings
 from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
-from app.services.export import observations_to_csv, observations_to_json
+from app.services.export import observations_to_csv, observations_to_json, observations_to_parquet, observations_to_xml
 from app.services.scheduler import scheduler_service
 from app.services.storage import ObservationRepository
 
@@ -170,7 +170,7 @@ def export_csv(sector: str | None = None, region: str | None = None) -> PlainTex
     filename = f"freedatatd-{name_parts}-export.csv"
     return PlainTextResponse(
         content,
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         media_type="text/csv",
     )
 
@@ -184,7 +184,37 @@ def export_json(sector: str | None = None, region: str | None = None) -> JSONRes
     filename = f"freedatatd-{name_parts}-export.json"
     return JSONResponse(
         content=rows,
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/v1/export/xml", response_class=PlainTextResponse)
+def export_xml(sector: str | None = None, region: str | None = None) -> PlainTextResponse:
+    rows = repository.list_observations(sector=sector, region=region, limit=5000)
+    content = observations_to_xml(rows)
+    name_parts = _safe_filename_part(sector)
+    if region:
+        name_parts += f"-{_safe_filename_part(region)}"
+    filename = f"freedatatd-{name_parts}-export.xml"
+    return PlainTextResponse(
+        content,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        media_type="application/xml",
+    )
+
+
+@app.get("/api/v1/export/parquet")
+def export_parquet(sector: str | None = None, region: str | None = None) -> Response:
+    rows = repository.list_observations(sector=sector, region=region, limit=5000)
+    content = observations_to_parquet(rows)
+    name_parts = _safe_filename_part(sector)
+    if region:
+        name_parts += f"-{_safe_filename_part(region)}"
+    filename = f"freedatatd-{name_parts}-export.parquet"
+    return Response(
+        content=content,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        media_type="application/octet-stream",
     )
 
 

@@ -26,6 +26,8 @@ class AutonomousHarvesterScheduler:
     def __init__(self, interval_hours: int = 6) -> None:
         self.interval_seconds = interval_hours * 3600
         self._task: asyncio.Task | None = None
+        self._job_lock = asyncio.Lock()
+        self._job_running = False
         self.is_running = False
         self.last_run: datetime | None = None
         self.next_run: datetime | None = None
@@ -64,6 +66,35 @@ class AutonomousHarvesterScheduler:
                 break
 
     async def run_harvest_job(self) -> dict[str, Any]:
+        """Public entry-point — skips if a job is already in progress."""
+        if self._job_running:
+            logger.warning("Harvest job skipped because another job is already running.")
+            return {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "total_stored": 0,
+                "status": "skipped",
+                "reason": "another harvest job is already running",
+                "sectors": {},
+            }
+
+        async with self._job_lock:
+            if self._job_running:
+                logger.warning("Harvest job skipped because another job is already running.")
+                return {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "total_stored": 0,
+                    "status": "skipped",
+                    "reason": "another harvest job is already running",
+                    "sectors": {},
+                }
+
+            self._job_running = True
+            try:
+                return await self._run_harvest_job()
+            finally:
+                self._job_running = False
+
+    async def _run_harvest_job(self) -> dict[str, Any]:
         logger.info("Starting scheduled autonomous data harvest across active sector agents...")
         self.last_run = datetime.now(UTC)
         total_stored = 0
@@ -92,6 +123,7 @@ class AutonomousHarvesterScheduler:
         self.last_result = {
             "timestamp": self.last_run.isoformat(),
             "total_stored": total_stored,
+            "status": "completed",
             "sectors": agent_results,
         }
         logger.info("Scheduled harvest completed: %d total records stored.", total_stored)
@@ -100,6 +132,7 @@ class AutonomousHarvesterScheduler:
     def get_status(self) -> dict[str, Any]:
         return {
             "is_running": self.is_running,
+            "job_running": self._job_running,
             "interval_hours": self.interval_seconds // 3600,
             "last_run": self.last_run.isoformat() if self.last_run else None,
             "next_run": self.next_run.isoformat() if self.next_run else None,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 import json
 import math
 from pathlib import Path
@@ -16,6 +17,26 @@ from app.schemas import CollectionResult, ObservationCreate
 from app.services.storage import ObservationRepository
 
 logger = logging.getLogger(__name__)
+
+
+def _retry_after_seconds(value: str | None, default: float) -> float:
+    """Parse a Retry-After header value (seconds or HTTP-date) into a float."""
+    if not value:
+        return default
+
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+
+    try:
+        retry_date = parsedate_to_datetime(value)
+        if retry_date.tzinfo is None:
+            return default
+        delay = (retry_date - datetime.now(retry_date.tzinfo)).total_seconds()
+        return max(0.0, delay)
+    except (TypeError, ValueError, OverflowError):
+        return default
 
 FLAGS = {
     "MISSING": "Valeur manquante non interpolable",
@@ -58,7 +79,7 @@ class BaseAgent(ABC):
                 response = await client.get(url, params=params, headers=req_headers)
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
-                    wait_time = float(retry_after) if retry_after and retry_after.isdigit() else float(2 ** attempt)
+                    wait_time = _retry_after_seconds(retry_after, default=float(2 ** attempt))
                     logger.warning("HTTP 429 Rate limited on %s. Backing off for %.1fs (attempt %d/%d)", url, wait_time, attempt, max_retries)
                     await asyncio.sleep(wait_time)
                     continue
@@ -102,13 +123,13 @@ class BaseAgent(ABC):
                 response = await client.get(url, params=params, headers=req_headers)
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
-                    wait_time = float(retry_after) if retry_after and retry_after.isdigit() else float(2 ** attempt)
+                    wait_time = _retry_after_seconds(retry_after, default=float(2 ** attempt))
                     await asyncio.sleep(wait_time)
                     continue
 
                 response.raise_for_status()
                 return response.text
-            except Exception as exc:
+            except (httpx.HTTPStatusError, httpx.RequestError) as exc:
                 logger.warning("HTTP error fetching text from %s: %s", url, exc)
                 if attempt < max_retries:
                     await asyncio.sleep(1.0)
@@ -130,7 +151,7 @@ class BaseAgent(ABC):
 
         indicator_values: dict[str, list[float]] = {}
         for obs in observations:
-            if not math.isnan(obs.value):
+            if math.isfinite(obs.value):
                 indicator_values.setdefault(obs.indicator, []).append(obs.value)
 
         iqr_bounds: dict[str, tuple[float, float]] = {}
@@ -190,6 +211,7 @@ class BaseAgent(ABC):
 
     def validate(self, observation: ObservationCreate) -> list[str]:
         errors: list[str] = []
+        observation.country_code = observation.country_code.strip().upper()
         if observation.reference_date.year < 1960:
             errors.append("reference_date is outside the supported range (<1960)")
         if observation.country_code != "TCD":

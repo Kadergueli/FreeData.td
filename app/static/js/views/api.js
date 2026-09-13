@@ -7,7 +7,6 @@ import { escapeHtml } from '../sanitize.js';
 let selectedFormat = 'JSON';
 let selectedSector = 'all';
 let selectedRegion = 'all';
-let availableRegions = []; // populated dynamically from real data — see loadRegions()
 
 const FORMATS = ['JSON', 'CSV', 'XML', 'PARQUET'];
 
@@ -23,6 +22,33 @@ const SECTORS = [
   { id: 'education', label: 'Éducation' },
 ];
 
+// All 23 official administrative regions of Chad (ISO 3166-2:TD)
+const CHAD_REGIONS = [
+  'Batha',
+  'Barh El Gazel',
+  'Borkou',
+  'Chari-Baguirmi',
+  'Ennedi Est',
+  'Ennedi Ouest',
+  'Guéra',
+  'Hadjer-Lamis',
+  'Kanem',
+  'Lac',
+  'Logone Occidental',
+  'Logone Oriental',
+  'Mandoul',
+  'Mayo-Kebbi Est',
+  'Mayo-Kebbi Ouest',
+  'Moyen-Chari',
+  "N'Djamena",
+  'Ouaddaï',
+  'Salamat',
+  'Sila',
+  'Tandjilé',
+  'Tibesti',
+  'Wadi Fira',
+];
+
 function getSectorLabel(secId) {
   const found = SECTORS.find(s => s.id === secId);
   return found ? found.label : 'Tous les jeux de données publics';
@@ -30,7 +56,8 @@ function getSectorLabel(secId) {
 
 function getRegionLabel(regId) {
   if (regId === 'all') return 'National / Tout le Tchad';
-  return regId; // real region strings (e.g. "Moundou (Logone Occidental)") ARE the label
+  return regId;
+}
 
 function wireRegionButtons() {
   document.querySelectorAll('.export-reg-btn').forEach(btn => {
@@ -52,21 +79,39 @@ function wireRegionButtons() {
 }
 
 async function loadRegions() {
-  availableRegions = await fetchRegions();
-  const container = document.getElementById('export-region-buttons');
-  const loadingTag = document.getElementById('regions-loading');
-  if (loadingTag) loadingTag.remove();
-  if (!container || availableRegions.length === 0) return;
+  // Fetch DB regions and merge with the official 23 Chad regions.
+  // The official list is always shown; DB regions that don't already
+  // appear in it (e.g. city-level data) are appended at the end.
+  let dbRegions = [];
+  try {
+    dbRegions = await fetchRegions();
+  } catch (_) {
+    // Non-critical: official list still shows even if API is down.
+  }
 
-  // The "National" button is already in the DOM (server-rendered) — just
-  // append the real, dynamically-discovered regions after it.
-  availableRegions.forEach(region => {
+  const container = document.getElementById('export-region-buttons');
+  if (!container) return;
+
+  // Build a deduplicated ordered list: official 23 first, then extra DB ones.
+  const officialNorm = CHAD_REGIONS.map(r => r.toLowerCase());
+  const extra = dbRegions.filter(r => !officialNorm.includes(r.toLowerCase()));
+  const allRegions = [...CHAD_REGIONS, ...extra];
+
+  // Clear existing buttons (except "National" which we keep at position 0)
+  const nationalBtn = container.querySelector('[data-reg="all"]');
+  container.innerHTML = '';
+  if (nationalBtn) container.appendChild(nationalBtn);
+
+  allRegions.forEach(region => {
     const btn = document.createElement('button');
     btn.className = 'btn btn-ghost export-reg-btn mono-sm';
+    btn.style.padding = '4px 10px';
+    btn.style.fontSize = '12px';
     btn.setAttribute('data-reg', region);
     btn.textContent = region;
     container.appendChild(btn);
   });
+
   wireRegionButtons();
 }
 
@@ -141,10 +186,13 @@ export const ApiView = {
     ).join('')}
         </div>
 
-        <h4 class="mono-xs text-muted uppercase mb-2">Région à exporter</h4>
-        <div class="flex gap-2 flex-wrap mb-6 scrollable-tabs" id="export-region-buttons">
-          <button class="btn btn-cyan export-reg-btn mono-sm" data-reg="all">National / Tout le Tchad</button>
-          <span class="mono-xs text-muted flex items-center" id="regions-loading">${t('common.loading')}</span>
+        <h4 class="mono-xs text-muted uppercase mb-2 flex justify-between items-center">
+          <span>Région à exporter <span class="mono-xs text-muted fw-400">(23 régions officielles)</span></span>
+        </h4>
+        <div class="region-container-box mb-6" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;max-height:110px;overflow-y:auto;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03);">
+          <div class="flex gap-2 flex-wrap" id="export-region-buttons">
+            <button class="btn btn-cyan export-reg-btn mono-sm" data-reg="all" style="padding:4px 10px;font-size:12px;">National / Tout le Tchad</button>
+          </div>
         </div>
 
         <h4 class="mono-xs text-muted uppercase mb-2">${t('api.filters_label')}</h4>
@@ -255,19 +303,20 @@ export const ApiView = {
     wireRegionButtons();
     loadRegions();
 
-    // 4. Generate Archive Button -> Trigger file download with active filters
+    // 4. Generate Archive Button -> Trigger file download with active filters & clean filename
     const archiveBtn = document.getElementById('btn-generate-archive');
     if (archiveBtn) {
       archiveBtn.addEventListener('click', () => {
         const fmt = selectedFormat.toLowerCase();
-        if (fmt === 'json' || fmt === 'csv') {
-          const downloadUrl = getExportUrl(fmt, selectedSector, selectedRegion);
-          window.open(downloadUrl, '_blank');
-        } else {
-          const msg = t('api.premium_msg').replace('$FMT', selectedFormat);
-          alert(msg);
-          window.open(getExportUrl('json', selectedSector, selectedRegion), '_blank');
-        }
+        const downloadUrl = getExportUrl(fmt, selectedSector, selectedRegion);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        const secPart = selectedSector !== 'all' ? selectedSector : 'all';
+        const regPart = selectedRegion !== 'all' ? `-${selectedRegion.replace(/[^a-zA-Z0-9-_]/g, '')}` : '';
+        link.download = `freedatatd-${secPart}${regPart}-export.${fmt}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       });
     }
 

@@ -108,8 +108,12 @@ class ObservationRepository:
                 ).execute(),
                 label=f"store_raw_batch({sector})",
             )
-            return response.data[0]["id"]
-        except Exception:
+            return response.data[0]["id"] if response.data else None
+        except Exception as exc:
+            logger.warning(
+                "store_raw_batch(%s) failed (best-effort, collection continues): %s",
+                sector, exc,
+            )
             return None
 
     def upsert_many(self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None) -> int:
@@ -141,8 +145,8 @@ class ObservationRepository:
                 ).execute(),
                 label="store_validation_report",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("store_validation_report failed (audit trail incomplete): %s", exc)
 
     def save_study(self, sector: str | None, model: str, observations_used: int, report: str) -> int | None:
         """Keep generated LLM studies separate from the verified source data.
@@ -197,8 +201,10 @@ class ObservationRepository:
                    value=excluded.value, unit=excluded.unit, source_url=excluded.source_url, license=excluded.license,
                    notes=excluded.notes, collected_at=excluded.collected_at"""
         with self._connection() as connection:
-            connection.executemany(query, rows)
-        return len(rows)
+            cursor = connection.executemany(query, rows)
+        # rowcount reflects actual DB changes (inserts + updates); fall back to
+        # len(rows) only when the driver returns -1 (unknown).
+        return cursor.rowcount if cursor.rowcount >= 0 else len(rows)
 
     def _store_supabase_pipeline_batch(self, rows: list[dict[str, Any]], raw_record_id: int | None) -> int:
         """Write clean records then publish them using a single batch per table, avoiding duplicate entries."""
@@ -306,13 +312,20 @@ class ObservationRepository:
                 ).execute(),
                 label="table_public upsert",
             )
-        except Exception:
-            # Delete any existing matching rows before inserting to avoid duplicates if upsert fails
+        except Exception as _upsert_exc:
+            # Upsert failed — fall back to manual delete-then-insert to avoid duplicates.
+            logger.warning(
+                "table_public upsert failed (%s) — falling back to delete+insert for %d rows",
+                _upsert_exc, len(public_payloads),
+            )
             for p in public_payloads:
                 try:
                     self._supabase.table("table_public").delete().eq("secteur", p["secteur"]).eq("source_api", p["source_api"]).eq("date_reference", p["date_reference"]).eq("indicateur", p["indicateur"]).eq("region", p["region"]).execute()
-                except Exception:
-                    pass
+                except Exception as _del_exc:
+                    logger.debug(
+                        "table_public delete row failed during fallback (indicateur=%s): %s",
+                        p.get("indicateur"), _del_exc,
+                    )
             try:
                 _with_retry(
                     lambda: self._supabase.table("table_public").insert(public_payloads).execute(),
@@ -327,55 +340,52 @@ class ObservationRepository:
     def list_observations(self, sector: str | None = None, region: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         raw_obs: list[dict[str, Any]] = []
         fetch_limit = limit * 4 if limit else 1000
+
+        # Treat 'all' and 'national' (case-insensitive) as no region filter
+        if region and region.strip().lower() in ("all", "national", "tous", "tout le tchad"):
+            region = None
+        if sector and sector.strip().lower() in ("all", "tous"):
+            sector = None
+
         if self._supabase:
             try:
                 query = self._supabase.table("table_public").select("*")
                 if sector:
                     query = query.eq("secteur", sector)
                 if region:
-                    # Substring match (case-insensitive): lets a filter like "Logone"
-                    # match "Moundou (Logone Occidental)" without requiring the exact
-                    # "City (Province)" string. Uses `ilike` (Postgres ILIKE) which
-                    # Supabase parameterizes safely - not string-built SQL.
                     query = query.ilike("region", f"%{region}%")
                 query = query.order("date_reference", desc=True).limit(fetch_limit)
                 raw_obs = [self._public_to_observation(row) for row in query.execute().data]
             except Exception as exc:
                 logger.warning("Supabase list_observations query failed (%s), falling back to SQLite", exc)
-                try:
-                    query = "SELECT * FROM observations"
-                    conditions: list[str] = []
-                    parameters: list[Any] = []
-                    if sector:
-                        conditions.append("sector = ?")
-                        parameters.append(sector)
-                    if region:
+                raw_obs = []
+
+        if not raw_obs:
+            try:
+                import unicodedata
+                query = "SELECT * FROM observations"
+                conditions: list[str] = []
+                parameters: list[Any] = []
+                if sector:
+                    conditions.append("sector = ?")
+                    parameters.append(sector)
+                if region:
+                    unaccented = unicodedata.normalize('NFD', region).encode('ascii', 'ignore').decode('utf-8')
+                    if unaccented != region:
+                        conditions.append("(region LIKE ? COLLATE NOCASE OR region LIKE ? COLLATE NOCASE)")
+                        parameters.extend([f"%{region}%", f"%{unaccented}%"])
+                    else:
                         conditions.append("region LIKE ? COLLATE NOCASE")
                         parameters.append(f"%{region}%")
-                    if conditions:
-                        query += " WHERE " + " AND ".join(conditions)
-                    query += " ORDER BY reference_date DESC LIMIT ?"
-                    parameters.append(fetch_limit)
-                    with self._connection() as connection:
-                        raw_obs = [dict(row) for row in connection.execute(query, parameters).fetchall()]
-                except Exception:
-                    raw_obs = []
-        else:
-            query = "SELECT * FROM observations"
-            conditions: list[str] = []
-            parameters: list[Any] = []
-            if sector:
-                conditions.append("sector = ?")
-                parameters.append(sector)
-            if region:
-                conditions.append("region LIKE ? COLLATE NOCASE")
-                parameters.append(f"%{region}%")
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-            query += " ORDER BY reference_date DESC LIMIT ?"
-            parameters.append(fetch_limit)
-            with self._connection() as connection:
-                raw_obs = [dict(row) for row in connection.execute(query, parameters).fetchall()]
+                if conditions:
+                    query += " WHERE " + " AND ".join(conditions)
+                query += " ORDER BY reference_date DESC LIMIT ?"
+                parameters.append(fetch_limit)
+                with self._connection() as connection:
+                    raw_obs = [dict(row) for row in connection.execute(query, parameters).fetchall()]
+            except Exception as exc2:
+                logger.warning("SQLite list_observations query failed: %s", exc2)
+                raw_obs = []
 
         # Deduplicate observations by canonical business key
         seen_keys: set[tuple[str, str, str, str, str]] = set()
@@ -465,8 +475,8 @@ class ObservationRepository:
                 parameters.append(sector)
             query += " ORDER BY created_at DESC LIMIT ?"
             parameters.append(limit)
+            self._initialize_sqlite()  # ensure table exists before querying
             with self._connection() as connection:
-                self._initialize_sqlite()
                 return [dict(row) for row in connection.execute(query, parameters).fetchall()]
         except Exception as exc:
             logger.warning("SQLite list_studies failed: %s", exc)
@@ -479,7 +489,7 @@ class ObservationRepository:
         return {
             "id": row["id"], "sector": row["secteur"], "indicator": row["indicateur"],
             "value": row["valeur"], "unit": row["unite"], "reference_date": row["date_reference"],
-            "country_code": row.get("pays", "TCH"), "region": row["region"], "source": row["source_api"],
+            "country_code": row.get("pays", "TCD"), "region": row["region"], "source": row["source_api"],
             "source_url": None, "license": row.get("licence", "CC-BY 4.0"),
             "notes": row.get("notes_publiques") or "",
             "collected_at": collected,

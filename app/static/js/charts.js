@@ -99,16 +99,25 @@ export function initChartDensity(dynamicDensity = null) {
 }
 
 /* ── System Load 24H (Line Chart) ── */
-export function initChartLoad() {
+export function initChartLoad(dynamicLoad = null) {
   destroyIfExists('load');
   const ctx = document.getElementById('chart-load');
   if (!ctx) return;
+
+  let labels = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'];
+  let values = [32, 45, 38, 62, 70, 68, 85];
+
+  if (dynamicLoad && Array.isArray(dynamicLoad.values)) {
+    labels = dynamicLoad.labels || labels;
+    values = dynamicLoad.values;
+  }
+
   chartInstances['load'] = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+      labels: labels,
       datasets: [{
-        data: [30, 40, 35, 55, 65, 60, 75],
+        data: values,
         borderColor: '#0284c7',
         borderWidth: 2,
         tension: 0.3,
