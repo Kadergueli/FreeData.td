@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -11,6 +12,36 @@ from app.config import settings
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
+
+# --- Small process-wide TTL cache for expensive, read-mostly aggregates -----
+# catalog()/list_regions() each pull thousands of rows from Supabase and
+# aggregate them in Python. Every page load of the SPA triggers them, and
+# several run concurrently in the threadpool, so memory spikes (and Supabase
+# socket pressure) scaled with traffic - the likely trigger of Render's
+# "exceeded its memory limit" restarts on a 512 MB instance. Data only
+# changes when a harvest writes, so a short TTL + invalidation on write is
+# safe. Module-level on purpose: the scheduler uses its own repository
+# instance and must still invalidate what the API instance serves.
+_CACHE: dict[str, tuple[float, Any]] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def _cache_get(key: str, ttl: float) -> Any | None:
+    with _CACHE_LOCK:
+        hit = _CACHE.get(key)
+        if hit and (time.monotonic() - hit[0]) < ttl:
+            return hit[1]
+    return None
+
+
+def _cache_set(key: str, value: Any) -> None:
+    with _CACHE_LOCK:
+        _CACHE[key] = (time.monotonic(), value)
+
+
+def invalidate_cache() -> None:
+    with _CACHE_LOCK:
+        _CACHE.clear()
 
 
 def _with_retry(operation: Any, *, attempts: int = 3, base_delay: float = 0.3, label: str = "Supabase operation"):
@@ -117,7 +148,10 @@ class ObservationRepository:
             return None
 
     def upsert_many(self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None) -> int:
-        return self._upsert_many(observations, raw_record_id)
+        try:
+            return self._upsert_many(observations, raw_record_id)
+        finally:
+            invalidate_cache()  # fresh data (or a partial write): drop cached aggregates
 
     def store_validation_report(self, raw_record_id: int | None, received: int, accepted: int, rejected: int, errors: list[str]) -> None:
         """Complete the raw-to-published audit trail in table_rapports.
@@ -339,7 +373,9 @@ class ObservationRepository:
 
     def list_observations(self, sector: str | None = None, region: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         raw_obs: list[dict[str, Any]] = []
-        fetch_limit = limit * 4 if limit else 1000
+        # Over-fetch only a modest margin for the dedup pass below (it used to be
+        # limit * 4: a 5000-row export pulled 20000 full rows into memory).
+        fetch_limit = (limit + max(100, limit // 2)) if limit else 1000
 
         # Treat 'all' and 'national' (case-insensitive) as no region filter
         if region and region.strip().lower() in ("all", "national", "tous", "tout le tchad"):
@@ -384,7 +420,7 @@ class ObservationRepository:
                 with self._connection() as connection:
                     raw_obs = [dict(row) for row in connection.execute(query, parameters).fetchall()]
             except Exception as exc2:
-                logger.warning("SQLite list_observations query failed: %s", exc2)
+                logger.warning("SQLite fallback list_observations also failed: %s", exc2)
                 raw_obs = []
 
         # Deduplicate observations by canonical business key
@@ -501,6 +537,9 @@ class ObservationRepository:
         first. Lets the frontend build a real, always-current region filter
         instead of a hand-maintained list that inevitably drifts out of sync
         with whatever the collection agents actually populate."""
+        cached = _cache_get("regions", 300.0)
+        if cached is not None:
+            return list(cached)
         counts: dict[str, int] = {}
         if self._supabase:
             try:
@@ -527,9 +566,21 @@ class ObservationRepository:
             except Exception as exc:
                 logger.warning("list_regions SQLite query failed: %s", exc)
 
-        return sorted(counts, key=lambda r: counts[r], reverse=True)
+        result = sorted(counts, key=lambda r: counts[r], reverse=True)
+        if result:
+            _cache_set("regions", result)
+        return result
 
     def catalog(self) -> list[dict[str, Any]]:
+        cached = _cache_get("catalog", 60.0)
+        if cached is not None:
+            return cached
+        result = self._build_catalog()
+        if result:  # never cache an empty/failed build
+            _cache_set("catalog", result)
+        return result
+
+    def _build_catalog(self) -> list[dict[str, Any]]:
         rows = []
         if self._supabase:
             for sec in ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"]:

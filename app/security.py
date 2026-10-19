@@ -14,11 +14,21 @@ class RateLimiter:
     def __init__(self) -> None:
         self._requests: dict[str, deque[datetime]] = defaultdict(deque)
         self._lock = Lock()
+        self._last_sweep = datetime.now(UTC)
+
+    def _sweep(self, now: datetime, threshold: datetime) -> None:
+        """Drop buckets with no request in the last hour. Without this the dict
+        gains one entry per distinct client forever (slow memory growth)."""
+        for key in [k for k, d in self._requests.items() if not d or d[-1] < threshold]:
+            del self._requests[key]
+        self._last_sweep = now
 
     def allow(self, client_id: str, limit: int) -> bool:
         now = datetime.now(UTC)
         threshold = now - timedelta(hours=1)
         with self._lock:
+            if (now - self._last_sweep) > timedelta(minutes=10):
+                self._sweep(now, threshold)
             timestamps = self._requests[client_id]
             while timestamps and timestamps[0] < threshold:
                 timestamps.popleft()

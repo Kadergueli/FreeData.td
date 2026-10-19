@@ -30,7 +30,7 @@ from app.config import settings
 from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
 from app.services.export import observations_to_csv, observations_to_json, observations_to_parquet, observations_to_xml
 from app.services.scheduler import scheduler_service
-from app.services.storage import ObservationRepository
+from app.services.storage import ObservationRepository, _cache_get, _cache_set
 
 
 @asynccontextmanager
@@ -329,15 +329,21 @@ def cross_sector_insights() -> dict:
     Toutes les métriques sont calculées en Python pur sur les observations déjà publiées.
     Aucun appel LLM — sûr à appeler à chaque chargement de page.
     """
+    cached = _cache_get("cross_sector", 120.0)
+    if cached is not None:
+        return cached
     try:
         observations = repository.list_observations(sector=None, limit=2000)
-        return {
+        result = {
             "freshness": compute_freshness_scores(observations),
             "correlations": compute_cross_sector_correlations(observations),
             "spatial_coverage": compute_spatial_coverage(observations),
             "seasonal_anomalies": compute_seasonal_anomalies(observations),
             "total_observations_analyzed": len(observations),
         }
+        if observations:
+            _cache_set("cross_sector", result)
+        return result
     except Exception as exc:
         logger.warning("cross_sector_insights failed: %s", exc)
         return {
