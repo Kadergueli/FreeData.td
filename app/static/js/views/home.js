@@ -2,21 +2,22 @@
  * View: Landing / Home — "OPEN DATA INFRASTRUCTURE FOR CHAD"
  */
 
-import {
-  fetchObservations,
-  fetchCatalog,
-  fetchAudit,
-  triggerAgricultureHarvest,
-  triggerEnvironmentHarvest,
-  triggerMarketsHarvest,
-  triggerEconomyHarvest,
-  triggerHealthHarvest,
-  triggerEnergyHarvest
-} from '../api_client.js';
+import { fetchObservations, fetchStats, fetchAudit, triggerHarvest } from '../api_client.js';
+import { showToast, formatDate } from '../ui.js';
 import { navigateTo } from '../router.js';
 import { t, getLang } from '../i18n.js';
 import { OFFICIAL_SOURCES } from '../sources_catalog.js';
 import { escapeHtml } from '../sanitize.js';
+
+// Sectors a visitor may collect without the admin key (transport/education need it).
+const PUBLIC_HARVEST_SECTORS = ['agriculture', 'environment', 'markets', 'economy', 'health', 'energy'];
+const ALL_SECTOR_COUNT = 8;
+
+let _harvesting = false;
+
+function fmt(template, vars) {
+  return Object.entries(vars).reduce((acc, [k, v]) => acc.replace(`{${k}}`, v), template);
+}
 
 export const HomeView = {
   render() {
@@ -79,18 +80,20 @@ export const HomeView = {
           <div class="stat-label">${t('home.stat_obs')}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value text-green" id="stat-validation-score">100.0%</div>
+          <div class="stat-value text-green" id="stat-validation-score"><span class="skeleton"></span></div>
           <div class="stat-label">${t('home.stat_score')}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value text-cyan" id="stat-sectors-count">08</div>
+          <div class="stat-value text-cyan" id="stat-sectors-count"><span class="skeleton"></span></div>
           <div class="stat-label">${t('home.stat_sectors')}</div>
         </div>
       </div>
 
+      <p class="mono-xs text-muted mb-6" id="home-last-update" aria-live="polite"></p>
+
       <!-- Mission & Core Capabilities (accordion — opens on demand) -->
       <div class="card card--transparent mb-6 accordion-section" data-accordion="mission">
-        <button type="button" class="accordion-trigger" data-accordion-trigger="mission" aria-expanded="false">
+        <button type="button" class="accordion-trigger" data-accordion-trigger="mission" aria-expanded="false" aria-controls="acc-panel-mission">
           <div class="flex items-center gap-2">
             <i data-lucide="target" style="width:16px;height:16px;" class="text-cyan"></i>
             <div>
@@ -100,7 +103,7 @@ export const HomeView = {
           </div>
           <i data-lucide="chevron-down" style="width:18px;height:18px;" class="accordion-chevron"></i>
         </button>
-        <div class="accordion-panel"><div><div class="accordion-panel-inner">
+        <div class="accordion-panel" id="acc-panel-mission" role="region"><div><div class="accordion-panel-inner">
           <p class="body-text mb-4">${t('home.mission_text')}</p>
           <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px;">
             ${capList.map(cap => `
@@ -118,7 +121,7 @@ export const HomeView = {
 
       <!-- Data Pipeline (accordion — opens on demand) -->
       <div class="card card--transparent mb-6 accordion-section" data-accordion="pipeline">
-        <button type="button" class="accordion-trigger" data-accordion-trigger="pipeline" aria-expanded="false">
+        <button type="button" class="accordion-trigger" data-accordion-trigger="pipeline" aria-expanded="false" aria-controls="acc-panel-pipeline">
           <div class="flex items-center gap-2">
             <i data-lucide="git-merge" style="width:16px;height:16px;" class="text-cyan"></i>
             <div>
@@ -128,7 +131,7 @@ export const HomeView = {
           </div>
           <i data-lucide="chevron-down" style="width:18px;height:18px;" class="accordion-chevron"></i>
         </button>
-        <div class="accordion-panel"><div><div class="accordion-panel-inner">
+        <div class="accordion-panel" id="acc-panel-pipeline" role="region"><div><div class="accordion-panel-inner">
           <div class="pipeline-grid">
             ${pipelineList.map(item => `
               <div class="flex gap-4 items-start">
@@ -164,12 +167,12 @@ export const HomeView = {
           <div style="background-color:#ffffff;border:1px solid var(--border);padding:16px;border-radius:6px;" class="flex flex-col gap-2" id="latest-obs-card">
             <div class="flex justify-between items-center mb-2">
               <h5 class="uppercase" style="font-size:16px;" id="latest-indicator">${t('home.loading_db')}</h5>
-              <span class="badge badge--valid" id="latest-status">DATABASE</span>
+              <span class="badge badge--valid" id="latest-status">${t('common.validated')}</span>
             </div>
             <p class="mono-sm text-muted flex items-center gap-1" id="latest-location"><i data-lucide="map-pin" style="width:14px;height:14px;"></i> ${t('home.loading_db')}</p>
             <p class="mono-sm text-muted mb-4 flex items-center gap-1" id="latest-date"><i data-lucide="calendar" style="width:14px;height:14px;"></i> --/--/----</p>
             <div class="separator flex justify-between items-end">
-              <p class="mono-xs text-muted uppercase" id="latest-source">${t('common.source')}: DATABASE</p>
+              <p class="mono-xs text-muted uppercase" id="latest-source">${t('common.source')}: —</p>
               <div class="mono-2xl fw-700 text-accent" id="latest-value">-- <span class="mono-lg" id="latest-unit"></span></div>
             </div>
           </div>
@@ -178,14 +181,13 @@ export const HomeView = {
     `;
   },
 
+  /** Called by the router once per render. Listeners are bound HERE, exactly once
+   *  per render; data (re)loading lives in loadData() so it can be re-run (after a
+   *  harvest) without stacking duplicate listeners — which used to make the
+   *  accordions stop opening after a collection. */
   async init() {
-    // 1. Wire "EXPLORE DATA" button
-    const btnExplore = document.getElementById('btn-explore');
-    if (btnExplore) {
-      btnExplore.addEventListener('click', () => navigateTo('data'));
-    }
+    document.getElementById('btn-explore')?.addEventListener('click', () => navigateTo('data'));
 
-    // 1b. Wire accordion sections (Mission & Capabilities / Data Pipeline)
     document.querySelectorAll('[data-accordion-trigger]').forEach(trigger => {
       trigger.addEventListener('click', () => {
         const section = trigger.closest('.accordion-section');
@@ -195,118 +197,121 @@ export const HomeView = {
       });
     });
 
-    // 2. Wire "COLLECT LIVE DATA" button
-    const btnHarvest = document.getElementById('btn-home-harvest');
-    if (btnHarvest) {
-      btnHarvest.addEventListener('click', async () => {
-        btnHarvest.disabled = true;
-        btnHarvest.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${t('home.btn_harvest_loading')}`;
-        if (window.lucide) window.lucide.createIcons();
+    document.getElementById('btn-home-harvest')?.addEventListener('click', () => HomeView.harvest());
 
-        try {
-          await Promise.allSettled([
-            triggerAgricultureHarvest('all'),
-            triggerEnvironmentHarvest('all'),
-            triggerMarketsHarvest('all'),
-            triggerEconomyHarvest('all'),
-            triggerHealthHarvest('all'),
-            triggerEnergyHarvest('all')
-          ]);
-          alert(t('common.harvest_ok'));
-          await HomeView.init();
-        } catch (err) {
-          alert(`${t('common.harvest_err')}: ${err.message}`);
-        } finally {
-          btnHarvest.disabled = false;
-          btnHarvest.innerHTML = `<i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('home.btn_harvest')}`;
-          if (window.lucide) window.lucide.createIcons();
-        }
-      });
-    }
-
-    // 3. Wire sector tags to navigate to Data view with pre-filter
     document.querySelectorAll('.sector-tag-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const sector = e.currentTarget.getAttribute('data-sector');
-        navigateTo('data', { sector });
+        navigateTo('data', { sector: e.currentTarget.getAttribute('data-sector') });
       });
     });
 
-    // 4. Fetch real dynamic data from backend database
+    await HomeView.loadData();
+  },
+
+  /** Sequential collection (one sector at a time): parallel runs spiked server memory
+   *  and burned the hourly quota in one click. Reports what REALLY happened. */
+  async harvest() {
+    if (_harvesting) return;
+    _harvesting = true;
+    const btn = document.getElementById('btn-home-harvest');
+    const idle = btn ? btn.innerHTML : '';
+    if (btn) btn.disabled = true;
+
+    const n = PUBLIC_HARVEST_SECTORS.length;
+    let ok = 0;
+    let stored = 0;
+    let rateLimited = false;
+
     try {
-      const [obsRes, catalogRes, auditRes] = await Promise.allSettled([
-        fetchObservations(null, 100),
-        fetchCatalog(),
-        fetchAudit()
-      ]);
-
-      const obs = obsRes.status === 'fulfilled' && Array.isArray(obsRes.value) ? obsRes.value : [];
-      const catalog = catalogRes.status === 'fulfilled' && Array.isArray(catalogRes.value) ? catalogRes.value : [];
-      const audit = auditRes.status === 'fulfilled' ? auditRes.value : null;
-
-      // Update observation count
-      const totalObs = (audit && audit.reports_summary && audit.reports_summary.total_public) || (obs ? obs.length : 0);
-      const obsCountEl = document.getElementById('stat-obs-count');
-      if (obsCountEl) obsCountEl.textContent = totalObs > 0 ? `${totalObs}` : (obs.length > 0 ? `${obs.length}` : '0');
-
-      // Update sector count
-      const secEl = document.getElementById('stat-sectors-count');
-      if (secEl) {
-        let activeCount = 8;
-        if (catalog && catalog.length > 0) {
-          const catalogSectors = new Set(catalog.map(c => (c.sector || '').toLowerCase()));
-          activeCount = Math.max(8, catalogSectors.size);
+      for (let i = 0; i < n; i++) {
+        const sector = PUBLIC_HARVEST_SECTORS[i];
+        if (btn) {
+          btn.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${fmt(t('home.harvest_progress'), { i: i + 1, n, sector: t(`sectors.names.${sector}`) })}`;
+          if (window.lucide) window.lucide.createIcons();
         }
-        secEl.textContent = activeCount < 10 ? `0${activeCount}` : `${activeCount}`;
+        try {
+          const res = await triggerHarvest(sector, 'all');
+          ok += 1;
+          stored += Number(res && res.stored) || 0;
+        } catch (err) {
+          console.warn(`harvest ${sector} failed:`, err);
+          if (err.status === 429) { rateLimited = true; break; }
+        }
       }
 
-      // Update audit logs stat
-      const logsCount = (audit && audit.logs && audit.logs.length) || 0;
-      const pipelineCountEl = document.getElementById('stat-pipeline-count');
-      if (pipelineCountEl) pipelineCountEl.textContent = `${logsCount}`;
-
-      // Update validation score
-      const scoreEl = document.getElementById('stat-validation-score');
-      if (scoreEl) {
-        const scoreVal = (audit && audit.reports_summary && audit.reports_summary.score_global !== undefined)
-          ? audit.reports_summary.score_global
-          : 1.0;
-        scoreEl.textContent = `${(scoreVal * 100).toFixed(1)}%`;
-      }
-
-      // Update latest validated observation from DB
-      if (obs && obs.length > 0) {
-        const latest = obs[0];
-        const indEl = document.getElementById('latest-indicator');
-        const locEl = document.getElementById('latest-location');
-        const dateEl = document.getElementById('latest-date');
-        const srcEl = document.getElementById('latest-source');
-        const valEl = document.getElementById('latest-value');
-
-        if (indEl) indEl.textContent = (latest.indicator || 'Observation').toUpperCase();
-        if (locEl) locEl.innerHTML = `<i data-lucide="map-pin" style="width:14px;height:14px;"></i> ${escapeHtml(latest.region || 'Logone')}, ${escapeHtml(latest.country_code || 'TCH')}`;
-        if (dateEl) dateEl.innerHTML = `<i data-lucide="calendar" style="width:14px;height:14px;"></i> ${escapeHtml(latest.reference_date || latest.collected_at || 'Recent')}`;
-        if (srcEl) srcEl.textContent = `${t('common.source')}: ${(latest.source || 'Open Data').toUpperCase()}`;
-        const numVal = Number(latest.value);
-        const formattedVal = !isNaN(numVal) ? (Number.isInteger(numVal) ? numVal.toLocaleString() : numVal.toLocaleString(undefined, { maximumFractionDigits: 2 })) : escapeHtml(latest.value);
-        if (valEl) valEl.innerHTML = `${formattedVal} <span class="mono-lg">${escapeHtml(latest.unit || '')}</span>`;
+      if (rateLimited) showToast(t('home.harvest_rate_limited'), 'error');
+      else if (ok === 0) showToast(t('home.harvest_failed_all'), 'error');
+      else showToast(fmt(t('home.harvest_summary'), { ok, n, stored }), ok === n ? 'success' : 'info');
+    } finally {
+      _harvesting = false;
+      const again = document.getElementById('btn-home-harvest');
+      if (again) {
+        again.disabled = false;
+        again.innerHTML = idle || `<i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('home.btn_harvest')}`;
         if (window.lucide) window.lucide.createIcons();
-      } else {
-        const cardContainer = document.getElementById('latest-obs-card');
-        if (cardContainer) {
-          cardContainer.innerHTML = `
-            <div style="text-align:center;padding:16px;">
-              <p class="mono-sm text-muted mb-3">${t('home.no_obs')}</p>
-            </div>
-          `;
-        }
       }
-    } catch (err) {
-      console.warn('HomeView init dynamic load error:', err);
-      const obsCountEl = document.getElementById('stat-obs-count');
-      if (obsCountEl && obsCountEl.querySelector('.skeleton')) obsCountEl.textContent = '0';
-      const secEl = document.getElementById('stat-sectors-count');
-      if (secEl && secEl.querySelector('.skeleton')) secEl.textContent = '06';
+    }
+    if (ok > 0) await HomeView.loadData();
+  },
+
+  async loadData() {
+    // 3 light calls: real totals, the single latest row, the validation score.
+    const [statsRes, latestRes, auditRes] = await Promise.allSettled([
+      fetchStats(),
+      fetchObservations(null, 1),
+      fetchAudit(),
+    ]);
+    const stats = statsRes.status === 'fulfilled' ? statsRes.value : null;
+    const latestRows = latestRes.status === 'fulfilled' && Array.isArray(latestRes.value) ? latestRes.value : [];
+    const audit = auditRes.status === 'fulfilled' ? auditRes.value : null;
+
+    // Observations — real total, or an honest dash when unknown (never a made-up number).
+    const obsEl = document.getElementById('stat-obs-count');
+    if (obsEl) obsEl.textContent = stats ? Number(stats.total || 0).toLocaleString() : '—';
+
+    // Sectors that actually hold data, out of the 8 the platform covers.
+    const secEl = document.getElementById('stat-sectors-count');
+    if (secEl) {
+      if (stats && stats.sectors) {
+        const withData = Object.values(stats.sectors).filter(c => c > 0).length;
+        secEl.textContent = `${String(withData).padStart(2, '0')} / ${String(ALL_SECTOR_COUNT).padStart(2, '0')}`;
+      } else {
+        secEl.textContent = '—';
+      }
+    }
+
+    // Validation score — only shown when the audit actually returned one.
+    const scoreEl = document.getElementById('stat-validation-score');
+    if (scoreEl) {
+      const raw = audit && audit.reports_summary ? audit.reports_summary.score_global : null;
+      scoreEl.textContent = typeof raw === 'number' ? `${(raw * 100).toFixed(1)}%` : '—';
+    }
+
+    const updEl = document.getElementById('home-last-update');
+    if (updEl) {
+      const d = stats && stats.last_update ? formatDate(stats.last_update, getLang()) : '';
+      updEl.textContent = d ? `${t('home.last_update')} : ${d}` : '';
+    }
+
+    // Latest observation card.
+    if (latestRows.length > 0) {
+      const latest = latestRows[0];
+      const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+      set('latest-indicator', escapeHtml((latest.indicator || '—').toUpperCase()));
+      set('latest-location', `<i data-lucide="map-pin" style="width:14px;height:14px;"></i> ${escapeHtml([latest.region, latest.country_code].filter(Boolean).join(', ') || '—')}`);
+      set('latest-date', `<i data-lucide="calendar" style="width:14px;height:14px;"></i> ${escapeHtml(formatDate(latest.reference_date || latest.collected_at, getLang()) || '—')}`);
+      set('latest-source', `${t('common.source')}: ${escapeHtml((latest.source || '—').toUpperCase())}`);
+      const num = Number(latest.value);
+      const valueText = latest.value === null || latest.value === undefined || isNaN(num)
+        ? '—'
+        : num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      set('latest-value', `${valueText} <span class="mono-lg">${escapeHtml(latest.unit || '')}</span>`);
+      if (window.lucide) window.lucide.createIcons();
+    } else {
+      const card = document.getElementById('latest-obs-card');
+      if (card) {
+        card.innerHTML = `<div style="text-align:center;padding:16px;"><p class="mono-sm text-muted mb-3">${t('home.no_obs')}</p></div>`;
+      }
     }
   }
 };

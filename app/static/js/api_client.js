@@ -3,41 +3,78 @@
  *
  * Interfaces with FastAPI endpoints for real-time data fetching,
  * automated collection triggers, AI study generation, and data exports.
+ *
+ * Every request has a timeout (a hung connection used to leave the UI on its
+ * loading state forever) and surfaces the server's own error message.
  */
 
 const BASE_URL = '/api/v1';
+const DEFAULT_TIMEOUT_MS = 30000;
+const SLOW_TIMEOUT_MS = 150000; // LLM report generation, live harvests
+
+async function requestJson(url, { method = 'GET', timeout = DEFAULT_TIMEOUT_MS } = {}) {
+  const init = { method };
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    init.signal = AbortSignal.timeout(timeout);
+  }
+  let res;
+  try {
+    res = await fetch(url, init);
+  } catch (err) {
+    if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      const e = new Error('Request timed out');
+      e.status = 0;
+      throw e;
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json()).detail; } catch (_) { /* non-JSON error body */ }
+    const e = new Error(typeof detail === 'string' && detail ? detail : `HTTP error ${res.status}`);
+    e.status = res.status;
+    throw e;
+  }
+  return res.json();
+}
 
 export async function fetchHealth() {
   try {
-    const res = await fetch(`${BASE_URL}/health`);
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
+    return await requestJson(`${BASE_URL}/health`);
   } catch (err) {
     console.warn('fetchHealth error:', err);
     return null;
   }
 }
 
-export async function fetchObservations(sector = null, limit = 100) {
+/** opts: { q: free-text search (server-side), region } */
+export async function fetchObservations(sector = null, limit = 100, opts = {}) {
   try {
-    let url = `${BASE_URL}/observations?limit=${limit}`;
+    const params = new URLSearchParams({ limit: String(limit) });
     if (sector && sector.toLowerCase() !== 'all' && sector.toLowerCase() !== 'tous') {
-      url += `&sector=${encodeURIComponent(sector.toLowerCase())}`;
+      params.set('sector', sector.toLowerCase());
     }
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
+    if (opts.q && opts.q.trim()) params.set('q', opts.q.trim().slice(0, 100));
+    if (opts.region && opts.region.toLowerCase() !== 'all') params.set('region', opts.region);
+    return await requestJson(`${BASE_URL}/observations?${params}`);
   } catch (err) {
     console.warn('fetchObservations error:', err);
     return [];
   }
 }
 
+export async function fetchStats() {
+  try {
+    return await requestJson(`${BASE_URL}/stats`);
+  } catch (err) {
+    console.warn('fetchStats error:', err);
+    return null;
+  }
+}
+
 export async function fetchCatalog() {
   try {
-    const res = await fetch(`${BASE_URL}/catalog`);
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
+    return await requestJson(`${BASE_URL}/catalog`);
   } catch (err) {
     console.warn('fetchCatalog error:', err);
     return [];
@@ -46,128 +83,37 @@ export async function fetchCatalog() {
 
 export async function fetchAudit() {
   try {
-    const res = await fetch(`${BASE_URL}/pipeline/audit`);
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
+    return await requestJson(`${BASE_URL}/pipeline/audit`);
   } catch (err) {
     console.warn('fetchAudit error:', err);
     return null;
   }
 }
 
-export async function triggerAgricultureHarvest(source = 'all') {
-  try {
-    const res = await fetch(`${BASE_URL}/collection/agriculture?source=${encodeURIComponent(source)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('triggerAgricultureHarvest error:', err);
-    throw err;
-  }
+/** Trigger a live collection for one sector. Throws Error with .status
+ *  (429 = rate limited, 401/403 = admin-only sector, 503 = backend unavailable). */
+export async function triggerHarvest(sector, source = 'all') {
+  return requestJson(
+    `${BASE_URL}/collection/${encodeURIComponent(sector)}?source=${encodeURIComponent(source)}`,
+    { method: 'POST', timeout: SLOW_TIMEOUT_MS },
+  );
 }
 
-export async function triggerEnvironmentHarvest(source = 'all') {
-  try {
-    const res = await fetch(`${BASE_URL}/collection/environment?source=${encodeURIComponent(source)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('triggerEnvironmentHarvest error:', err);
-    throw err;
-  }
-}
-
-export async function triggerMarketsHarvest(source = 'all') {
-  try {
-    const res = await fetch(`${BASE_URL}/collection/markets?source=${encodeURIComponent(source)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('triggerMarketsHarvest error:', err);
-    throw err;
-  }
-}
-
-export async function triggerEconomyHarvest(source = 'all') {
-  try {
-    const res = await fetch(`${BASE_URL}/collection/economy?source=${encodeURIComponent(source)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('triggerEconomyHarvest error:', err);
-    throw err;
-  }
-}
-
-export async function triggerHealthHarvest(source = 'all') {
-  try {
-    const res = await fetch(`${BASE_URL}/collection/health?source=${encodeURIComponent(source)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('triggerHealthHarvest error:', err);
-    throw err;
-  }
-}
-
-export async function triggerEnergyHarvest(source = 'all') {
-  try {
-    const res = await fetch(`${BASE_URL}/collection/energy?source=${encodeURIComponent(source)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('triggerEnergyHarvest error:', err);
-    throw err;
-  }
-}
-
-export async function triggerTransportHarvest(source = 'all') {
-  try {
-    const res = await fetch(`${BASE_URL}/collection/transport?source=${encodeURIComponent(source)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('triggerTransportHarvest error:', err);
-    throw err;
-  }
-}
-
-export async function triggerEducationHarvest(source = 'all') {
-  try {
-    const res = await fetch(`${BASE_URL}/collection/education?source=${encodeURIComponent(source)}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('triggerEducationHarvest error:', err);
-    throw err;
-  }
-}
+// Per-sector wrappers kept for existing imports.
+export const triggerAgricultureHarvest = (source = 'all') => triggerHarvest('agriculture', source);
+export const triggerEnvironmentHarvest = (source = 'all') => triggerHarvest('environment', source);
+export const triggerMarketsHarvest = (source = 'all') => triggerHarvest('markets', source);
+export const triggerEconomyHarvest = (source = 'all') => triggerHarvest('economy', source);
+export const triggerHealthHarvest = (source = 'all') => triggerHarvest('health', source);
+export const triggerEnergyHarvest = (source = 'all') => triggerHarvest('energy', source);
+export const triggerTransportHarvest = (source = 'all') => triggerHarvest('transport', source);
+export const triggerEducationHarvest = (source = 'all') => triggerHarvest('education', source);
 
 export async function fetchStudies(sector = null, limit = 100) {
   try {
-    let url = `${BASE_URL}/studies?limit=${limit}`;
-    if (sector && sector.toLowerCase() !== 'all') {
-      url += `&sector=${encodeURIComponent(sector.toLowerCase())}`;
-    }
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    const data = await res.json();
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (sector && sector.toLowerCase() !== 'all') params.set('sector', sector.toLowerCase());
+    const data = await requestJson(`${BASE_URL}/studies?${params}`);
     return data.studies || [];
   } catch (err) {
     console.error('fetchStudies error:', err);
@@ -176,17 +122,12 @@ export async function fetchStudies(sector = null, limit = 100) {
 }
 
 export async function generateStudy(sector = null) {
+  let url = `${BASE_URL}/studies`;
+  if (sector && sector.toLowerCase() !== 'all') {
+    url += `?sector=${encodeURIComponent(sector.toLowerCase())}`;
+  }
   try {
-    let url = `${BASE_URL}/studies`;
-    if (sector && sector.toLowerCase() !== 'all') {
-      url += `?sector=${encodeURIComponent(sector.toLowerCase())}`;
-    }
-    const res = await fetch(url, { method: 'POST' });
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      throw new Error(errJson.detail || `HTTP error ${res.status}`);
-    }
-    return await res.json();
+    return await requestJson(url, { method: 'POST', timeout: SLOW_TIMEOUT_MS });
   } catch (err) {
     console.error('generateStudy error:', err);
     throw err;
@@ -208,9 +149,7 @@ export function getExportUrl(format = 'csv', sector = null, region = null) {
 
 export async function fetchRegions() {
   try {
-    const res = await fetch(`${BASE_URL}/regions`);
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
+    return await requestJson(`${BASE_URL}/regions`);
   } catch (err) {
     console.error('fetchRegions error:', err);
     return [];
@@ -219,9 +158,7 @@ export async function fetchRegions() {
 
 export async function fetchCrossSector() {
   try {
-    const res = await fetch(`${BASE_URL}/insights/cross-sector`);
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
+    return await requestJson(`${BASE_URL}/insights/cross-sector`);
   } catch (err) {
     console.warn('fetchCrossSector error:', err);
     return null;

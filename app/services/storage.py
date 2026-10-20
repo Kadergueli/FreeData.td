@@ -695,6 +695,19 @@ class ObservationRepository:
         return list(grouped.values())
 
     def get_pipeline_audit(self) -> dict[str, Any]:
+        """Cached (30 s) wrapper: the audit runs ~8 Supabase queries and is requested by
+        the home, explorer and status pages on every visit. Only a result that actually
+        contains data is cached, so a transient failure never sticks."""
+        cached = _cache_get("audit", 30.0)
+        if cached is not None:
+            return cached
+        result = self._build_pipeline_audit()
+        summary = result.get("reports_summary") or {}
+        if summary.get("total_public") or summary.get("total_raw") or result.get("logs"):
+            _cache_set("audit", result)
+        return result
+
+    def _build_pipeline_audit(self) -> dict[str, Any]:
         """Retrieve live audit trail from table_raw, table_clean, table_logs, and table_rapports."""
         audit: dict[str, Any] = {
             "backend": self.backend,
