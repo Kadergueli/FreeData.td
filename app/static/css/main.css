@@ -7,6 +7,7 @@
   --bg:             #ffffff;
   --surface:        #f8f9fa;
   --surface-hover:  #f1f3f5;
+  --bg-alt:         #f1f3f5; /* was referenced but never defined */
   --border:         #e9ecef;
   --border-strong:  #dee2e6;
   --text:           #1a1d20;
@@ -38,6 +39,7 @@
   --radius-sm: 4px;
   --radius:    6px;
   --radius-lg: 8px;
+  --radius-md: 8px; /* was referenced but never defined */
 }
 
 /* ── Reset ── */
@@ -232,4 +234,9 @@ h1, h2, h3, h4, h5 { font-weight: 600; letter-spacing: -0.02em; color: var(--tex
 
   .hero-title { font-size: 20px; }
   .stat-value { font-size: 24px; }
+}
+/* ── Keyboard focus (was missing everywhere except the search input) ── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

@@ -6,6 +6,7 @@ import { InsightsView } from './views/insights.js';
 import { ApiView } from './views/api.js';
 import { StatusView } from './views/status.js';
 import { TermsView } from './views/terms.js';
+import { destroyAllCharts } from './charts.js';
 import { t } from './i18n.js';
 
 const routes = [
@@ -25,6 +26,26 @@ let _currentParams = {};
 export function getCurrentRoute() { return _currentRouteId; }
 export function getCurrentParams() { return _currentParams; }
 
+/* ── Hash helpers: "#/data?sector=health" ⇄ { id: 'data', params: { sector: 'health' } } ── */
+
+export function buildHash(routeId, params = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+  });
+  const q = qs.toString();
+  return `#/${routeId}${q ? `?${q}` : ''}`;
+}
+
+export function parseHash(hash) {
+  const raw = String(hash || '').replace(/^#\/?/, '');
+  const [path, query = ''] = raw.split('?');
+  const id = routes.some(r => r.id === path) ? path : 'home';
+  const params = {};
+  new URLSearchParams(query).forEach((v, k) => { params[k] = v; });
+  return { id, params };
+}
+
 export function refreshNavLabels() {
   document.querySelectorAll('.nav-tab[data-route]').forEach(tab => {
     const route = routes.find(r => r.id === tab.dataset.route);
@@ -35,22 +56,32 @@ export function refreshNavLabels() {
   });
 }
 
-export function navigateTo(routeId, params = {}) {
+function markActive(routeId) {
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    const active = tab.dataset.route === routeId;
+    tab.classList.toggle('active', active);
+    if (active) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  });
+  document.querySelectorAll('.mobile-nav-tab').forEach(tab => {
+    const active = tab.dataset.route === routeId;
+    tab.classList.toggle('active', active);
+    if (active) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  });
+}
+
+/** Render a route WITHOUT touching the URL. */
+function renderRoute(routeId, params = {}) {
   const route = routes.find(r => r.id === routeId);
   if (!route) return;
 
   _currentRouteId = routeId;
   _currentParams = params;
 
-  document.querySelectorAll('.nav-tab').forEach(tab => {
-    const r = routes.find(r => r.id === tab.dataset.route);
-    if (r) tab.textContent = t(r.navKey);
-    tab.classList.toggle('active', tab.dataset.route === routeId);
-  });
-
-  document.querySelectorAll('.mobile-nav-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.route === routeId);
-  });
+  destroyAllCharts();
+  refreshNavLabels();
+  markActive(routeId);
 
   const main = document.getElementById('app-main');
   main.innerHTML = `<div class="view active">${route.view.render(params)}</div>`;
@@ -58,27 +89,42 @@ export function navigateTo(routeId, params = {}) {
   if (window.lucide) window.lucide.createIcons();
 
   if (typeof route.view.init === 'function') {
-    route.view.init(params);
+    // A failing view must never leave the whole SPA blank.
+    Promise.resolve()
+      .then(() => route.view.init(params))
+      .catch(err => console.error(`View "${routeId}" init failed:`, err));
   }
 
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+/** Public navigation: updates the URL hash (so Back / refresh / deep links work);
+ *  the hashchange listener then renders. Same hash → re-render in place. */
+export function navigateTo(routeId, params = {}) {
+  if (!routes.some(r => r.id === routeId)) return;
+  const target = buildHash(routeId, params);
+  if (window.location.hash === target) {
+    renderRoute(routeId, params);
+  } else {
+    window.location.hash = target;
+  }
+}
+
+/** Re-render the current route (used after a language switch). */
+export function rerenderCurrent() {
+  renderRoute(_currentRouteId, _currentParams);
+}
+
+function renderFromHash() {
+  const { id, params } = parseHash(window.location.hash);
+  renderRoute(id, params);
 }
 
 export function initRouter() {
-  const navContainer = document.querySelector('.nav-tabs');
-  if (navContainer) {
-    navContainer.addEventListener('click', (e) => {
-      const tab = e.target.closest('.nav-tab');
-      if (!tab) return;
-      navigateTo(tab.dataset.route);
-    });
-  }
-
+  window.addEventListener('hashchange', renderFromHash);
+  // Legacy hook: other modules may dispatch a 'navigate' CustomEvent.
   window.addEventListener('navigate', (e) => {
-    if (e.detail && e.detail.route) navigateTo(e.detail.route);
+    if (e.detail && e.detail.route) navigateTo(e.detail.route, e.detail.params || {});
   });
-
-  navigateTo('home');
-
-  if (window.lucide) window.lucide.createIcons();
+  renderFromHash(); // single initial render (was rendered twice before)
 }

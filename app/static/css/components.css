@@ -112,6 +112,8 @@
   transition: color 0.2s, border-color 0.2s;
   white-space: nowrap;
   user-select: none;
+  text-decoration: none; /* nav tabs are real links now (keyboard + middle-click) */
+  display: inline-block;
 }
 
 .nav-tab:hover { color: var(--text); }
@@ -762,3 +764,17 @@
   }
 }
 
+
+/* Mobile drawer links (now <a>) */
+a.mobile-nav-tab { display: block; text-decoration: none; }
+
+/* Chart empty / unavailable state */
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  height: 100%;
+  text-align: center;
+  padding: 12px;
+}

@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 logger = logging.getLogger(__name__)
@@ -77,9 +78,9 @@ class NoCacheJSMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         path = request.url.path
         if path.startswith("/static/js/") or path.startswith("/static/css/"):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
+            # "no-cache" = always revalidate (ETag/Last-Modified -> cheap 304),
+            # instead of "no-store" which re-downloaded every file on every load.
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
 repository = ObservationRepository()
@@ -88,11 +89,13 @@ DASHBOARD = STATIC_DIR / "index.html"
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(NoCacheJSMiddleware)
+# Compress JSON / JS / CSS (182 KB of static assets shrink to ~50 KB).
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.get("/", include_in_schema=False)
 def dashboard() -> FileResponse:
-    return FileResponse(DASHBOARD, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    return FileResponse(DASHBOARD, headers={"Cache-Control": "no-cache"})
 
 
 

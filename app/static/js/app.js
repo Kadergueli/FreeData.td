@@ -1,9 +1,7 @@
-import { initRouter, navigateTo, getCurrentRoute, getCurrentParams } from './router.js';
+import { initRouter, rerenderCurrent } from './router.js';
 import { t, setLang, getLang } from './i18n.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-  initRouter();
-
   const toggle = document.getElementById('menu-toggle');
   const closeBtn = document.getElementById('menu-close');
   const mobileNav = document.getElementById('mobile-nav');
@@ -34,47 +32,33 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') closeMenu();
   });
 
+  // Navigation itself is handled by the <a href="#/..."> links + the router's
+  // hashchange listener; here we only need to close the drawer.
   document.querySelectorAll('.mobile-nav-tab').forEach(tab => {
-    tab.addEventListener('click', (e) => {
-      const route = e.currentTarget.getAttribute('data-route');
-      if (route) {
-        document.querySelectorAll('.mobile-nav-tab').forEach(t => t.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        window.dispatchEvent(new CustomEvent('navigate', { detail: { route } }));
-        closeMenu();
-      }
-    });
+    tab.addEventListener('click', closeMenu);
   });
 
   const langBtn = document.getElementById('lang-toggle');
   const langLabel = document.getElementById('lang-label');
 
-  function applyLang(lang) {
+  /** Translate the static shell (header, footer, drawer). Does NOT re-render the view. */
+  function applyShellLang(lang) {
     document.documentElement.lang = lang;
     if (langLabel) langLabel.textContent = lang.toUpperCase();
     document.querySelectorAll('[data-i18n]').forEach(el => {
-      const key = el.getAttribute('data-i18n');
-      el.textContent = t(key);
+      el.textContent = t(el.getAttribute('data-i18n'));
     });
-    const currentRoute = getCurrentRoute();
-    const currentParams = getCurrentParams();
-    if (currentRoute) navigateTo(currentRoute, currentParams);
   }
 
   if (langBtn) {
     langBtn.addEventListener('click', () => {
       const next = getLang() === 'fr' ? 'en' : 'fr';
       setLang(next);
-      applyLang(next);
+      applyShellLang(next);
+      rerenderCurrent();
     });
   }
 
-  const footerTermsBtn = document.getElementById('footer-terms-btn');
-  if (footerTermsBtn) {
-    footerTermsBtn.addEventListener('click', () => {
-      navigateTo('terms');
-    });
-  }
-
-  applyLang(getLang());
+  applyShellLang(getLang());
+  initRouter(); // exactly one initial render
 });

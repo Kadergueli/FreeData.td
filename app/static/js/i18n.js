@@ -46,6 +46,8 @@ const TRANSLATIONS = {
       status_ok:   'STATUT : OPÉRATIONNEL',
       copied:      'COPIÉ !',
       lang_label:  'FR',
+      no_chart_data:     'Pas assez de données pour tracer ce graphique.',
+      chart_unavailable: 'Graphique indisponible (bibliothèque non chargée). Réessayez plus tard.',
     },
 
     // ── Footer ──
@@ -149,6 +151,7 @@ const TRANSLATIONS = {
       status_done:     'STATUT : TERMINÉ',
       density_title:   'Densité des Données par Région',
       density_desc:    'Distribution des enregistrements par station et région du Tchad.',
+      density_series:  'Observations',
       studies_title:   'Rapports d\'Analyse Automatisés',
       btn_run:         'GÉNÉRER UN RAPPORT ANALYTIQUE',
       btn_run_loading: 'EXÉCUTION DE L\'AGENT DE SYNTHÈSE…',
@@ -322,6 +325,8 @@ const TRANSLATIONS = {
       latency:     'LATENCY',
       status_ok:   'STATUS: OPERATIONAL',
       copied:      'COPIED!',
+      no_chart_data:     'Not enough data to draw this chart.',
+      chart_unavailable: 'Chart unavailable (library not loaded). Please try again later.',
       lang_label:  'EN',
     },
     footer: {
@@ -416,6 +421,7 @@ const TRANSLATIONS = {
       status_done:     'STATUS: COMPLETE',
       density_title:   'Data Density by Region',
       density_desc:    'Record distribution by station and region in Chad.',
+      density_series:  'Observations',
       studies_title:   'Automated Analytical Reports',
       btn_run:         'GENERATE ANALYTICAL REPORT',
       btn_run_loading: 'RUNNING SYNTHESIS AGENT…',

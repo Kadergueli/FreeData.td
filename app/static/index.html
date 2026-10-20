@@ -15,10 +15,9 @@
   <link rel="stylesheet" href="/static/css/main.css">
   <link rel="stylesheet" href="/static/css/components.css">
 
-  <!-- External Libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Lucide Professional Icons -->
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <!-- External Libraries (versions pinned: an unpinned CDN can break the site without any change on our side).
+       Chart.js is NOT listed here: it is loaded on demand by js/charts.js, so a CDN outage can never blank the app. -->
+  <script defer src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
 </head>
 <body>
   <div class="app-container">
@@ -44,13 +43,13 @@
 
     <!-- Desktop nav tabs (always visible >= 768px) -->
     <nav class="nav-tabs" id="desktop-nav" aria-label="Main Navigation">
-      <div class="nav-tab active" data-route="home">Mission</div>
-      <div class="nav-tab" data-route="sectors">Explorer</div>
-      <div class="nav-tab" data-route="data">Repository</div>
-      <div class="nav-tab" data-route="sources">Sources</div>
-      <div class="nav-tab" data-route="insights">AI Insights</div>
-      <div class="nav-tab" data-route="api">Export &amp; API</div>
-      <div class="nav-tab" data-route="status">Status</div>
+      <a class="nav-tab" href="#/home" data-route="home">Mission</a>
+      <a class="nav-tab" href="#/sectors" data-route="sectors">Explorateur</a>
+      <a class="nav-tab" href="#/data" data-route="data">Répertoire</a>
+      <a class="nav-tab" href="#/sources" data-route="sources">Sources</a>
+      <a class="nav-tab" href="#/insights" data-route="insights">IA &amp; Analyses</a>
+      <a class="nav-tab" href="#/api" data-route="api">Export &amp; API</a>
+      <a class="nav-tab" href="#/status" data-route="status">Statut</a>
     </nav>
 
     <!-- Mobile nav drawer (hidden by default, toggled by hamburger) -->
@@ -63,13 +62,13 @@
           </button>
         </div>
         <ul class="mobile-nav-list">
-          <li><div class="mobile-nav-tab" data-route="home"><i data-lucide="home" class="nav-icon"></i> <span data-i18n="nav.mission">Mission</span></div></li>
-          <li><div class="mobile-nav-tab" data-route="sectors"><i data-lucide="map" class="nav-icon"></i> <span data-i18n="nav.explorer">Explorateur</span></div></li>
-          <li><div class="mobile-nav-tab" data-route="data"><i data-lucide="database" class="nav-icon"></i> <span data-i18n="nav.repository">Répertoire</span></div></li>
-          <li><div class="mobile-nav-tab" data-route="sources"><i data-lucide="book-open" class="nav-icon"></i> <span data-i18n="nav.sources">Sources</span></div></li>
-          <li><div class="mobile-nav-tab" data-route="insights"><i data-lucide="brain-circuit" class="nav-icon"></i> <span data-i18n="nav.insights">IA & Analyses</span></div></li>
-          <li><div class="mobile-nav-tab" data-route="api"><i data-lucide="code-2" class="nav-icon"></i> <span data-i18n="nav.api">Export & API</span></div></li>
-          <li><div class="mobile-nav-tab" data-route="status"><i data-lucide="activity" class="nav-icon"></i> <span data-i18n="nav.status">Statut</span></div></li>
+          <li><a class="mobile-nav-tab" href="#/home" data-route="home"><i data-lucide="home" class="nav-icon"></i> <span data-i18n="nav.mission">Mission</span></a></li>
+          <li><a class="mobile-nav-tab" href="#/sectors" data-route="sectors"><i data-lucide="map" class="nav-icon"></i> <span data-i18n="nav.explorer">Explorateur</span></a></li>
+          <li><a class="mobile-nav-tab" href="#/data" data-route="data"><i data-lucide="database" class="nav-icon"></i> <span data-i18n="nav.repository">Répertoire</span></a></li>
+          <li><a class="mobile-nav-tab" href="#/sources" data-route="sources"><i data-lucide="book-open" class="nav-icon"></i> <span data-i18n="nav.sources">Sources</span></a></li>
+          <li><a class="mobile-nav-tab" href="#/insights" data-route="insights"><i data-lucide="brain-circuit" class="nav-icon"></i> <span data-i18n="nav.insights">IA & Analyses</span></a></li>
+          <li><a class="mobile-nav-tab" href="#/api" data-route="api"><i data-lucide="code-2" class="nav-icon"></i> <span data-i18n="nav.api">Export & API</span></a></li>
+          <li><a class="mobile-nav-tab" href="#/status" data-route="status"><i data-lucide="activity" class="nav-icon"></i> <span data-i18n="nav.status">Statut</span></a></li>
         </ul>
       </div>
     </nav>
@@ -80,10 +79,10 @@
       <!-- Dynamic View content rendered by Router -->
     </main>
 
-    <footer class="app-footer" style="display:flex;justify:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+    <footer class="app-footer" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
       <span class="mono-xs text-muted" data-i18n="footer.text">FreeData.td — Infrastructure de Données Ouvertes pour le Tchad</span>
       <div style="display:flex;align-items:center;gap:16px;">
-        <span class="mono-xs text-cyan" id="footer-terms-btn" style="cursor:pointer;text-decoration:underline;" data-route="terms" data-i18n="nav.terms">Conditions &amp; Licence</span>
+        <a class="mono-xs text-cyan" id="footer-terms-btn" href="#/terms" style="text-decoration:underline;" data-i18n="nav.terms">Conditions &amp; Licence</a>
         <span class="mono-xs" data-i18n="footer.node">Nœud National : TD-PROD-01</span>
       </div>
     </footer>
