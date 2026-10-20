@@ -110,8 +110,19 @@ def health() -> dict:
 
 
 @app.get("/api/v1/observations")
-def observations(sector: str | None = None, region: str | None = None, limit: int = Query(default=200, ge=1, le=5000)) -> list[dict]:
-    return repository.list_observations(sector=sector, region=region, limit=limit)
+def observations(
+    sector: str | None = None,
+    region: str | None = None,
+    q: str | None = Query(default=None, max_length=100, description="Free-text search (indicator, source, region, unit)"),
+    limit: int = Query(default=200, ge=1, le=5000),
+) -> list[dict]:
+    return repository.list_observations(sector=sector, region=region, limit=limit, q=q)
+
+
+@app.get("/api/v1/stats")
+def stats() -> dict:
+    """Real per-sector / per-region observation counts and the newest publication date."""
+    return repository.get_stats()
 
 
 @app.get("/api/v1/catalog")

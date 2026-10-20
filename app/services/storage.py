@@ -13,6 +13,8 @@ from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
 
+SECTOR_IDS = ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"]
+
 # --- Small process-wide TTL cache for expensive, read-mostly aggregates -----
 # catalog()/list_regions() each pull thousands of rows from Supabase and
 # aggregate them in Python. Every page load of the SPA triggers them, and
@@ -42,6 +44,19 @@ def _cache_set(key: str, value: Any) -> None:
 def invalidate_cache() -> None:
     with _CACHE_LOCK:
         _CACHE.clear()
+
+
+_SEARCH_FORBIDDEN = set(',()*%_\\"\'`;:')
+
+
+def _clean_search_term(q: str | None, max_len: int = 100) -> str | None:
+    """Make free text safe to embed in a PostgREST `or=()` filter: those characters
+    are filter syntax (a comma would start a new condition). Returns None if empty."""
+    if not q:
+        return None
+    cleaned = "".join(" " if c in _SEARCH_FORBIDDEN else c for c in str(q))[:max_len]
+    cleaned = " ".join(cleaned.split())
+    return cleaned or None
 
 
 def _with_retry(operation: Any, *, attempts: int = 3, base_delay: float = 0.3, label: str = "Supabase operation"):
@@ -371,7 +386,7 @@ class ObservationRepository:
 
         return len(rows)
 
-    def list_observations(self, sector: str | None = None, region: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    def list_observations(self, sector: str | None = None, region: str | None = None, limit: int = 100, q: str | None = None) -> list[dict[str, Any]]:
         raw_obs: list[dict[str, Any]] = []
         # Over-fetch only a modest margin for the dedup pass below (it used to be
         # limit * 4: a 5000-row export pulled 20000 full rows into memory).
@@ -382,6 +397,7 @@ class ObservationRepository:
             region = None
         if sector and sector.strip().lower() in ("all", "tous"):
             sector = None
+        q = _clean_search_term(q)
 
         if self._supabase:
             try:
@@ -390,6 +406,12 @@ class ObservationRepository:
                     query = query.eq("secteur", sector)
                 if region:
                     query = query.ilike("region", f"%{region}%")
+                if q:
+                    # PostgREST uses '*' as the ilike wildcard inside or=(); _clean_search_term()
+                    # already removed every filter-syntax character (',' '(' ')' '*' ...).
+                    query = query.or_(
+                        f"indicateur.ilike.*{q}*,source_api.ilike.*{q}*,region.ilike.*{q}*,unite.ilike.*{q}*"
+                    )
                 query = query.order("date_reference", desc=True).limit(fetch_limit)
                 raw_obs = [self._public_to_observation(row) for row in query.execute().data]
             except Exception as exc:
@@ -413,6 +435,13 @@ class ObservationRepository:
                     else:
                         conditions.append("region LIKE ? COLLATE NOCASE")
                         parameters.append(f"%{region}%")
+                if q:
+                    like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                    conditions.append(
+                        "(indicator LIKE ? ESCAPE '\\' OR source LIKE ? ESCAPE '\\' "
+                        "OR region LIKE ? ESCAPE '\\' OR unit LIKE ? ESCAPE '\\')"
+                    )
+                    parameters.extend([like, like, like, like])
                 if conditions:
                     query += " WHERE " + " AND ".join(conditions)
                 query += " ORDER BY reference_date DESC LIMIT ?"
@@ -461,7 +490,9 @@ class ObservationRepository:
                 query = self._supabase.table("table_public").select("id", count="exact")
                 if sector:
                     query = query.eq("secteur", sector)
-                response = query.execute()
+                # count="exact" returns the full total; limit(1) stops PostgREST from
+                # also shipping up to 1000 rows of payload just to be counted.
+                response = query.limit(1).execute()
                 if response.count is not None:
                     return response.count
             except Exception as exc:
@@ -532,27 +563,26 @@ class ObservationRepository:
             "status": row.get("statut_qualite", "validated"),
         }
 
-    def list_regions(self) -> list[str]:
-        """Distinct region values actually present in the data, most-observed
-        first. Lets the frontend build a real, always-current region filter
-        instead of a hand-maintained list that inevitably drifts out of sync
-        with whatever the collection agents actually populate."""
-        cached = _cache_get("regions", 300.0)
+    def _region_counts(self) -> dict[str, int]:
+        """Observation count per region actually present in the data (cached)."""
+        cached = _cache_get("region_counts", 300.0)
         if cached is not None:
-            return list(cached)
+            return dict(cached)
         counts: dict[str, int] = {}
+        ok = False
         if self._supabase:
             try:
                 res = _with_retry(
                     lambda: self._supabase.table("table_public").select("region").not_.is_("region", "null").limit(5000).execute(),
-                    label="list_regions",
+                    label="region_counts",
                 )
                 for row in res.data or []:
                     reg = (row.get("region") or "").strip()
                     if reg and reg.lower() not in ("national", "", "tcd", "tchad"):
                         counts[reg] = counts.get(reg, 0) + 1
+                ok = True
             except Exception as exc:
-                logger.warning("list_regions Supabase query failed: %s", exc)
+                logger.warning("region_counts Supabase query failed: %s", exc)
         else:
             try:
                 with self._connection() as connection:
@@ -563,12 +593,72 @@ class ObservationRepository:
                         reg = str(row["region"] or "").strip()
                         if reg and reg.lower() not in ("national", "", "tcd", "tchad"):
                             counts[reg] = row["n"]
+                ok = True
             except Exception as exc:
-                logger.warning("list_regions SQLite query failed: %s", exc)
+                logger.warning("region_counts SQLite query failed: %s", exc)
+        if ok and counts:
+            _cache_set("region_counts", dict(counts))
+        return counts
 
-        result = sorted(counts, key=lambda r: counts[r], reverse=True)
-        if result:
-            _cache_set("regions", result)
+    def list_regions(self) -> list[str]:
+        """Distinct region values actually present in the data, most-observed
+        first. Lets the frontend build a real, always-current region filter
+        instead of a hand-maintained list that inevitably drifts out of sync
+        with whatever the collection agents actually populate."""
+        counts = self._region_counts()
+        return sorted(counts, key=lambda r: counts[r], reverse=True)
+
+    def get_stats(self) -> dict[str, Any]:
+        """Real totals for the UI: observations per sector and per region, plus the
+        newest publication date. One cheap call replaces what the frontend used to
+        approximate by downloading 100-500 rows (and the heavy /catalog) and counting
+        in the browser. A sector whose count could not be read is OMITTED (unknown),
+        never reported as 0."""
+        cached = _cache_get("stats", 60.0)
+        if cached is not None:
+            return cached
+
+        sectors: dict[str, int] = {}
+        last_update: str | None = None
+        if self._supabase:
+            for sec in SECTOR_IDS:
+                try:
+                    res = _with_retry(
+                        lambda sec=sec: self._supabase.table("table_public").select("id", count="exact").eq("secteur", sec).limit(1).execute(),
+                        label=f"stats.count({sec})",
+                    )
+                    if res.count is not None:
+                        sectors[sec] = int(res.count)
+                except Exception as exc:
+                    logger.warning("stats: count for sector '%s' failed: %s", sec, exc)
+            try:
+                res = _with_retry(
+                    lambda: self._supabase.table("table_public").select("date_publication").order("date_publication", desc=True).limit(1).execute(),
+                    label="stats.last_update",
+                )
+                if res.data:
+                    last_update = res.data[0].get("date_publication")
+            except Exception as exc:
+                logger.warning("stats: last_update failed: %s", exc)
+        else:
+            try:
+                with self._connection() as connection:
+                    for row in connection.execute("SELECT sector, COUNT(*) AS n FROM observations GROUP BY sector").fetchall():
+                        sectors[str(row["sector"])] = int(row["n"])
+                    row = connection.execute("SELECT MAX(collected_at) AS m FROM observations").fetchone()
+                    last_update = row["m"] if row else None
+            except Exception as exc:
+                logger.warning("stats SQLite query failed: %s", exc)
+
+        regions = self._region_counts()
+        result = {
+            "total": sum(sectors.values()),
+            "sectors": sectors,
+            "regions": dict(sorted(regions.items(), key=lambda kv: kv[1], reverse=True)),
+            "last_update": last_update,
+        }
+        if sectors:  # never cache a total failure
+            _cache_set("stats", result)
         return result
 
     def catalog(self) -> list[dict[str, Any]]:
@@ -583,7 +673,7 @@ class ObservationRepository:
     def _build_catalog(self) -> list[dict[str, Any]]:
         rows = []
         if self._supabase:
-            for sec in ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"]:
+            for sec in SECTOR_IDS:
                 try:
                     res = self._supabase.table("table_public").select("secteur,indicateur,source_api,date_reference").eq("secteur", sec).order("date_reference", desc=True).limit(1000).execute()
                     if res.data:
