@@ -2,15 +2,14 @@
  * View: Landing / Home — "OPEN DATA INFRASTRUCTURE FOR CHAD"
  */
 
-import { fetchObservations, fetchStats, fetchAudit, triggerHarvest } from '../api_client.js';
+import { fetchObservations, fetchStats, fetchAudit } from '../api_client.js';
+import { PUBLIC_HARVEST_SECTORS, runHarvest } from '../harvest.js';
 import { showToast, formatDate } from '../ui.js';
 import { navigateTo } from '../router.js';
 import { t, getLang } from '../i18n.js';
 import { OFFICIAL_SOURCES } from '../sources_catalog.js';
 import { escapeHtml } from '../sanitize.js';
 
-// Sectors a visitor may collect without the admin key (transport/education need it).
-const PUBLIC_HARVEST_SECTORS = ['agriculture', 'environment', 'markets', 'economy', 'health', 'energy'];
 const ALL_SECTOR_COUNT = 8;
 
 let _harvesting = false;
@@ -217,31 +216,18 @@ export const HomeView = {
     const idle = btn ? btn.innerHTML : '';
     if (btn) btn.disabled = true;
 
-    const n = PUBLIC_HARVEST_SECTORS.length;
     let ok = 0;
-    let stored = 0;
-    let rateLimited = false;
-
     try {
-      for (let i = 0; i < n; i++) {
-        const sector = PUBLIC_HARVEST_SECTORS[i];
+      const res = await runHarvest(PUBLIC_HARVEST_SECTORS, (i, n, sector) => {
         if (btn) {
-          btn.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${fmt(t('home.harvest_progress'), { i: i + 1, n, sector: t(`sectors.names.${sector}`) })}`;
+          btn.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${fmt(t('home.harvest_progress'), { i, n, sector: t(`sectors.names.${sector}`) })}`;
           if (window.lucide) window.lucide.createIcons();
         }
-        try {
-          const res = await triggerHarvest(sector, 'all');
-          ok += 1;
-          stored += Number(res && res.stored) || 0;
-        } catch (err) {
-          console.warn(`harvest ${sector} failed:`, err);
-          if (err.status === 429) { rateLimited = true; break; }
-        }
-      }
-
-      if (rateLimited) showToast(t('home.harvest_rate_limited'), 'error');
-      else if (ok === 0) showToast(t('home.harvest_failed_all'), 'error');
-      else showToast(fmt(t('home.harvest_summary'), { ok, n, stored }), ok === n ? 'success' : 'info');
+      });
+      ok = res.ok;
+      if (res.rateLimited) showToast(t('home.harvest_rate_limited'), 'error');
+      else if (res.ok === 0) showToast(t('home.harvest_failed_all'), 'error');
+      else showToast(fmt(t('home.harvest_summary'), { ok: res.ok, n: res.n, stored: res.stored }), res.ok === res.n ? 'success' : 'info');
     } finally {
       _harvesting = false;
       const again = document.getElementById('btn-home-harvest');

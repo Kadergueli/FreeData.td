@@ -1,19 +1,22 @@
 /**
- * View: Data Explorer — Repository de Données Ouvertes
+ * View: Data Explorer — Repository of open data.
+ *
+ * - Search runs on the SERVER (it used to filter only the ~15 rows already on screen).
+ * - Missing values are shown as "—" (they used to render as "0").
+ * - The trend chart plots ONE indicator in ONE region (it used to mix prices, rainfall…
+ *   on a single line) and never draws invented data.
+ * - Responses are sequenced: a slow, older request can no longer overwrite a newer one.
  */
 
-import {
-  fetchObservations,
-  triggerAgricultureHarvest,
-  triggerEnvironmentHarvest,
-  triggerMarketsHarvest,
-  triggerEconomyHarvest,
-  triggerHealthHarvest,
-  triggerEnergyHarvest
-} from '../api_client.js';
+import { fetchObservations, fetchStats } from '../api_client.js';
 import { initChartMais } from '../charts.js';
-import { t } from '../i18n.js';
+import { runHarvest, isPublicHarvestSector, PUBLIC_HARVEST_SECTORS } from '../harvest.js';
+import { showToast, formatDate } from '../ui.js';
+import { t, getLang } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
+
+const PAGE_SIZE = 15;
+const SEARCH_DEBOUNCE_MS = 300;
 
 function getSectorsFilter() {
   return [
@@ -29,33 +32,39 @@ function getSectorsFilter() {
   ];
 }
 
+// Per-visit state is reset on every render(); only display preferences persist.
 let activeSector = 'tous';
-let currentLimit = 15;
+let currentLimit = PAGE_SIZE;
+let searchQuery = '';
+let chartIndicator = '';
+let currentObsData = [];
+let totalKnown = null;
 let sortAsc = false;
 let isGridView = false;
-let searchQuery = '';
-let currentObsData = [];
+let _reqId = 0;
+let _harvesting = false;
 
 function formatObsValue(val) {
+  if (val === null || val === undefined || val === '') return '—';
   const num = Number(val);
   if (isNaN(num)) return escapeHtml(val);
-  if (Number.isInteger(num)) return num.toLocaleString();
   return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 function renderObservationCard(o) {
-  // Every field below can originate from an external, third-party data source
-  // (harvested via the collection agents) — never trust it as HTML.
-  const badgeTextRaw = o.status || t('common.validated');
-  const badgeClass = badgeTextRaw === t('common.validated') || badgeTextRaw === 'VALIDÉ' || badgeTextRaw === 'validated' ? 'badge--valid' : 'badge--cyan';
+  // Every field can originate from a third-party source — never trust it as HTML.
+  const badgeTextRaw = String(o.status || t('common.validated'));
+  const isValid = ['validated', 'validé', 'valide'].includes(badgeTextRaw.toLowerCase())
+    || badgeTextRaw === t('common.validated');
+  const badgeClass = isValid ? 'badge--valid' : 'badge--cyan';
   const badgeText = escapeHtml(badgeTextRaw.toUpperCase());
-  const sector = escapeHtml((o.sector || 'GENERAL').toUpperCase());
+  const sector = escapeHtml((o.sector || '').toUpperCase());
   const unit = escapeHtml(o.unit || '');
-  const indicator = escapeHtml(o.indicator || 'Observation');
-  const region = escapeHtml(o.region || t('common.location'));
-  const date = escapeHtml(o.reference_date || o.collected_at || t('common.date'));
-  const source = escapeHtml((o.source || 'FreeData').toUpperCase());
-  const countryCode = escapeHtml(o.country_code || 'TCH');
+  const indicator = escapeHtml(o.indicator || '—');
+  const region = escapeHtml(o.region || '—');
+  const date = escapeHtml(formatDate(o.reference_date || o.collected_at, getLang()) || '—');
+  const source = escapeHtml((o.source || '—').toUpperCase());
+  const countryCode = escapeHtml(o.country_code || '');
 
   return `
     <div class="card obs-card-item" style="padding:16px;">
@@ -73,27 +82,54 @@ function renderObservationCard(o) {
     </div>`;
 }
 
+/** Pick the (indicator, region) series to chart: the chosen indicator, in the region that
+ *  has the most points for it. Returns { rows, indicator, region, unit, indicators }. */
+function pickSeries(rows) {
+  const byInd = new Map();
+  rows.forEach(r => {
+    if (!r.indicator || r.value === null || r.value === undefined || isNaN(Number(r.value))) return;
+    byInd.set(r.indicator, (byInd.get(r.indicator) || 0) + 1);
+  });
+  const indicators = [...byInd.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+  const indicator = indicators.includes(chartIndicator) ? chartIndicator : (indicators[0] || '');
+  const ofInd = rows.filter(r => r.indicator === indicator);
+  const byReg = new Map();
+  ofInd.forEach(r => byReg.set(r.region || '', (byReg.get(r.region || '') || 0) + 1));
+  const region = [...byReg.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name)[0] || '';
+  const series = ofInd.filter(r => (r.region || '') === region);
+  return { rows: series, indicator, region, unit: (series[0] && series[0].unit) || '', indicators };
+}
+
+function harvestTargets() {
+  if (activeSector === 'tous') return PUBLIC_HARVEST_SECTORS;
+  return isPublicHarvestSector(activeSector) ? [activeSector] : [];
+}
+
 export const DataView = {
   render(params = {}) {
-    const initSector = (params.sector || 'tous').toLowerCase();
-    activeSector = initSector;
-    const sectorsFilter = getSectorsFilter();
+    activeSector = (params.sector || 'tous').toLowerCase();
+    currentLimit = PAGE_SIZE;
+    searchQuery = '';
+    chartIndicator = '';
+    currentObsData = [];
+    totalKnown = null;
+    _reqId += 1; // invalidate anything still in flight from a previous visit
+
+    const adminOnly = harvestTargets().length === 0;
 
     return `
-      <div class="flex justify-between items-start mb-4">
-        <div>
-          <h2 class="hero-title uppercase" style="font-size:20px;margin-bottom:0;">${t('data.title')}</h2>
-        </div>
-        <button class="btn btn-cyan" id="btn-data-harvest">
+      <div class="flex justify-between items-start mb-4 flex-wrap gap-3">
+        <h2 class="hero-title uppercase" style="font-size:20px;margin-bottom:0;">${t('data.title')}</h2>
+        <button class="btn btn-cyan" id="btn-data-harvest" ${adminOnly ? `disabled title="${escapeHtml(t('data.admin_only'))}"` : ''}>
           <i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('common.collect')}
         </button>
       </div>
 
       <div class="flex gap-2 mb-6">
         <div style="flex:1;">
-          <input class="input-search" type="text" placeholder="${t('data.search')}" id="search-obs" value="${searchQuery}">
+          <input class="input-search" type="search" placeholder="${t('data.search')}" id="search-obs" value="" aria-label="${t('data.search')}" maxlength="100">
         </div>
-        <button class="btn btn-ghost" id="btn-grid-toggle" style="padding:0 16px;" title="Changer d'affichage Grid/Liste" aria-label="Toggle View Layout">
+        <button class="btn btn-ghost" id="btn-grid-toggle" style="padding:0 16px;" title="${t('data.layout_toggle')}" aria-label="${t('data.layout_toggle')}" aria-pressed="${isGridView}">
           <i data-lucide="${isGridView ? 'list' : 'layout-grid'}" style="width:16px;height:16px;"></i>
         </button>
       </div>
@@ -101,18 +137,18 @@ export const DataView = {
       <div class="mb-6">
         <h4 class="mono-xs text-muted uppercase mb-2">${t('data.sectors_label')}</h4>
         <div class="flex gap-2 flex-wrap" id="sector-filter-buttons">
-          ${sectorsFilter.map(s => {
+          ${getSectorsFilter().map(s => {
             const isActive = s.id === activeSector;
-            return `<button class="btn ${isActive ? 'btn-cyan' : 'btn-ghost'} filter-sector-btn mono-sm" data-sector="${s.id}">${s.label}</button>`;
+            return `<button type="button" class="btn ${isActive ? 'btn-cyan' : 'btn-ghost'} filter-sector-btn mono-sm" data-sector="${s.id}" aria-pressed="${isActive}">${s.label}</button>`;
           }).join('')}
         </div>
       </div>
 
       <div class="flex justify-between items-center mb-4">
-        <h4 class="uppercase" style="font-size:14px;" id="obs-count-header">${t('data.obs_header')} (${t('common.loading')})</h4>
-        <span class="mono-xs text-cyan cursor-pointer flex items-center gap-1" id="btn-sort-toggle">
+        <h4 class="uppercase" style="font-size:14px;" id="obs-count-header" aria-live="polite">${t('data.obs_header')} (${t('common.loading')})</h4>
+        <button type="button" class="mono-xs text-cyan flex items-center gap-1" id="btn-sort-toggle" style="background:none;border:0;cursor:pointer;">
           <i data-lucide="arrow-up-down" style="width:12px;height:12px;"></i> ${t('data.sort_label')} ${sortAsc ? '▲' : '▼'}
-        </span>
+        </button>
       </div>
 
       <div id="obs-list-container" class="${isGridView ? 'grid-2 mb-4' : 'flex flex-col gap-3 mb-4'}">
@@ -121,11 +157,14 @@ export const DataView = {
         </div>
       </div>
 
-      <!-- Live Dynamic Trend Chart -->
       <div class="card mt-4 mb-4" style="padding:16px;border-color:var(--border-strong);" id="chart-section-card">
-        <h4 class="mono-sm uppercase mb-4 text-cyan flex items-center gap-2">
-          <i data-lucide="line-chart" style="width:16px;height:16px;"></i> ${t('data.trend_title')}
-        </h4>
+        <div class="flex justify-between items-center flex-wrap gap-2 mb-2">
+          <h4 class="mono-sm uppercase text-cyan flex items-center gap-2">
+            <i data-lucide="line-chart" style="width:16px;height:16px;"></i> ${t('data.trend_title')}
+          </h4>
+          <select id="chart-indicator-select" class="input-search" style="width:auto;max-width:100%;padding:6px 10px;font-size:12px;" aria-label="${t('data.chart_indicator')}"></select>
+        </div>
+        <p class="mono-xs text-muted mb-4" id="chart-caption"></p>
         <div class="chart-container" style="height:160px;">
           <canvas id="chart-mais"></canvas>
         </div>
@@ -136,141 +175,150 @@ export const DataView = {
       </div>
 
       <div class="mt-4 mb-6">
-        <button class="btn btn-ghost w-full justify-center mono-sm" id="btn-load-more" style="padding:12px;">
+        <button class="btn btn-ghost w-full justify-center mono-sm" id="btn-load-more" style="padding:12px;display:none;">
           <i data-lucide="plus" style="width:16px;height:16px;"></i> ${t('data.load_more')}
         </button>
       </div>
     `;
   },
 
-  async init(params = {}) {
-    if (window.lucide) window.lucide.createIcons();
-
-    // 1. Sector Filter Buttons
+  async init() {
     document.querySelectorAll('.filter-sector-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
-        const sec = e.currentTarget.getAttribute('data-sector');
-        activeSector = sec;
-
+        activeSector = e.currentTarget.getAttribute('data-sector');
         document.querySelectorAll('.filter-sector-btn').forEach(b => {
-          b.classList.remove('btn-cyan');
-          b.classList.add('btn-ghost');
+          const on = b === e.currentTarget;
+          b.classList.toggle('btn-cyan', on);
+          b.classList.toggle('btn-ghost', !on);
+          b.setAttribute('aria-pressed', String(on));
         });
-        e.currentTarget.classList.remove('btn-ghost');
-        e.currentTarget.classList.add('btn-cyan');
-
-        currentLimit = 15;
+        const harvestBtn = document.getElementById('btn-data-harvest');
+        if (harvestBtn && !_harvesting) {
+          const none = harvestTargets().length === 0;
+          harvestBtn.disabled = none;
+          if (none) harvestBtn.title = t('data.admin_only'); else harvestBtn.removeAttribute('title');
+        }
+        currentLimit = PAGE_SIZE;
+        chartIndicator = '';
         await DataView.loadDynamicData();
       });
     });
 
-    // 3. Active Search Input Filter
-    const searchInput = document.getElementById('search-obs');
-    if (searchInput) {
-      searchInput.addEventListener('input', (e) => {
-        searchQuery = e.target.value;
-        DataView.renderObsList();
-      });
-    }
+    // Server-side search, debounced.
+    let timer = null;
+    document.getElementById('search-obs')?.addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        currentLimit = PAGE_SIZE;
+        DataView.loadDynamicData();
+      }, SEARCH_DEBOUNCE_MS);
+    });
 
-    // 4. Grid / List View Layout Toggle Button
-    const gridToggleBtn = document.getElementById('btn-grid-toggle');
-    if (gridToggleBtn) {
-      gridToggleBtn.addEventListener('click', () => {
-        isGridView = !isGridView;
-        const container = document.getElementById('obs-list-container');
-        if (container) {
-          container.className = isGridView ? 'grid-2 mb-4' : 'flex flex-col gap-3 mb-4';
-        }
-        gridToggleBtn.innerHTML = `<i data-lucide="${isGridView ? 'list' : 'layout-grid'}" style="width:16px;height:16px;"></i>`;
-        if (window.lucide) window.lucide.createIcons();
-      });
-    }
+    document.getElementById('btn-grid-toggle')?.addEventListener('click', (e) => {
+      isGridView = !isGridView;
+      const container = document.getElementById('obs-list-container');
+      if (container) container.className = isGridView ? 'grid-2 mb-4' : 'flex flex-col gap-3 mb-4';
+      const btn = e.currentTarget;
+      btn.setAttribute('aria-pressed', String(isGridView));
+      btn.innerHTML = `<i data-lucide="${isGridView ? 'list' : 'layout-grid'}" style="width:16px;height:16px;"></i>`;
+      if (window.lucide) window.lucide.createIcons();
+    });
 
-    // 5. Sort toggle
-    const sortBtn = document.getElementById('btn-sort-toggle');
-    if (sortBtn) {
-      sortBtn.addEventListener('click', () => {
-        sortAsc = !sortAsc;
-        sortBtn.innerHTML = `<i data-lucide="arrow-up-down" style="width:12px;height:12px;"></i> ${t('data.sort_label')} ${sortAsc ? '▲' : '▼'}`;
-        if (window.lucide) window.lucide.createIcons();
-        DataView.renderObsList();
-      });
-    }
+    document.getElementById('btn-sort-toggle')?.addEventListener('click', (e) => {
+      sortAsc = !sortAsc;
+      e.currentTarget.innerHTML = `<i data-lucide="arrow-up-down" style="width:12px;height:12px;"></i> ${t('data.sort_label')} ${sortAsc ? '▲' : '▼'}`;
+      if (window.lucide) window.lucide.createIcons();
+      DataView.renderObsList();
+    });
 
-    // 6. Load More Button
-    const loadMoreBtn = document.getElementById('btn-load-more');
-    if (loadMoreBtn) {
-      loadMoreBtn.addEventListener('click', async () => {
-        currentLimit += 25;
-        loadMoreBtn.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${t('common.loading')}`;
-        if (window.lucide) window.lucide.createIcons();
-        await DataView.loadDynamicData();
-      });
-    }
+    document.getElementById('btn-load-more')?.addEventListener('click', async (e) => {
+      currentLimit += 25;
+      e.currentTarget.disabled = true;
+      await DataView.loadDynamicData({ keepScroll: true });
+    });
 
-    // 7. Wire "COLLECT LIVE DATA" button
-    const btnHarvest = document.getElementById('btn-data-harvest');
-    if (btnHarvest) {
-      btnHarvest.addEventListener('click', async () => {
-        btnHarvest.disabled = true;
-        btnHarvest.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${t('common.loading')}`;
-        if (window.lucide) window.lucide.createIcons();
+    document.getElementById('chart-indicator-select')?.addEventListener('change', (e) => {
+      chartIndicator = e.target.value;
+      DataView.renderChart();
+    });
 
-        try {
-          if (activeSector === 'environment') {
-            await triggerEnvironmentHarvest('all');
-          } else if (activeSector === 'markets') {
-            await triggerMarketsHarvest('all');
-          } else if (activeSector === 'economy') {
-            await triggerEconomyHarvest('all');
-          } else if (activeSector === 'health') {
-            await triggerHealthHarvest('all');
-          } else if (activeSector === 'energy') {
-            await triggerEnergyHarvest('all');
-          } else {
-            await triggerAgricultureHarvest('all');
-          }
-          alert(t('common.harvest_ok'));
-          await DataView.loadDynamicData();
-        } catch (err) {
-          alert('Harvest failed: ' + err.message);
-        } finally {
-          btnHarvest.disabled = false;
-          btnHarvest.innerHTML = `<i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('common.collect')}`;
-          if (window.lucide) window.lucide.createIcons();
-        }
-      });
-    }
+    document.getElementById('btn-data-harvest')?.addEventListener('click', () => DataView.harvest());
 
-    // Initial load
     await DataView.loadDynamicData();
   },
 
-  async loadDynamicData() {
-    const container = document.getElementById('obs-list-container');
-    const header = document.getElementById('obs-count-header');
-    const loadMoreBtn = document.getElementById('btn-load-more');
+  async harvest() {
+    const targets = harvestTargets();
+    if (_harvesting || targets.length === 0) return;
+    _harvesting = true;
+    const btns = ['btn-data-harvest', 'btn-empty-harvest'].map(id => document.getElementById(id)).filter(Boolean);
+    const idle = btns.map(b => b.innerHTML);
+    btns.forEach(b => { b.disabled = true; b.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${t('data.harvest_loading')}`; });
+    if (window.lucide) window.lucide.createIcons();
 
+    let res = { ok: 0, n: targets.length, stored: 0, rateLimited: false };
     try {
-      const data = await fetchObservations(activeSector, currentLimit);
-      currentObsData = data || [];
-
-      if (loadMoreBtn) {
-        loadMoreBtn.innerHTML = `<i data-lucide="plus" style="width:16px;height:16px;"></i> ${t('data.load_more')}`;
-        if (window.lucide) window.lucide.createIcons();
-      }
-
-      // Render chart using real backend values
-      initChartMais(currentObsData);
-
-      DataView.renderObsList();
-    } catch (err) {
-      console.warn('DataView load error:', err);
-      if (container) {
-        container.innerHTML = `<div class="card" style="padding:16px;"><p class="mono-sm text-accent">${t('common.error')}</p></div>`;
-      }
+      res = await runHarvest(targets);
+    } finally {
+      _harvesting = false;
+      [ 'btn-data-harvest', 'btn-empty-harvest' ].map(id => document.getElementById(id)).forEach((b) => {
+        if (!b) return;
+        b.disabled = false;
+        const i = btns.indexOf(b);
+        if (i >= 0) b.innerHTML = idle[i];
+      });
+      if (window.lucide) window.lucide.createIcons();
     }
+
+    if (res.rateLimited) showToast(t('home.harvest_rate_limited'), 'error');
+    else if (res.ok === 0) showToast(t('home.harvest_failed_all'), 'error');
+    else showToast(t('home.harvest_summary').replace('{ok}', res.ok).replace('{n}', res.n).replace('{stored}', res.stored), res.ok === res.n ? 'success' : 'info');
+    if (res.ok > 0) await DataView.loadDynamicData();
+  },
+
+  async loadDynamicData({ keepScroll = false } = {}) {
+    const myReq = ++_reqId;
+    const y = window.scrollY;
+    const q = searchQuery.trim();
+
+    const [rows, stats] = await Promise.all([
+      fetchObservations(activeSector, currentLimit, { q }),
+      totalKnown === null ? fetchStats() : Promise.resolve(null),
+    ]);
+    if (myReq !== _reqId) return; // a newer request (or another page) superseded this one
+
+    currentObsData = Array.isArray(rows) ? rows : [];
+    if (stats) {
+      totalKnown = { total: stats.total, sectors: stats.sectors || {} };
+    }
+
+    const moreBtn = document.getElementById('btn-load-more');
+    if (moreBtn) {
+      moreBtn.disabled = false;
+      // Another page exists only if the server filled the whole page we asked for.
+      moreBtn.style.display = currentObsData.length >= currentLimit ? '' : 'none';
+    }
+
+    DataView.renderObsList();
+    DataView.renderChart();
+    if (keepScroll) window.scrollTo({ top: y, behavior: 'auto' });
+  },
+
+  renderChart() {
+    const sel = document.getElementById('chart-indicator-select');
+    const caption = document.getElementById('chart-caption');
+    const s = pickSeries(currentObsData);
+    if (sel) {
+      sel.innerHTML = s.indicators.map(name => `<option value="${escapeHtml(name)}"${name === s.indicator ? ' selected' : ''}>${escapeHtml(name)}</option>`).join('');
+      sel.style.display = s.indicators.length > 1 ? '' : 'none';
+    }
+    if (caption) {
+      caption.textContent = s.indicator
+        ? [s.indicator, s.region, s.unit].filter(Boolean).join(' · ')
+        : '';
+    }
+    initChartMais(s.rows);
   },
 
   renderObsList() {
@@ -278,77 +326,38 @@ export const DataView = {
     const header = document.getElementById('obs-count-header');
     if (!container) return;
 
-    let filtered = [...currentObsData];
-
-    // Filter by search query across all observation fields
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(o =>
-        (o.indicator || '').toLowerCase().includes(q) ||
-        (o.sector || '').toLowerCase().includes(q) ||
-        (o.region || '').toLowerCase().includes(q) ||
-        (o.source || '').toLowerCase().includes(q) ||
-        (o.unit || '').toLowerCase().includes(q) ||
-        String(o.value || '').toLowerCase().includes(q) ||
-        (o.reference_date || '').toLowerCase().includes(q)
-      );
-    }
-
-    // Update count header
-    if (header) {
-      header.textContent = `${t('data.obs_header')} : ${filtered.length}`;
-    }
-
-    let sorted = filtered;
-    sorted.sort((a, b) => {
-      const dateA = new Date(a.reference_date || a.collected_at || 0);
-      const dateB = new Date(b.reference_date || b.collected_at || 0);
-      return sortAsc ? dateA - dateB : dateB - dateA;
+    const sorted = [...currentObsData].sort((a, b) => {
+      const da = new Date(a.reference_date || a.collected_at || 0).getTime() || 0;
+      const db = new Date(b.reference_date || b.collected_at || 0).getTime() || 0;
+      return sortAsc ? da - db : db - da;
     });
 
+    if (header) {
+      let total = null;
+      if (!searchQuery.trim() && totalKnown) {
+        total = activeSector === 'tous' ? totalKnown.total : totalKnown.sectors[activeSector];
+      }
+      header.textContent = `${t('data.obs_header')} : ${sorted.length}${typeof total === 'number' ? ` / ${total.toLocaleString()}` : ''}`;
+    }
+
     if (sorted.length === 0) {
+      const searching = searchQuery.trim() !== '';
+      const canHarvest = harvestTargets().length > 0 && !searching;
       container.innerHTML = `
         <div class="card mb-4" style="padding:24px;text-align:center;grid-column:1/-1;">
-          <p class="mono-sm text-muted mb-3">${t('data.empty_msg')} "${activeSector.toUpperCase()}".</p>
-          <button class="btn btn-cyan mono-sm" id="btn-empty-harvest">
+          <p class="mono-sm text-muted mb-3">${searching
+            ? `${t('data.no_results')} « ${escapeHtml(searchQuery.trim())} ».`
+            : `${t('data.empty_msg')} "${escapeHtml(activeSector.toUpperCase())}".`}</p>
+          ${canHarvest ? `<button class="btn btn-cyan mono-sm" id="btn-empty-harvest">
             <i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('data.empty_btn')}
-          </button>
-        </div>
-      `;
+          </button>` : ''}
+        </div>`;
       if (window.lucide) window.lucide.createIcons();
-
-      const emptyHarvestBtn = document.getElementById('btn-empty-harvest');
-      if (emptyHarvestBtn) {
-        emptyHarvestBtn.addEventListener('click', async () => {
-          emptyHarvestBtn.disabled = true;
-          emptyHarvestBtn.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${t('data.harvest_loading')}`;
-          if (window.lucide) window.lucide.createIcons();
-
-          try {
-            if (activeSector === 'environment') {
-              await triggerEnvironmentHarvest('all');
-            } else if (activeSector === 'markets') {
-              await triggerMarketsHarvest('all');
-            } else if (activeSector === 'economy') {
-              await triggerEconomyHarvest('all');
-            } else if (activeSector === 'health') {
-              await triggerHealthHarvest('all');
-            } else if (activeSector === 'energy') {
-              await triggerEnergyHarvest('all');
-            } else {
-              await triggerAgricultureHarvest('all');
-            }
-            alert(t('common.harvest_ok'));
-            await DataView.loadDynamicData();
-          } catch (err) {
-            alert(`${t('common.harvest_err')}: ${err.message}`);
-          }
-        });
-      }
+      document.getElementById('btn-empty-harvest')?.addEventListener('click', () => DataView.harvest());
       return;
     }
 
     container.innerHTML = sorted.map(renderObservationCard).join('');
     if (window.lucide) window.lucide.createIcons();
-  }
+  },
 };

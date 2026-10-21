@@ -39,7 +39,7 @@ sectors = ["agriculture", "health", "energy", "markets"]
 regions = ["Logone Occidental", "Logone Oriental", "Lac", "Mayo-Kebbi Est", "Mayo-Kebbi Ouest"]
 for i in range(60):
     rows.append(ObservationCreate(
-        sector=sectors[i % 4], indicator=f"Indicateur {i % 7}", value=float(i) + 0.5, unit="u",
+        sector=sectors[i % 4], indicator=f"Indicateur {i % 2}", value=float(i) + 0.5, unit="u",
         reference_date=f"2024-{i % 12 + 1:02d}-{i % 27 + 1:02d}", country_code="TCD",
         region=regions[i % 5], source="World Bank", source_url="https://example.org",
         license="CC-BY 4.0", notes="seed"))
