@@ -184,6 +184,9 @@ const TRANSLATIONS = {
       fresh_badge:     'À JOUR',
       stale_badge:     'NOUVELLES DONNÉES',
       unknown_date:    'Date inconnue',
+      density_sample:  'Échantillon des {n} observations les plus récentes de ce secteur.',
+      running_detail:  'Synthèse statistique des observations et rédaction du rapport…',
+      err_timeout:     'Délai dépassé : la génération a pris trop de temps. Réessayez dans un instant.',
       sectors: {
         all:         'TOUS LES SECTEURS',
         agriculture: 'AGRICULTURE',
@@ -195,6 +198,8 @@ const TRANSLATIONS = {
       },
       ds: {
         freshness_title:    'Fraîcheur des Données par Secteur',
+        load_failed:        'Analyses inter-secteurs indisponibles pour le moment.',
+        retry:              'Réessayer',
         refresh_btn:        'Actualiser',
         refreshing:         'Actualisation…',
         refreshed_at:       'Actualisé à',
@@ -504,6 +509,9 @@ const TRANSLATIONS = {
       fresh_badge:     'UP TO DATE',
       stale_badge:     'NEW DATA',
       unknown_date:    'Unknown date',
+      density_sample:  'Sample of the {n} most recent observations in this sector.',
+      running_detail:  'Statistical synthesis of the observations and report writing…',
+      err_timeout:     'Timed out: generation took too long. Please try again shortly.',
       sectors: {
         all:         'ALL SECTORS',
         agriculture: 'AGRICULTURE',
@@ -515,6 +523,8 @@ const TRANSLATIONS = {
       },
       ds: {
         freshness_title:    'Data Freshness by Sector',
+        load_failed:        'Cross-sector analyses are unavailable right now.',
+        retry:              'Retry',
         refresh_btn:        'Refresh',
         refreshing:         'Refreshing…',
         refreshed_at:       'Refreshed at',

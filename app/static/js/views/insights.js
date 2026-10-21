@@ -2,7 +2,7 @@
  * View: AI Insights — Automated Exploration & Trend Analysis (DATABASE & LLM DIRECT)
  */
 
-import { generateStudy, fetchObservations, fetchStudies, fetchCrossSector } from '../api_client.js';
+import { generateStudy, fetchObservations, fetchStudies, fetchCrossSector, fetchStats } from '../api_client.js';
 import { initChartDensity } from '../charts.js';
 import { t } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
@@ -21,26 +21,44 @@ function getInsightSectorTabs() {
   ];
 }
 
+let _densityReq = 0;
+const DENSITY_SAMPLE = 500;
+
+/** Observations per region, with the FULL region names (the old code merged regions by
+ * their first 3 letters: "Mayo-Kebbi Est/Ouest" -> "MAY", "Logone Occ./Or." -> "LOG").
+ * "all" uses the exact server-side counts; one sector uses a sample of recent rows. */
 async function updateInsightsDensityChart(sector = 'all') {
+  const req = ++_densityReq;
+  const note = document.getElementById('density-note');
+  let density = null;
+  let sampled = false;
   try {
-    const targetSector = sector === 'all' ? null : sector;
-    const obs = await fetchObservations(targetSector, 500);
-    const density = {};
-    if (obs && obs.length > 0) {
-      obs.forEach(o => {
-        const reg = (o.region || 'TCH').substring(0, 3).toUpperCase();
-        if (!density[reg]) density[reg] = { total: 0, validated: 0 };
-        density[reg].total += 1;
-        if (o.status === 'validated' || o.status === 'VALIDÉ' || !o.status) {
-          density[reg].validated += 1;
-        }
-      });
+    if (sector === 'all') {
+      const stats = await fetchStats();
+      if (stats && stats.regions && Object.keys(stats.regions).length) {
+        density = {};
+        Object.entries(stats.regions).forEach(([reg, n]) => { density[reg] = { total: n }; });
+      }
+    } else {
+      const obs = await fetchObservations(sector, DENSITY_SAMPLE);
+      if (obs && obs.length) {
+        density = {};
+        obs.forEach(o => {
+          const reg = String(o.region || '').trim();
+          if (!reg || ['national', 'tcd', 'tchad'].includes(reg.toLowerCase())) return;
+          density[reg] = density[reg] || { total: 0 };
+          density[reg].total += 1;
+        });
+        if (!Object.keys(density).length) density = null;
+        sampled = obs.length >= DENSITY_SAMPLE;
+      }
     }
-    initChartDensity(Object.keys(density).length > 0 ? density : null);
   } catch (err) {
     console.warn('updateInsightsDensityChart error:', err);
-    initChartDensity();
   }
+  if (req !== _densityReq) return; // a newer tab click superseded this response
+  if (note) note.textContent = sampled ? t('insights.density_sample').replace('{n}', DENSITY_SAMPLE) : t('insights.density_desc');
+  await initChartDensity(density);
 }
 
 /** Format an ISO-ish date string into a short, readable label. Never trusts the
@@ -134,7 +152,7 @@ function renderReportBlock(result) {
         <span class="mono-xs text-muted" style="font-weight:600;">${t('insights.result_model')}: ${modelName}</span>
       </div>
       <h4 class="mono-lg mb-1" style="font-weight:700;font-family:var(--font-sans);">${t('insights.result_title')} — ${sectorLabel}</h4>
-      <p class="mono-xs text-muted mb-4">${t('insights.result_obs')}: ${obsCount} observations · ${dateLabel}</p>
+      <p class="mono-xs text-muted mb-4">${t('insights.result_obs')}: ${obsCount} · ${dateLabel}</p>
       <div class="report-content">${formattedReport}</div>
     </div>
   `;
@@ -158,7 +176,7 @@ function renderStudyLibraryRow(study) {
         <div class="flex items-center gap-2" style="min-width:0;">
           <i data-lucide="file-text" style="width:14px;height:14px;flex-shrink:0;" class="text-cyan"></i>
           <span class="mono-sm fw-700">${sectorLabel}</span>
-          <span class="mono-xs text-muted">${dateLabel} · ${obsCount} obs.</span>
+          <span class="mono-xs text-muted">${dateLabel} · ${obsCount} ${t('insights.ds.obs_suffix')}</span>
         </div>
         <div class="flex items-center gap-2" style="flex-shrink:0;">
           ${freshnessBadge}
@@ -195,7 +213,9 @@ async function loadReportsLibrary(sector) {
   // Click-to-expand: view the full report inline without leaving the library,
   // and without ever calling the LLM again (this is a pure read of stored data).
   listEl.querySelectorAll('.study-library-row').forEach((row, idx) => {
-    row.addEventListener('click', () => {
+    row.addEventListener('click', (ev) => {
+      // Clicks inside an opened report (selecting/copying text) must not collapse it.
+      if (ev.target.closest('.study-library-detail')) return;
       const detail = row.querySelector('.study-library-detail');
       const chevron = row.querySelector('.study-library-chevron');
       const isOpen = detail.style.display !== 'none';
@@ -263,7 +283,12 @@ async function loadCrossSectorInsights(showUpdatedBadge = false) {
 
   const data = await fetchCrossSector();
   if (!data) {
-    container.innerHTML = '';
+    container.innerHTML = `
+      <div class="card ds-card" style="padding:16px;border-color:var(--border-strong);" id="ds-insights-error">
+        <p class="mono-sm text-muted mb-2">${t('insights.ds.load_failed')}</p>
+        <button id="btn-retry-ds-insights" class="btn btn-ghost mono-xs" style="padding:4px 10px;">${t('insights.ds.retry')}</button>
+      </div>`;
+    document.getElementById('btn-retry-ds-insights')?.addEventListener('click', () => loadCrossSectorInsights());
     return;
   }
 
@@ -387,6 +412,7 @@ async function loadCrossSectorInsights(showUpdatedBadge = false) {
 export const InsightsView = {
   render() {
     const tabs = getInsightSectorTabs();
+    activeInsightSector = 'all'; // the first tab is drawn active on every visit
 
     return `
       <div class="flex justify-between items-start mb-6">
@@ -404,7 +430,7 @@ export const InsightsView = {
 
       <div style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:12px 0;" class="flex gap-2 mb-6 scrollable-tabs" id="insights-sector-tabs">
         ${tabs.map((s, i) =>
-          `<button class="btn ${i === 0 ? 'btn-cyan' : 'btn-ghost'} insights-tab-btn mono-sm" data-sector="${s.id}" style="padding:6px 12px;">${s.label}</button>`
+          `<button class="btn ${i === 0 ? 'btn-cyan' : 'btn-ghost'} insights-tab-btn mono-sm" data-sector="${s.id}" aria-pressed="${i === 0}" style="padding:6px 12px;">${s.label}</button>`
         ).join('')}
       </div>
 
@@ -416,7 +442,7 @@ export const InsightsView = {
         <div class="chart-container" style="height:150px;margin-bottom:16px;">
           <canvas id="chart-density"></canvas>
         </div>
-        <p class="mono-xs text-muted">${t('insights.density_desc')}</p>
+        <p class="mono-xs text-muted" id="density-note">${t('insights.density_desc')}</p>
       </div>
 
       <!-- DS Insights: Fraîcheur & Corrélations Cross-Secteurs -->
@@ -460,13 +486,6 @@ export const InsightsView = {
   async init() {
     if (window.lucide) window.lucide.createIcons();
 
-    // 1. Load all sections in parallel
-    await Promise.all([
-      updateInsightsDensityChart(activeInsightSector),
-      loadReportsLibrary(activeInsightSector),
-      loadCrossSectorInsights(),
-    ]);
-
     // Wire up Reports Library collapsible toggle
     const toggleLibrary = document.getElementById('toggle-reports-library');
     const libraryWrapper = document.getElementById('reports-library-wrapper');
@@ -492,14 +511,15 @@ export const InsightsView = {
         activeInsightSector = sec;
 
         document.querySelectorAll('.insights-tab-btn').forEach(b => {
+          b.setAttribute('aria-pressed', 'false');
           b.classList.remove('btn-cyan');
           b.classList.add('btn-ghost');
         });
         e.currentTarget.classList.remove('btn-ghost');
         e.currentTarget.classList.add('btn-cyan');
 
-        await updateInsightsDensityChart(sec);
-        await loadReportsLibrary(sec);
+        e.currentTarget.setAttribute('aria-pressed', 'true');
+        await Promise.all([updateInsightsDensityChart(sec), loadReportsLibrary(sec)]);
       });
     });
 
@@ -523,9 +543,9 @@ export const InsightsView = {
           studyContainer.innerHTML = `
             <div class="card card--accent-border" style="padding:20px;text-align:center;">
               <p class="mono-sm text-cyan mb-2 flex items-center justify-center gap-2">
-                <i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('insights.running_msg')} "${activeInsightSector.toUpperCase()}"...
+                <i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('insights.running_msg')} "${escapeHtml(activeInsightSector.toUpperCase())}"...
               </p>
-              <p class="mono-xs text-muted">Synthèse statistique des observations et rédaction du rapport...</p>
+              <p class="mono-xs text-muted">${t('insights.running_detail')}</p>
             </div>
           `;
           if (window.lucide) window.lucide.createIcons();
@@ -564,7 +584,7 @@ export const InsightsView = {
           if (studyContainer) {
             studyContainer.innerHTML = `
               <div class="card" style="padding:16px;border-color:var(--red);">
-                <p class="mono-sm text-accent mb-1 flex items-center gap-1"><i data-lucide="alert-triangle" style="width:16px;height:16px;"></i> ${t('insights.err_msg')}: ${escapeHtml(err.message)}</p>
+                <p class="mono-sm text-accent mb-1 flex items-center gap-1"><i data-lucide="alert-triangle" style="width:16px;height:16px;"></i> ${t('insights.err_msg')}: ${escapeHtml(err.status === 0 ? t('insights.err_timeout') : err.message)}</p>
                 <p class="mono-xs text-muted">${t('insights.err_hint')}</p>
               </div>
             `;
@@ -573,5 +593,12 @@ export const InsightsView = {
         }
       });
     }
+
+    // Everything is wired: now load the (slow) data. Buttons already work meanwhile.
+    await Promise.all([
+      updateInsightsDensityChart(activeInsightSector),
+      loadReportsLibrary(activeInsightSector),
+      loadCrossSectorInsights(),
+    ]);
   }
 };
