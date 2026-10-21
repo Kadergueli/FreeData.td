@@ -106,6 +106,9 @@ const TRANSLATIONS = {
       val_score:     'SCORE VALIDATION',
       active_title:  'SECTEURS ACTIFS',
       explore_data:  'EXPLORER LES DONNÉES',
+      share:         'PART DES OBSERVATIONS',
+      regions_covered: 'RÉGIONS COUVERTES',
+      no_match:      'Aucun secteur ne correspond à cette recherche.',
       names: {
         agriculture: 'AGRICULTURE',
         environment: 'ENVIRONNEMENT',
@@ -386,6 +389,9 @@ const TRANSLATIONS = {
       val_score:     'VALIDATION SCORE',
       active_title:  'ACTIVE SECTORS',
       explore_data:  'EXPLORE DATA',
+      share:         'SHARE OF OBSERVATIONS',
+      regions_covered: 'REGIONS COVERED',
+      no_match:      'No sector matches this search.',
       names: {
         agriculture: 'AGRICULTURE',
         environment: 'ENVIRONMENT',

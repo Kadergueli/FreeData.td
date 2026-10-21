@@ -804,3 +804,6 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
 }
 .toast--success { border-left-color: var(--green); }
 .toast--error { border-left-color: var(--red); }
+
+.sector-item-card { transition: transform 0.15s, border-color 0.15s; }
+.sector-item-card:hover { border-color: var(--accent); transform: translateY(-1px); }

@@ -643,6 +643,9 @@ class ObservationRepository:
         else:
             try:
                 with self._connection() as connection:
+                    # The query succeeded, so a sector with no rows is a TRUE zero (GROUP BY
+                    # simply omits it) — report it as 0 instead of leaving it "unknown".
+                    sectors = {sec: 0 for sec in SECTOR_IDS}
                     for row in connection.execute("SELECT sector, COUNT(*) AS n FROM observations GROUP BY sector").fetchall():
                         sectors[str(row["sector"])] = int(row["n"])
                     row = connection.execute("SELECT MAX(collected_at) AS m FROM observations").fetchone()

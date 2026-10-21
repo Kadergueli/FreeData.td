@@ -32,7 +32,9 @@ def repo(tmp_path: Path):
 def test_stats_counts_are_real_not_sampled(repo):
     s = repo.get_stats()
     assert s["total"] == 5
-    assert s["sectors"] == {"agriculture": 2, "health": 2, "energy": 1}
+    assert s["sectors"]["agriculture"] == 2 and s["sectors"]["health"] == 2 and s["sectors"]["energy"] == 1
+    assert s["sectors"]["transport"] == 0          # successful query: an empty sector is a true 0
+    assert set(s["sectors"]) == set(storage.SECTOR_IDS)
     assert s["regions"]["Lac"] == 2
     assert "national" not in {k.lower() for k in s["regions"]}
     assert s["last_update"]
