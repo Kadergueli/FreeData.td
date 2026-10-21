@@ -29,7 +29,7 @@ from app.agents.ds_insights import (
 )
 from app.config import settings
 from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
-from app.services.export import observations_to_csv, observations_to_json, observations_to_parquet, observations_to_xml
+from app.services.export import observations_to_csv, observations_to_json, observations_to_parquet, observations_to_xml, parquet_available
 from app.services.scheduler import scheduler_service
 from app.services.storage import ObservationRepository, _cache_get, _cache_set
 
@@ -106,6 +106,12 @@ def health() -> dict:
         "project": "FreeDatatd",
         "storage_backend": repository.backend,
         "scheduler": scheduler_service.get_status(),
+        # Real server-side limits/capabilities, so the UI states facts instead of hard-coded text.
+        "limits": {
+            "collection_per_hour": settings.collection_rate_limit_per_hour,
+            "analysis_per_hour": settings.analysis_rate_limit_per_hour,
+        },
+        "exports": {"parquet": parquet_available()},
     }
 
 

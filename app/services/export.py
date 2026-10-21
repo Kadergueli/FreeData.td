@@ -79,6 +79,11 @@ def observations_to_xml(rows: list[dict]) -> str:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
 
+def parquet_available() -> bool:
+    """True when the optional pyarrow dependency is installed (Parquet export usable)."""
+    return _PYARROW_AVAILABLE
+
+
 def observations_to_parquet(rows: list[dict]) -> bytes:
     if not _PYARROW_AVAILABLE:
         raise RuntimeError(

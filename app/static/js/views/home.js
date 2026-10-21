@@ -4,7 +4,7 @@
 
 import { fetchObservations, fetchStats, fetchAudit } from '../api_client.js';
 import { PUBLIC_HARVEST_SECTORS, runHarvest } from '../harvest.js';
-import { showToast, formatDate } from '../ui.js';
+import { showToast, formatDate, formatScore } from '../ui.js';
 import { navigateTo } from '../router.js';
 import { t, getLang } from '../i18n.js';
 import { OFFICIAL_SOURCES } from '../sources_catalog.js';
@@ -269,8 +269,7 @@ export const HomeView = {
     // Validation score — only shown when the audit actually returned one.
     const scoreEl = document.getElementById('stat-validation-score');
     if (scoreEl) {
-      const raw = audit && audit.reports_summary ? audit.reports_summary.score_global : null;
-      scoreEl.textContent = typeof raw === 'number' ? `${(raw * 100).toFixed(1)}%` : '—';
+      scoreEl.textContent = formatScore(audit);
     }
 
     const updEl = document.getElementById('home-last-update');

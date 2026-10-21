@@ -29,3 +29,17 @@ export function formatDate(raw, locale) {
   if (isNaN(d.getTime())) return String(raw);
   return d.toLocaleDateString(locale || undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+/** Validation score text for an /api/v1/pipeline/audit payload. Shown only when the
+ *  platform actually measured one (rows exist AND the backend produced a score);
+ *  otherwise "—" — never a made-up 100 %. */
+export function formatScore(audit) {
+  const s = audit && audit.reports_summary;
+  if (!s || !(Number(s.total_public) > 0) || typeof s.score_global !== 'number') return '—';
+  return `${(s.score_global * 100).toFixed(1)}%`;
+}
+
+/** Integer count or "—" when unknown (null/undefined). */
+export function formatCount(n) {
+  return typeof n === 'number' && isFinite(n) ? n.toLocaleString() : '—';
+}

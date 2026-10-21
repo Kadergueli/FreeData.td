@@ -805,6 +805,15 @@ class ObservationRepository:
                     audit["reports_summary"]["score_global"] = round(min(1.0, max(0.95, tot_clean / tot_raw)), 3)
                 else:
                     audit["reports_summary"]["score_global"] = 1.0
+        else:
+            # Local SQLite mode has no raw/clean/validation pipeline: report only what is
+            # real (the public row count) and leave the rest unknown (None) rather than
+            # presenting a made-up 100 % validation score.
+            summary = audit["reports_summary"]
+            summary.update({
+                "total_raw": None, "total_clean": None, "total_public": self.count_observations(),
+                "score_global": None, "score_completude": None, "score_coherence": None,
+            })
 
         return audit
 

@@ -1,131 +1,158 @@
+/**
+ * View: Export & API.
+ *
+ * - Downloads go through fetch(): an error response (e.g. 503) used to be saved by the
+ *   browser as a corrupt ".parquet" file containing the JSON error.
+ * - Parquet is offered only when the server reports it can produce it.
+ * - No fake API key (the server never recognised it): the read API is open, and the page
+ *   says so, with copy-paste examples.
+ * - Limits and latency are real values (from /api/v1/health), not hard-coded text.
+ */
 
-
-import { getExportUrl, fetchRegions } from '../api_client.js';
+import { getExportUrl, fetchRegions, fetchHealth } from '../api_client.js';
+import { showToast } from '../ui.js';
 import { t } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
 
 let selectedFormat = 'JSON';
 let selectedSector = 'all';
 let selectedRegion = 'all';
+let _downloading = false;
 
 const FORMATS = ['JSON', 'CSV', 'XML', 'PARQUET'];
-
-const SECTORS = [
-  { id: 'all', label: 'Tous les jeux de données' },
-  { id: 'agriculture', label: 'Agriculture' },
-  { id: 'environment', label: 'Environnement' },
-  { id: 'markets', label: 'Marchés & Prix' },
-  { id: 'health', label: 'Santé' },
-  { id: 'energy', label: 'Énergie' },
-  { id: 'economy', label: 'Économie' },
-  { id: 'transport', label: 'Transport' },
-  { id: 'education', label: 'Éducation' },
-];
+const SECTOR_IDS = ['all', 'agriculture', 'environment', 'markets', 'health', 'energy', 'economy', 'transport', 'education'];
 
 // All 23 official administrative regions of Chad (ISO 3166-2:TD)
 const CHAD_REGIONS = [
-  'Batha',
-  'Barh El Gazel',
-  'Borkou',
-  'Chari-Baguirmi',
-  'Ennedi Est',
-  'Ennedi Ouest',
-  'Guéra',
-  'Hadjer-Lamis',
-  'Kanem',
-  'Lac',
-  'Logone Occidental',
-  'Logone Oriental',
-  'Mandoul',
-  'Mayo-Kebbi Est',
-  'Mayo-Kebbi Ouest',
-  'Moyen-Chari',
-  "N'Djamena",
-  'Ouaddaï',
-  'Salamat',
-  'Sila',
-  'Tandjilé',
-  'Tibesti',
-  'Wadi Fira',
+  'Batha', 'Barh El Gazel', 'Borkou', 'Chari-Baguirmi', 'Ennedi Est', 'Ennedi Ouest', 'Guéra',
+  'Hadjer-Lamis', 'Kanem', 'Lac', 'Logone Occidental', 'Logone Oriental', 'Mandoul',
+  'Mayo-Kebbi Est', 'Mayo-Kebbi Ouest', 'Moyen-Chari', "N'Djamena", 'Ouaddaï', 'Salamat',
+  'Sila', 'Tandjilé', 'Tibesti', 'Wadi Fira',
 ];
 
 function getSectorLabel(secId) {
-  const found = SECTORS.find(s => s.id === secId);
-  return found ? found.label : 'Tous les jeux de données publics';
+  return secId === 'all' ? t('api.all_datasets') : t(`sectors.names.${secId}`);
 }
 
 function getRegionLabel(regId) {
-  if (regId === 'all') return 'National / Tout le Tchad';
-  return regId;
+  return regId === 'all' ? t('api.national') : regId;
+}
+
+function renderBadges() {
+  const sec = document.getElementById('badge-sector');
+  const reg = document.getElementById('badge-region');
+  if (sec) sec.innerHTML = `${t('api.badge_sector')} : <strong class="text-cyan">${escapeHtml(getSectorLabel(selectedSector))}</strong>`;
+  if (reg) reg.innerHTML = `${t('api.badge_region')} : <strong>${escapeHtml(getRegionLabel(selectedRegion))}</strong>`;
+}
+
+function setActive(selector, activeEl) {
+  document.querySelectorAll(selector).forEach(b => {
+    const on = b === activeEl;
+    b.classList.toggle('btn-cyan', on);
+    b.classList.toggle('btn-ghost', !on);
+    b.setAttribute('aria-pressed', String(on));
+  });
 }
 
 function wireRegionButtons() {
   document.querySelectorAll('.export-reg-btn').forEach(btn => {
+    if (btn.dataset.wired) return; // never stack listeners on a button we already wired
+    btn.dataset.wired = '1';
     btn.addEventListener('click', (e) => {
       selectedRegion = e.currentTarget.getAttribute('data-reg');
-      document.querySelectorAll('.export-reg-btn').forEach(b => {
-        b.classList.remove('btn-cyan');
-        b.classList.add('btn-ghost');
-      });
-      e.currentTarget.classList.remove('btn-ghost');
-      e.currentTarget.classList.add('btn-cyan');
-
-      const badgeRegion = document.getElementById('badge-region');
-      if (badgeRegion) {
-        badgeRegion.innerHTML = `Région : <strong>${escapeHtml(getRegionLabel(selectedRegion))}</strong>`;
-      }
+      setActive('.export-reg-btn', e.currentTarget);
+      renderBadges();
     });
   });
 }
 
 async function loadRegions() {
-  // Fetch DB regions and merge with the official 23 Chad regions.
-  // The official list is always shown; DB regions that don't already
-  // appear in it (e.g. city-level data) are appended at the end.
+  // Official 23 regions always shown; extra regions found in the data are appended.
   let dbRegions = [];
-  try {
-    dbRegions = await fetchRegions();
-  } catch (_) {
-    // Non-critical: official list still shows even if API is down.
-  }
+  try { dbRegions = await fetchRegions(); } catch (_) { /* non-critical */ }
 
   const container = document.getElementById('export-region-buttons');
   if (!container) return;
 
-  // Build a deduplicated ordered list: official 23 first, then extra DB ones.
-  const officialNorm = CHAD_REGIONS.map(r => r.toLowerCase());
-  const extra = dbRegions.filter(r => !officialNorm.includes(r.toLowerCase()));
-  const allRegions = [...CHAD_REGIONS, ...extra];
+  const official = new Set(CHAD_REGIONS.map(r => r.toLowerCase()));
+  const extra = dbRegions.filter(r => !official.has(String(r).toLowerCase()));
 
-  // Clear existing buttons (except "National" which we keep at position 0)
-  const nationalBtn = container.querySelector('[data-reg="all"]');
-  container.innerHTML = '';
-  if (nationalBtn) container.appendChild(nationalBtn);
-
-  allRegions.forEach(region => {
+  [...CHAD_REGIONS, ...extra].forEach(region => {
     const btn = document.createElement('button');
-    btn.className = 'btn btn-ghost export-reg-btn mono-sm';
+    btn.type = 'button';
+    btn.className = `btn ${region === selectedRegion ? 'btn-cyan' : 'btn-ghost'} export-reg-btn mono-sm`;
     btn.style.padding = '4px 10px';
     btn.style.fontSize = '12px';
     btn.setAttribute('data-reg', region);
+    btn.setAttribute('aria-pressed', String(region === selectedRegion));
     btn.textContent = region;
     container.appendChild(btn);
   });
-
   wireRegionButtons();
+}
+
+/** Download through fetch so failures are reported instead of saved as a broken file. */
+async function downloadExport() {
+  if (_downloading) return;
+  _downloading = true;
+  const btn = document.getElementById('btn-generate-archive');
+  const idle = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:18px;height:18px;"></i> ${t('api.downloading')}`;
+    if (window.lucide) window.lucide.createIcons();
+  }
+  try {
+    const fmt = selectedFormat.toLowerCase();
+    const res = await fetch(getExportUrl(fmt, selectedSector, selectedRegion));
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json()).detail; } catch (_) { /* not JSON */ }
+      throw new Error(detail || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = /filename="?([^";]+)"?/i.exec(cd);
+    const filename = m ? m[1] : `freedatatd-export.${fmt}`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (err) {
+    console.warn('export failed:', err);
+    showToast(`${t('api.download_failed')}: ${err.message}`, 'error');
+  } finally {
+    _downloading = false;
+    const again = document.getElementById('btn-generate-archive');
+    if (again) {
+      again.disabled = false;
+      again.innerHTML = idle;
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+}
+
+function exampleBlock() {
+  const origin = window.location.origin;
+  const lines = [
+    `curl "${origin}/api/v1/observations?sector=health&limit=50"`,
+    `curl "${origin}/api/v1/observations?q=riz&region=Lac"`,
+    `curl "${origin}/api/v1/stats"`,
+    `curl -O -J "${origin}/api/v1/export/csv?sector=agriculture"`,
+  ];
+  return lines;
 }
 
 export const ApiView = {
   render() {
     const docs = t('api.docs');
-    const docList = Array.isArray(docs) ? docs : [
-      { id: 'swagger', icon: 'file-text', name: 'Spécification API OpenAPI et Swagger', desc: 'Full endpoint specifications at /docs', link: '/docs' },
-      { id: 'redoc', icon: 'book-open', name: 'Documentation ReDoc', desc: 'Clean ReDoc documentation at /redoc', link: '/redoc' },
-      { id: 'health', icon: 'activity', name: 'Point d\'Accès Santé Système', desc: 'Test API system status live at /api/v1/health', link: '/api/v1/health' },
-    ];
-
-    const currentKey = sessionStorage.getItem('fd_api_key');
-    const hasKey = Boolean(currentKey);
+    const docList = Array.isArray(docs) ? docs : [];
+    const examples = exampleBlock();
 
     return `
       <div class="flex justify-between items-start mb-6">
@@ -140,30 +167,20 @@ export const ApiView = {
         </div>
       </div>
 
-      <!-- 01 API ACCESS -->
+      <!-- 01 ACCESS -->
       <h3 class="mono-lg mb-2 flex items-center gap-2">
         <i data-lucide="key-round" style="width:18px;height:18px;" class="text-cyan"></i> ${t('api.section_access')}
       </h3>
       <p class="mono-sm text-muted mb-4">${t('api.access_desc')}</p>
 
       <div class="card card--transparent mb-6" style="padding:16px;">
-        <div class="flex justify-between items-center mb-4">
-          <span class="mono-xs text-muted fw-700">${t('api.api_key_label')}</span>
-          <span class="text-cyan cursor-pointer flex items-center gap-1" id="btn-copy-key" style="font-size:14px;${hasKey ? '' : 'opacity:0.4;pointer-events:none;'}" title="Copy to Clipboard">
-            <i data-lucide="copy" style="width:14px;height:14px;"></i> <span id="copy-status" class="mono-xs text-green"></span>
-          </span>
-        </div>
-        <div class="mono-md word-break-all" id="api-key-display" style="background:var(--surface);border:1px solid var(--border);padding:12px;border-radius:4px;margin-bottom:16px;color:${hasKey ? 'var(--text)' : 'var(--text-muted)'};">
-          ${hasKey ? currentKey : t('api.no_key_msg')}
-        </div>
-        <div class="flex gap-2">
-          <button class="btn ${hasKey ? 'btn-ghost' : 'btn-cyan'} fw-700" id="btn-regen-key">
-            <i data-lucide="${hasKey ? 'refresh-cw' : 'key'}" style="width:14px;height:14px;"></i> ${hasKey ? t('api.regen') : t('api.btn_generate')}
-          </button>
-          <button class="btn btn-ghost fw-700" id="btn-revoke-key" style="${hasKey ? '' : 'opacity:0.4;pointer-events:none;'}">
-            <i data-lucide="x-circle" style="width:14px;height:14px;"></i> ${t('api.revoke')}
+        <div class="flex justify-between items-center mb-2">
+          <span class="mono-xs text-muted fw-700">${t('api.examples_label')}</span>
+          <button type="button" class="btn btn-ghost mono-xs" id="btn-copy-examples" style="padding:4px 10px;">
+            <i data-lucide="copy" style="width:14px;height:14px;"></i> <span id="copy-status">${t('api.copy')}</span>
           </button>
         </div>
+        <pre class="mono-sm" id="api-examples" style="background:var(--surface);border:1px solid var(--border);padding:12px;border-radius:4px;overflow-x:auto;margin:0;white-space:pre;">${examples.map(escapeHtml).join('\n')}</pre>
       </div>
 
       <!-- 02 DATA DOWNLOAD -->
@@ -174,39 +191,31 @@ export const ApiView = {
       <div class="card card--transparent mb-6" style="padding:16px;">
         <h4 class="mono-xs text-muted uppercase mb-2">${t('api.format_label')}</h4>
         <div class="flex gap-2 flex-wrap mb-4" id="export-format-buttons">
-          ${FORMATS.map(f =>
-      `<button class="btn ${f === selectedFormat ? 'btn-cyan' : 'btn-ghost'} export-fmt-btn mono-sm" data-fmt="${f}">${f}</button>`
-    ).join('')}
+          ${FORMATS.map(f => `<button type="button" class="btn ${f === selectedFormat ? 'btn-cyan' : 'btn-ghost'} export-fmt-btn mono-sm" data-fmt="${f}" aria-pressed="${f === selectedFormat}">${f}</button>`).join('')}
         </div>
 
-        <h4 class="mono-xs text-muted uppercase mb-2">Secteur à exporter</h4>
+        <h4 class="mono-xs text-muted uppercase mb-2">${t('api.export_sector')}</h4>
         <div class="flex gap-2 flex-wrap mb-4" id="export-sector-buttons">
-          ${SECTORS.map(s =>
-      `<button class="btn ${s.id === selectedSector ? 'btn-cyan' : 'btn-ghost'} export-sec-btn mono-sm" data-sec="${s.id}">${s.label}</button>`
-    ).join('')}
+          ${SECTOR_IDS.map(id => `<button type="button" class="btn ${id === selectedSector ? 'btn-cyan' : 'btn-ghost'} export-sec-btn mono-sm" data-sec="${id}" aria-pressed="${id === selectedSector}">${escapeHtml(getSectorLabel(id))}</button>`).join('')}
         </div>
 
-        <h4 class="mono-xs text-muted uppercase mb-2 flex justify-between items-center">
-          <span>Région à exporter <span class="mono-xs text-muted fw-400">(23 régions officielles)</span></span>
+        <h4 class="mono-xs text-muted uppercase mb-2">
+          ${t('api.export_region')} <span class="mono-xs text-muted fw-400">(${t('api.regions_official')})</span>
         </h4>
-        <div class="region-container-box mb-6" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;max-height:110px;overflow-y:auto;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03);">
+        <div class="region-container-box mb-6" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;max-height:150px;overflow-y:auto;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03);">
           <div class="flex gap-2 flex-wrap" id="export-region-buttons">
-            <button class="btn btn-cyan export-reg-btn mono-sm" data-reg="all" style="padding:4px 10px;font-size:12px;">National / Tout le Tchad</button>
+            <button type="button" class="btn ${selectedRegion === 'all' ? 'btn-cyan' : 'btn-ghost'} export-reg-btn mono-sm" data-reg="all" aria-pressed="${selectedRegion === 'all'}" style="padding:4px 10px;font-size:12px;">${t('api.national')}</button>
           </div>
         </div>
 
         <h4 class="mono-xs text-muted uppercase mb-2">${t('api.filters_label')}</h4>
         <div class="flex gap-2 flex-wrap mb-6" id="active-filters-badges">
-          <span class="mono-sm" style="background:var(--surface);padding:6px 12px;border:1px solid var(--border);border-radius:4px;" id="badge-sector">
-            Secteur : <strong class="text-cyan">${getSectorLabel(selectedSector)}</strong>
-          </span>
-          <span class="mono-sm" style="background:var(--surface);padding:6px 12px;border:1px solid var(--border);border-radius:4px;" id="badge-region">
-            Région : <strong>${getRegionLabel(selectedRegion)}</strong>
-          </span>
+          <span class="mono-sm" style="background:var(--surface);padding:6px 12px;border:1px solid var(--border);border-radius:4px;" id="badge-sector"></span>
+          <span class="mono-sm" style="background:var(--surface);padding:6px 12px;border:1px solid var(--border);border-radius:4px;" id="badge-region"></span>
         </div>
 
         <button class="btn btn-primary w-full justify-center mono-md fw-700" id="btn-generate-archive" style="padding:12px;">
-          <i data-lucide="download-cloud" style="width:18px;height:18px;"></i> ${t('api.btn_archive')} (${selectedFormat})
+          <i data-lucide="download-cloud" style="width:18px;height:18px;"></i> <span id="archive-label">${t('api.btn_archive')} (${selectedFormat})</span>
         </button>
       </div>
 
@@ -217,14 +226,14 @@ export const ApiView = {
 
       <div class="flex flex-col gap-3 mb-6">
         ${docList.map(d => `
-          <a class="card card--transparent doc-row" href="${d.link}" target="_blank" style="padding:16px;text-decoration:none;color:inherit;">
+          <a class="card card--transparent doc-row" href="${escapeHtml(d.link)}" target="_blank" rel="noopener noreferrer" style="padding:16px;text-decoration:none;color:inherit;">
             <div class="flex items-center gap-4">
               <div class="source-icon" style="border:1px solid var(--border);">
-                <i data-lucide="${d.icon}" style="width:18px;height:18px;"></i>
+                <i data-lucide="${escapeHtml(d.icon)}" style="width:18px;height:18px;"></i>
               </div>
               <div>
-                <h5 class="mono-md fw-700">${d.name}</h5>
-                <p class="mono-xs text-muted">${d.desc}</p>
+                <h5 class="mono-md fw-700">${escapeHtml(d.name)}</h5>
+                <p class="mono-xs text-muted">${escapeHtml(d.desc)}</p>
               </div>
             </div>
             <span class="text-cyan mono-sm fw-700 flex items-center gap-1" style="font-size:13px;">
@@ -234,156 +243,94 @@ export const ApiView = {
         `).join('')}
       </div>
 
-      <!-- Quota Status Card -->
+      <!-- Real limits (from /api/v1/health) -->
       <div class="card mb-6" style="padding:16px;border-color:var(--border-strong);background:var(--surface);">
         <div class="flex items-start gap-4">
-          <i data-lucide="check-circle-2" style="width:20px;height:20px;flex-shrink:0;" class="text-green"></i>
+          <i data-lucide="gauge" style="width:20px;height:20px;flex-shrink:0;" class="text-cyan"></i>
           <div>
             <h5 class="mono-md fw-700 mb-1" style="color:var(--text);">${t('api.rate_title')}</h5>
-            <p class="mono-sm text-muted">${t('api.rate_msg')}</p>
+            <p class="mono-sm text-muted" id="api-limits-msg"><span class="skeleton" style="width:260px;"></span></p>
           </div>
         </div>
       </div>
 
-      <!-- Status Footer -->
+      <!-- Real status + measured latency -->
       <div class="separator flex justify-between items-center" style="padding-top:16px;">
         <div>
-          <div class="mono-xs text-green fw-700 flex items-center gap-1">
-            <i data-lucide="check-circle-2" style="width:12px;height:12px;"></i> ${t('common.status_ok')}
-          </div>
-          <div class="mono-xs">${t('api.latency')}: 42ms</div>
+          <div class="mono-xs fw-700 flex items-center gap-1" id="api-status-line"><span class="skeleton" style="width:160px;"></span></div>
+          <div class="mono-xs" id="api-latency-line"></div>
         </div>
-        <i data-lucide="check" style="width:20px;height:20px;" class="text-green"></i>
       </div>
     `;
   },
 
-  init() {
-    if (window.lucide) window.lucide.createIcons();
+  async init() {
+    renderBadges();
 
-    // 1. Format Selection
     document.querySelectorAll('.export-fmt-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         selectedFormat = e.currentTarget.getAttribute('data-fmt');
-        document.querySelectorAll('.export-fmt-btn').forEach(b => {
-          b.classList.remove('btn-cyan');
-          b.classList.add('btn-ghost');
-        });
-        e.currentTarget.classList.remove('btn-ghost');
-        e.currentTarget.classList.add('btn-cyan');
-
-        const archiveBtn = document.getElementById('btn-generate-archive');
-        if (archiveBtn) {
-          archiveBtn.innerHTML = `<i data-lucide="download-cloud" style="width:18px;height:18px;"></i> ${t('api.btn_archive')} (${selectedFormat})`;
-          if (window.lucide) window.lucide.createIcons();
-        }
+        setActive('.export-fmt-btn', e.currentTarget);
+        const label = document.getElementById('archive-label');
+        if (label) label.textContent = `${t('api.btn_archive')} (${selectedFormat})`;
       });
     });
 
-    // 2. Dynamic Sector Selection
     document.querySelectorAll('.export-sec-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         selectedSector = e.currentTarget.getAttribute('data-sec');
-        document.querySelectorAll('.export-sec-btn').forEach(b => {
-          b.classList.remove('btn-cyan');
-          b.classList.add('btn-ghost');
-        });
-        e.currentTarget.classList.remove('btn-ghost');
-        e.currentTarget.classList.add('btn-cyan');
-
-        const badgeSector = document.getElementById('badge-sector');
-        if (badgeSector) {
-          badgeSector.innerHTML = `Secteur : <strong class="text-cyan">${getSectorLabel(selectedSector)}</strong>`;
-        }
+        setActive('.export-sec-btn', e.currentTarget);
+        renderBadges();
       });
     });
 
-    // 3. Dynamic Region Selection — "National" is wired immediately (already
-    // in the DOM), real regions are appended (and wired) once loaded.
     wireRegionButtons();
     loadRegions();
 
-    // 4. Generate Archive Button -> Trigger file download with active filters & clean filename
-    const archiveBtn = document.getElementById('btn-generate-archive');
-    if (archiveBtn) {
-      archiveBtn.addEventListener('click', () => {
-        const fmt = selectedFormat.toLowerCase();
-        const downloadUrl = getExportUrl(fmt, selectedSector, selectedRegion);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        const secPart = selectedSector !== 'all' ? selectedSector : 'all';
-        const regPart = selectedRegion !== 'all' ? `-${selectedRegion.replace(/[^a-zA-Z0-9-_]/g, '')}` : '';
-        link.download = `freedatatd-${secPart}${regPart}-export.${fmt}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      });
+    document.getElementById('btn-generate-archive')?.addEventListener('click', downloadExport);
+
+    document.getElementById('btn-copy-examples')?.addEventListener('click', async () => {
+      const text = document.getElementById('api-examples')?.textContent || '';
+      const status = document.getElementById('copy-status');
+      try {
+        await navigator.clipboard.writeText(text);
+        if (status) { status.textContent = t('common.copied'); setTimeout(() => { status.textContent = t('api.copy'); }, 2000); }
+      } catch (_) {
+        showToast(t('api.copy_failed'), 'error');
+      }
+    });
+
+    // Real health: status, measured round-trip latency, limits, supported formats.
+    const t0 = performance.now();
+    const health = await fetchHealth();
+    const latency = Math.round(performance.now() - t0);
+
+    const statusEl = document.getElementById('api-status-line');
+    const latEl = document.getElementById('api-latency-line');
+    const limitsEl = document.getElementById('api-limits-msg');
+
+    if (statusEl) {
+      statusEl.className = `mono-xs fw-700 flex items-center gap-1 ${health ? 'text-green' : 'text-accent'}`;
+      statusEl.textContent = health ? t('api.api_ok') : t('api.api_down');
+    }
+    if (latEl) latEl.textContent = health ? `${t('api.latency')}: ${latency} ms` : '';
+    if (limitsEl) {
+      const l = health && health.limits;
+      limitsEl.textContent = l
+        ? t('api.limits_msg').replace('{c}', l.collection_per_hour).replace('{a}', l.analysis_per_hour)
+        : t('api.limits_unknown');
     }
 
-    // 3. API Key Generate / Regenerate / Revoke
-    const regenBtn = document.getElementById('btn-regen-key');
-    const revokeBtn = document.getElementById('btn-revoke-key');
-    const keyDisplay = document.getElementById('api-key-display');
-    const copyBtn = document.getElementById('btn-copy-key');
-    const copyStatus = document.getElementById('copy-status');
-
-    if (regenBtn && keyDisplay) {
-      regenBtn.addEventListener('click', () => {
-        const randomPart = Math.random().toString(36).substring(2, 10);
-        const newKey = `td-live-${Date.now().toString(36)}-${randomPart}-x110`;
-        sessionStorage.setItem('fd_api_key', newKey);
-
-        keyDisplay.textContent = newKey;
-        keyDisplay.style.color = 'var(--text)';
-
-        regenBtn.className = 'btn btn-ghost fw-700';
-        regenBtn.innerHTML = `<i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> ${t('api.regen')}`;
-
-        if (revokeBtn) {
-          revokeBtn.style.opacity = '1';
-          revokeBtn.style.pointerEvents = 'auto';
-        }
-        if (copyBtn) {
-          copyBtn.style.opacity = '1';
-          copyBtn.style.pointerEvents = 'auto';
-        }
-        if (window.lucide) window.lucide.createIcons();
-      });
+    // Offer Parquet only if the server can actually produce it.
+    if (health && health.exports && health.exports.parquet === false) {
+      document.querySelector('.export-fmt-btn[data-fmt="PARQUET"]')?.remove();
+      if (selectedFormat === 'PARQUET') {
+        selectedFormat = 'JSON';
+        const jsonBtn = document.querySelector('.export-fmt-btn[data-fmt="JSON"]');
+        if (jsonBtn) setActive('.export-fmt-btn', jsonBtn);
+        const label = document.getElementById('archive-label');
+        if (label) label.textContent = `${t('api.btn_archive')} (${selectedFormat})`;
+      }
     }
-
-    if (revokeBtn && keyDisplay) {
-      revokeBtn.addEventListener('click', () => {
-        sessionStorage.removeItem('fd_api_key');
-        keyDisplay.textContent = t('api.revoked_msg');
-        keyDisplay.style.color = 'var(--text-muted)';
-
-        if (regenBtn) {
-          regenBtn.className = 'btn btn-cyan fw-700';
-          regenBtn.innerHTML = `<i data-lucide="key" style="width:14px;height:14px;"></i> ${t('api.btn_generate')}`;
-        }
-        revokeBtn.style.opacity = '0.4';
-        revokeBtn.style.pointerEvents = 'none';
-        if (copyBtn) {
-          copyBtn.style.opacity = '0.4';
-          copyBtn.style.pointerEvents = 'none';
-        }
-        if (window.lucide) window.lucide.createIcons();
-      });
-    }
-
-    if (copyBtn && keyDisplay) {
-      copyBtn.addEventListener('click', () => {
-        const key = keyDisplay.textContent.trim();
-        if (!sessionStorage.getItem('fd_api_key')) return;
-        navigator.clipboard.writeText(key).then(() => {
-          if (copyStatus) {
-            copyStatus.textContent = ` ${t('common.copied')}`;
-            setTimeout(() => { copyStatus.textContent = ''; }, 2000);
-          }
-        }).catch(() => {
-          alert(`API Key: ${key}`);
-        });
-      });
-    }
-  }
+  },
 };

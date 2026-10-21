@@ -6,6 +6,7 @@
  */
 
 import { fetchStats, fetchAudit } from '../api_client.js';
+import { formatScore } from '../ui.js';
 import { OFFICIAL_SOURCES } from '../sources_catalog.js';
 import { t } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
@@ -147,8 +148,7 @@ export const SectorsView = {
 
     const scoreEl = document.getElementById('stat-val-score');
     if (scoreEl) {
-      const raw = audit && audit.reports_summary ? audit.reports_summary.score_global : null;
-      scoreEl.textContent = typeof raw === 'number' ? `${(raw * 100).toFixed(1)}%` : '—';
+      scoreEl.textContent = formatScore(audit);
     }
 
     const regEl = document.getElementById('stat-regions');
