@@ -6,6 +6,8 @@ create unique index if not exists table_public_dedup_idx
 create index if not exists table_public_sector_date_idx
   on public.table_public (secteur, date_reference desc);
 create index if not exists table_clean_raw_idx on public.table_clean (id_raw);
+-- Without it, every delete in table_clean scans table_public to check the foreign key.
+create index if not exists table_public_id_clean_idx on public.table_public (id_clean);
 create index if not exists table_rapports_raw_idx on public.table_rapports (id_raw);
 
 -- Keep writes server-side using SUPABASE_SERVICE_ROLE_KEY; do not expose it in the browser.
