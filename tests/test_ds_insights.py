@@ -150,12 +150,11 @@ def test_seasonal_anomalies_flags_clear_outlier():
 
 # ─── GET /api/v1/insights/cross-sector — resilience regression ─────────────
 
-def test_cross_sector_endpoint_degrades_gracefully_on_internal_error(monkeypatch):
+def test_cross_sector_endpoint_fails_cleanly_on_internal_error(monkeypatch):
     """Regression test for a NameError bug: main.py's cross_sector_insights()
     except-block referenced an undefined `logger`, so any internal failure
-    crashed with an unhandled 500 instead of returning the intended safe
-    defaults. This exercises the actual FastAPI route, not just the ds_insights
-    module directly."""
+    crashed with an unhandled 500. It must be a controlled 503 with a message
+    (not a 200 with empty data, which the UI could not tell from "no data")."""
     from fastapi.testclient import TestClient
     import app.main as main_module
 
@@ -168,11 +167,8 @@ def test_cross_sector_endpoint_degrades_gracefully_on_internal_error(monkeypatch
 
     response = client.get("/api/v1/insights/cross-sector")
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["freshness"] == {}
-    assert body["correlations"] == []
-    assert body["total_observations_analyzed"] == 0
+    assert response.status_code == 503
+    assert "unavailable" in response.json()["detail"]
 
 
 def test_cross_sector_endpoint_returns_real_data_on_success():

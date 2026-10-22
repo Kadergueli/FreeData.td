@@ -221,8 +221,10 @@ class BaseAgent(ABC):
     async def run(self, source: str = "demo") -> CollectionResult:
         started_at = datetime.now(UTC)
         raw_records = await self.collect(source)
-        self._archive_raw(source, raw_records, started_at)
-        raw_record_id = self.repository.store_raw_batch(self.sector, source, raw_records)
+        # Storage calls are synchronous (Supabase client, sqlite3, time.sleep in the retry
+        # helper). Run in a worker thread so a collection never freezes the API for everyone.
+        await asyncio.to_thread(self._archive_raw, source, raw_records, started_at)
+        raw_record_id = await asyncio.to_thread(self.repository.store_raw_batch, self.sector, source, raw_records)
 
         normalized_list: list[ObservationCreate] = []
         errors: list[str] = []
@@ -243,8 +245,9 @@ class BaseAgent(ABC):
 
         accepted = self.process_data_science_rules(normalized_list)
 
-        stored = self.repository.upsert_many(accepted, raw_record_id=raw_record_id)
-        self.repository.store_validation_report(
+        stored = await asyncio.to_thread(self.repository.upsert_many, accepted, raw_record_id=raw_record_id)
+        await asyncio.to_thread(
+            self.repository.store_validation_report,
             raw_record_id=raw_record_id,
             received=len(raw_records),
             accepted=len(accepted),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -20,7 +21,7 @@ class AnalysisAgent:
 
     async def study(self, sector: str | None = None) -> StudyResult:
         # Sample up to 60 representative observations
-        observations = self.repository.list_observations(sector=sector, limit=60)
+        observations = await asyncio.to_thread(self.repository.list_observations, sector=sector, limit=60)
         if not observations:
             raise ValueError("Aucune observation publiée n'est disponible pour ce secteur.")
 
@@ -94,7 +95,8 @@ Données d'observations (JSON) :
             report = self._generate_statistical_report(sector, compact_data)
             used_model = "FreeDatatd DS-StatisticalEngine (Automated Fallback)"
 
-        study_id = self.repository.save_study(
+        study_id = await asyncio.to_thread(
+            self.repository.save_study,
             sector=sector,
             model=used_model,
             observations_used=len(observations),

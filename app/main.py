@@ -366,13 +366,9 @@ def cross_sector_insights() -> dict:
         return result
     except Exception as exc:
         logger.warning("cross_sector_insights failed: %s", exc)
-        return {
-            "freshness": {},
-            "correlations": [],
-            "spatial_coverage": {},
-            "seasonal_anomalies": [],
-            "total_observations_analyzed": 0,
-        }
+        # A real failure is a 503, not a 200 with empty lists: the UI can then show
+        # "unavailable + retry" instead of silently rendering an empty analysis.
+        raise HTTPException(status_code=503, detail="Cross-sector analysis is temporarily unavailable.") from exc
 
 
 # Mount static assets (css, js, images) to serve static directory
