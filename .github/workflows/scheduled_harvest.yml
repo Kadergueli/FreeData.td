@@ -1,31 +1,83 @@
-name: Daily Agricultural Data Harvest
+name: Daily harvest (all sectors)
+
+# Replaces the old agriculture-only run. The in-process scheduler cannot be relied on
+# (a sleeping Render instance restarts its 24 h timer), so this workflow wakes the
+# service, starts a harvest of ALL sectors and waits for the result.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   APP_URL              e.g. https://your-service.onrender.com   (no trailing slash)
+#   COLLECTION_API_KEY   the same value as the COLLECTION_API_KEY env var on Render
 
 on:
   schedule:
-    # Run every day at 00:00 UTC
-    - cron: '0 0 * * *'
+    - cron: '0 3 * * *'   # every day, 03:00 UTC
   workflow_dispatch:
+
+concurrency:
+  group: harvest
+  cancel-in-progress: false
 
 jobs:
   harvest:
     runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+      COLLECTION_API_KEY: ${{ secrets.COLLECTION_API_KEY }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
+      - name: Check configuration
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -z "$APP_URL" ] || [ -z "$COLLECTION_API_KEY" ]; then
+            echo "::error::Secrets APP_URL and COLLECTION_API_KEY must be set."
+            exit 1
+          fi
 
-      - name: Run Agriculture Harvest (All Sources)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Wake the service (free instances sleep)
         run: |
-          python -m app.cli collect-agriculture --source all
+          curl -fsS --retry 10 --retry-delay 15 --retry-all-errors --max-time 60 \
+            "$APP_URL/api/v1/health" > /dev/null
+          echo "Service is up."
+
+      - name: Start the harvest
+        run: |
+          BEFORE=$(curl -fsS "$APP_URL/api/v1/collection/scheduler-status" | python3 -c "import sys,json; print(json.load(sys.stdin).get('last_run') or '')")
+          echo "BEFORE=$BEFORE" >> "$GITHUB_ENV"
+          curl -fsS -X POST -H "X-Collection-Key: $COLLECTION_API_KEY" \
+            "$APP_URL/api/v1/collection/run-scheduled-harvest?background=true"
+          echo
+
+      - name: Wait for the result
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, time, urllib.request
+
+          url = os.environ["APP_URL"].rstrip("/") + "/api/v1/collection/scheduler-status"
+          before = os.environ.get("BEFORE", "")
+          deadline = time.time() + 40 * 60
+          status = {}
+          while time.time() < deadline:
+              time.sleep(20)  # polling also keeps the instance awake
+              try:
+                  with urllib.request.urlopen(url, timeout=60) as r:
+                      status = json.load(r)
+              except Exception as exc:  # transient network error: keep polling
+                  print("poll failed:", exc)
+                  continue
+              if status.get("last_run") != before and not status.get("job_running"):
+                  break
+          else:
+              sys.exit("Timed out waiting for the harvest to finish.")
+
+          result = status.get("last_result") or {}
+          print("Total stored:", result.get("total_stored"))
+          failed = []
+          for sector, res in (result.get("sectors") or {}).items():
+              err = res.get("error")
+              print(f"  {sector:12} stored={res.get('stored')} {'ERROR: ' + err if err else ''}")
+              if err:
+                  failed.append(sector)
+          if result.get("status") != "completed":
+              sys.exit(f"Harvest did not complete: {result}")
+          if failed:
+              sys.exit("Sectors with errors: " + ", ".join(failed))
+          PY

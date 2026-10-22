@@ -26,6 +26,7 @@ class AutonomousHarvesterScheduler:
     def __init__(self, interval_hours: int = 6) -> None:
         self.interval_seconds = interval_hours * 3600
         self._task: asyncio.Task | None = None
+        self._bg_task: asyncio.Task | None = None  # on-demand run started via the API
         self._job_lock = asyncio.Lock()
         self._job_running = False
         self.is_running = False
@@ -64,6 +65,14 @@ class AutonomousHarvesterScheduler:
                 await asyncio.sleep(self.interval_seconds)
             except asyncio.CancelledError:
                 break
+
+    def start_background_job(self) -> bool:
+        """Start a full harvest without waiting for it (an HTTP request would time out
+        long before 8 sectors finish). Returns False when one is already running."""
+        if self._job_running or (self._bg_task is not None and not self._bg_task.done()):
+            return False
+        self._bg_task = asyncio.create_task(self.run_harvest_job())
+        return True
 
     async def run_harvest_job(self) -> dict[str, Any]:
         """Public entry-point — skips if a job is already in progress."""

@@ -327,8 +327,16 @@ def scheduler_status() -> dict:
 
 
 @app.post("/api/v1/collection/run-scheduled-harvest", dependencies=[Depends(require_collection_access)])
-async def trigger_harvest() -> dict:
-    return await scheduler_service.run_harvest_job()
+async def trigger_harvest(background: bool = False) -> Response:
+    """Run the all-sector harvest. With ?background=true it returns 202 immediately and the
+    caller polls /collection/scheduler-status (used by the daily GitHub Actions workflow)."""
+    if background:
+        started = scheduler_service.start_background_job()
+        return JSONResponse(
+            status_code=202,
+            content={"status": "started" if started else "already_running"},
+        )
+    return JSONResponse(content=await scheduler_service.run_harvest_job())
 
 
 @app.post("/api/v1/studies", dependencies=[Depends(require_analysis_rate_limit)])
