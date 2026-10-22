@@ -110,6 +110,7 @@ async function downloadExport() {
       try { detail = (await res.json()).detail; } catch (_) { /* not JSON */ }
       throw new Error(detail || `HTTP ${res.status}`);
     }
+    const truncated = res.headers.get('X-Export-Truncated') === 'true';
     const blob = await res.blob();
     const cd = res.headers.get('Content-Disposition') || '';
     const m = /filename="?([^";]+)"?/i.exec(cd);
@@ -123,6 +124,7 @@ async function downloadExport() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+    if (truncated) showToast(t('api.export_truncated'), 'info');
   } catch (err) {
     console.warn('export failed:', err);
     showToast(`${t('api.download_failed')}: ${err.message}`, 'error');

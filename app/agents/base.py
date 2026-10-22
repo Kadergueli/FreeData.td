@@ -266,12 +266,24 @@ class BaseAgent(ABC):
             errors=errors,
         )
 
+    RAW_ARCHIVE_KEEP = 40  # newest files kept per sector; the full raw payload also lives in table_raw
+
+    def _prune_raw_archive(self, raw_directory: Path) -> None:
+        """Without a cap, every collection leaves a JSON file on the server's (small) disk."""
+        files = sorted(raw_directory.glob(f"{self.sector}_*.json"), key=lambda f: f.stat().st_mtime)
+        for old in files[:-self.RAW_ARCHIVE_KEEP]:
+            try:
+                old.unlink()
+            except OSError as exc:
+                logger.warning("Could not remove old raw archive %s: %s", old, exc)
+
     def _archive_raw(self, source: str, records: list[dict[str, Any]], collected_at: datetime) -> None:
         try:
             raw_directory = PROJECT_ROOT / "data" / "raw"
             raw_directory.mkdir(parents=True, exist_ok=True)
             filename = f"{self.sector}_{source}_{collected_at.strftime('%Y%m%dT%H%M%S')}.json"
             (raw_directory / filename).write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._prune_raw_archive(raw_directory)
         except Exception as exc:
             # Best-effort local archival copy - never block a collection run over
             # this, but a silent `pass` here means a real problem (disk full,

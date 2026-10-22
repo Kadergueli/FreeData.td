@@ -21,22 +21,24 @@ FreeData.td est la réponse à ce problème.
 
 ## Secteurs couverts
 
-| Secteur | Sources | Statut |
+| Secteur | Sources principales | Statut |
 |---|---|---|
-| 🌾 Agriculture | FAOSTAT, WFP VAM | 🔄 En développement |
-| 🛒 Marchés & Prix | WFP VAM, World Bank | 📋 Planifié |
-| 🚗 Transports | OpenStreetMap, OSR | 📋 Planifié |
-| 📚 Education | UNESCO, UNICEF | 📋 Planifié |
-| 🌍 Environnement | Open-Meteo, NASA |🔄 En développement |
-| 💰 Economie | World Bank, IMF | 📋 Planifié |
-
-## Architecture
+| 🌾 Agriculture | World Bank, Open-Meteo, NASA POWER | ✅ En production |
+| 🛒 Marchés & Prix | WFP (HDX), FAOSTAT, World Bank | ✅ En production |
+| 🌍 Environnement | Open-Meteo, NASA POWER, NASA FIRMS | ✅ En production |
+| 💰 Économie | World Bank | ✅ En production |
+| 🏥 Santé | World Bank | ✅ En production |
+| ⚡ Énergie | World Bank | ✅ En production |
+| 🚗 Transports | OpenStreetMap, HDX, World Bank | 🔒 Collecte administrateur |
+| 📚 Éducation | UNESCO UIS, UNICEF, World Bank | 🔒 Collecte administrateur |
 
 ## Accès aux données
 
-- 🌐 **Plateforme web** : visualisation interactive (coming soon)
-- 📥 **Téléchargement** : CSV / JSON par secteur (coming soon)
-- 🔌 **API publique** : `GET /api/v1/agriculture` (coming soon)
+- 🌐 **Plateforme web** : visualisation interactive, recherche, rapports d'analyse (servie par l'API à la racine `/`)
+- 📥 **Téléchargement** : CSV / JSON / XML par secteur et par région (Parquet si `pyarrow` est installé)
+- 🔌 **API publique en lecture, sans clé** : `GET /api/v1/observations?sector=health&q=...`, `GET /api/v1/stats`, documentation interactive sur `/docs`
+
+Déploiement (Render, collecte quotidienne via GitHub Actions) : voir [docs/deployment.md](docs/deployment.md).
 
 ## Installation
 
@@ -88,6 +90,7 @@ Never expose the service-role key in the browser or commit `.env`.
 python -m app.cli collect-agriculture --demo
 python -m app.cli collect-agriculture --source world-bank
 python -m app.cli export --sector agriculture --format csv
+pip install -r requirements-dev.txt   # test dependencies
 pytest
 ```
 
@@ -98,10 +101,11 @@ app/agents/       Collection agents and shared pipeline
 app/services/     Storage and export services
 app/main.py       FastAPI application
 supabase/         Cloud database schema and row-level security
-tests/            Automated tests
+tests/            Automated tests (tests/e2e: browser tests, need Playwright)
+docs/             Architecture, agent specification, deployment
 ```
 
-The next production steps are adding FAOSTAT and WFP adapters, scheduled runs through GitHub Actions, and authentication/usage limits for public downloads.
+Scheduled runs are handled by `.github/workflows/scheduled_harvest.yml` (see `docs/deployment.md`).
 
 ## LLM studies with Groq
 

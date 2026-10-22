@@ -29,7 +29,7 @@ from app.agents.ds_insights import (
 )
 from app.config import settings
 from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
-from app.services.export import observations_to_csv, observations_to_json, observations_to_parquet, observations_to_xml, parquet_available
+from app.services.export import observations_to_csv, observations_to_parquet, observations_to_xml, parquet_available
 from app.services.scheduler import scheduler_service
 from app.services.storage import ObservationRepository, _cache_get, _cache_set
 
@@ -170,6 +170,18 @@ def pipeline_audit() -> dict:
 
 
 
+EXPORT_LIMIT = 5000
+
+
+def _export_headers(filename: str, rows: list) -> dict[str, str]:
+    """Download headers; flags an export that hit the row cap so the UI can warn
+    instead of silently handing out an incomplete file."""
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if len(rows) >= EXPORT_LIMIT:
+        headers["X-Export-Truncated"] = "true"
+    return headers
+
+
 def _safe_filename_part(sector: str | None) -> str:
     """Sanitize a query param before it goes into an HTTP header value
     (Content-Disposition filename) - strips anything that isn't alphanumeric,
@@ -182,7 +194,7 @@ def _safe_filename_part(sector: str | None) -> str:
 
 @app.get("/api/v1/export/csv", response_class=PlainTextResponse)
 def export_csv(sector: str | None = None, region: str | None = None) -> PlainTextResponse:
-    rows = repository.list_observations(sector=sector, region=region, limit=5000)
+    rows = repository.list_observations(sector=sector, region=region, limit=EXPORT_LIMIT)
     content = observations_to_csv(rows)
     name_parts = _safe_filename_part(sector)
     if region:
@@ -190,27 +202,27 @@ def export_csv(sector: str | None = None, region: str | None = None) -> PlainTex
     filename = f"freedatatd-{name_parts}-export.csv"
     return PlainTextResponse(
         content,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=_export_headers(filename, rows),
         media_type="text/csv",
     )
 
 
 @app.get("/api/v1/export/json")
 def export_json(sector: str | None = None, region: str | None = None) -> JSONResponse:
-    rows = repository.list_observations(sector=sector, region=region, limit=5000)
+    rows = repository.list_observations(sector=sector, region=region, limit=EXPORT_LIMIT)
     name_parts = _safe_filename_part(sector)
     if region:
         name_parts += f"-{_safe_filename_part(region)}"
     filename = f"freedatatd-{name_parts}-export.json"
     return JSONResponse(
         content=rows,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=_export_headers(filename, rows),
     )
 
 
 @app.get("/api/v1/export/xml", response_class=PlainTextResponse)
 def export_xml(sector: str | None = None, region: str | None = None) -> PlainTextResponse:
-    rows = repository.list_observations(sector=sector, region=region, limit=5000)
+    rows = repository.list_observations(sector=sector, region=region, limit=EXPORT_LIMIT)
     content = observations_to_xml(rows)
     name_parts = _safe_filename_part(sector)
     if region:
@@ -218,14 +230,14 @@ def export_xml(sector: str | None = None, region: str | None = None) -> PlainTex
     filename = f"freedatatd-{name_parts}-export.xml"
     return PlainTextResponse(
         content,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=_export_headers(filename, rows),
         media_type="application/xml",
     )
 
 
 @app.get("/api/v1/export/parquet")
 def export_parquet(sector: str | None = None, region: str | None = None) -> Response:
-    rows = repository.list_observations(sector=sector, region=region, limit=5000)
+    rows = repository.list_observations(sector=sector, region=region, limit=EXPORT_LIMIT)
     try:
         content = observations_to_parquet(rows)
     except RuntimeError as exc:
@@ -236,7 +248,7 @@ def export_parquet(sector: str | None = None, region: str | None = None) -> Resp
     filename = f"freedatatd-{name_parts}-export.parquet"
     return Response(
         content=content,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=_export_headers(filename, rows),
         media_type="application/octet-stream",
     )
 
