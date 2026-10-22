@@ -80,6 +80,15 @@ def _with_retry(operation: Any, *, attempts: int = 3, base_delay: float = 0.3, l
     raise last_exc
 
 
+_WRITE_CHUNK = 500  # rows per Supabase request (one giant insert can exceed request limits)
+
+
+def _chunks(items: list, size: int | None = None):
+    size = size or _WRITE_CHUNK
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
 class ObservationRepository:
     """Writes to Supabase when configured, otherwise to a local SQLite database."""
 
@@ -255,6 +264,53 @@ class ObservationRepository:
         # len(rows) only when the driver returns -1 (unknown).
         return cursor.rowcount if cursor.rowcount >= 0 else len(rows)
 
+    def _drop_unchanged_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep only rows that are new or whose value changed since the last harvest.
+
+        Every harvest used to re-insert ALL rows into table_clean and table_logs, so those
+        tables grew by the full dataset daily (the free Supabase quota is small). Rows already
+        published with the same value carry no information: skip them. If the existing values
+        cannot be read, everything is written (the old behaviour), never less.
+        """
+        if not rows:
+            return rows
+        try:
+            existing: dict[tuple, float | None] = {}
+            sources = sorted({str(r["source"])[:30] for r in rows})
+            for sector in sorted({r["sector"] for r in rows}):
+                start = 0
+                while True:
+                    page = _with_retry(
+                        lambda sector=sector, start=start: self._supabase.table("table_public")
+                        .select("secteur,source_api,date_reference,indicateur,region,valeur")
+                        .eq("secteur", sector).in_("source_api", sources)
+                        .range(start, start + 999).execute(),
+                        attempts=2,
+                        label="table_public existing values",
+                    ).data or []
+                    for item in page:
+                        key = (item["secteur"], item["source_api"], str(item["date_reference"]), item["indicateur"], item["region"])
+                        existing[key] = item.get("valeur")
+                    if len(page) < 1000 or start > 100_000:
+                        break
+                    start += 1000
+        except Exception as exc:
+            logger.warning("Could not read existing public values (%s) - writing every row", exc)
+            return rows
+
+        def unchanged(r: dict[str, Any]) -> bool:
+            key = (r["sector"], str(r["source"])[:30], str(r["reference_date"]), r["indicator"], r["region"])
+            old = existing.get(key)
+            try:
+                return old is not None and abs(float(old) - float(r["value"])) < 1e-9
+            except (TypeError, ValueError):
+                return False
+
+        kept = [r for r in rows if not unchanged(r)]
+        if len(kept) < len(rows):
+            logger.info("Skipped %d unchanged rows already published", len(rows) - len(kept))
+        return kept
+
     def _store_supabase_pipeline_batch(self, rows: list[dict[str, Any]], raw_record_id: int | None) -> int:
         """Write clean records then publish them using a single batch per table, avoiding duplicate entries."""
         # In-memory deduplication of incoming rows
@@ -272,7 +328,7 @@ class ObservationRepository:
                 seen_rows.add(key)
                 deduped_rows.append(r)
 
-        rows = deduped_rows
+        rows = self._drop_unchanged_rows(deduped_rows)
         if not rows:
             return 0
 
@@ -297,16 +353,17 @@ class ObservationRepository:
                 "flag_anomalie": has_anomaly,
             })
 
+        clean_ids: list[Any] = []
         try:
-            clean_response = _with_retry(
-                lambda: self._supabase.table("table_clean").insert(clean_payloads).execute(),
-                label="table_clean batch insert",
-            )
+            for chunk in _chunks(clean_payloads):
+                clean_response = _with_retry(
+                    lambda chunk=chunk: self._supabase.table("table_clean").insert(chunk).execute(),
+                    label="table_clean batch insert",
+                )
+                clean_ids.extend(item["id"] for item in clean_response.data)
         except Exception as exc:
             logger.error("Supabase table_clean batch insert failed after retries: %s", exc)
             raise RuntimeError(f"Storage error writing to table_clean: {exc}") from exc
-
-        clean_ids = [item["id"] for item in clean_response.data]
 
         # Batch insert audit logs (one entry per clean record, non-critical)
         log_payloads = [
@@ -322,11 +379,12 @@ class ObservationRepository:
             for clean_id, row in zip(clean_ids, rows)
         ]
         try:
-            _with_retry(
-                lambda: self._supabase.table("table_logs").insert(log_payloads).execute(),
-                attempts=2,
-                label="table_logs batch insert",
-            )
+            for chunk in _chunks(log_payloads):
+                _with_retry(
+                    lambda chunk=chunk: self._supabase.table("table_logs").insert(chunk).execute(),
+                    attempts=2,
+                    label="table_logs batch insert",
+                )
         except Exception as exc:
             logger.warning("Supabase table_logs batch insert failed (non-fatal): %s", exc)
 
@@ -354,13 +412,14 @@ class ObservationRepository:
                 "notes_publiques": notes,
             })
         try:
-            _with_retry(
-                lambda: self._supabase.table("table_public").upsert(
-                    public_payloads,
-                    on_conflict="secteur,source_api,date_reference,indicateur,region",
-                ).execute(),
-                label="table_public upsert",
-            )
+            for chunk in _chunks(public_payloads):
+                _with_retry(
+                    lambda chunk=chunk: self._supabase.table("table_public").upsert(
+                        chunk,
+                        on_conflict="secteur,source_api,date_reference,indicateur,region",
+                    ).execute(),
+                    label="table_public upsert",
+                )
         except Exception as _upsert_exc:
             # Upsert failed — fall back to manual delete-then-insert to avoid duplicates.
             logger.warning(
