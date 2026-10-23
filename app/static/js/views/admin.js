@@ -11,6 +11,7 @@ import { escapeHtml } from '../sanitize.js';
 
 const SECTOR_IDS = ['agriculture', 'environment', 'markets', 'transport', 'education', 'economy', 'health', 'energy'];
 let _tab = 'overview';
+let _pollTimer = null;
 let _me = null;
 
 const root = () => document.getElementById('admin-root');
@@ -84,7 +85,7 @@ function renderLogin(message = '') {
 /* ── Dashboard shell ─────────────────────────────────────────────────────── */
 
 function renderDashboard() {
-  const tabs = [['overview', 'admin.tab_overview'], ['audit', 'admin.tab_audit']];
+  const tabs = [['overview', 'admin.tab_overview'], ['collections', 'admin.tab_collections'], ['audit', 'admin.tab_audit']];
   root().innerHTML = `
     <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
       <div>
@@ -108,6 +109,7 @@ function renderDashboard() {
   document.getElementById('admin-signout').addEventListener('click', () => { signOut(); _me = null; renderLogin(); });
   document.querySelectorAll('.admin-tab').forEach(btn => btn.addEventListener('click', () => {
     _tab = btn.dataset.tab;
+    clearTimeout(_pollTimer);
     document.querySelectorAll('.admin-tab').forEach(b => {
       const on = b === btn;
       b.classList.toggle('btn-cyan', on); b.classList.toggle('btn-ghost', !on);
@@ -122,7 +124,7 @@ function renderPanel() {
   const panel = document.getElementById('admin-panel');
   if (!panel) return;
   panel.innerHTML = `<p class="mono-sm text-muted"><span class="skeleton" style="width:240px;"></span></p>`;
-  (_tab === 'audit' ? loadAudit : loadOverview)(panel).catch(handlePanelError);
+  ({ audit: loadAudit, collections: loadCollections }[_tab] || loadOverview)(panel).catch(handlePanelError);
 }
 
 function handlePanelError(err) {
@@ -211,6 +213,90 @@ async function loadOverview(panel) {
     </div>`;
   if (window.lucide) window.lucide.createIcons();
   document.getElementById('admin-refresh')?.addEventListener('click', renderPanel);
+}
+
+/* ── Collections: history + manual runs ──────────────────────────────────── */
+
+const RUN_STYLE = {
+  running: 'var(--cyan)', completed: 'var(--green)', partial: 'var(--amber)',
+  failed: 'var(--red)', interrupted: 'var(--red)', skipped: 'var(--text-muted)',
+};
+
+function runDetails(r) {
+  const res = r.results || {};
+  const lines = Object.entries(res).filter(([, v]) => v && (v.error || (v.errors && v.errors.length)))
+    .map(([sec, v]) => `${sectorName(sec)}: ${v.error || v.errors.join(' ; ')}`);
+  return lines.length ? `<div class="mono-xs text-muted" style="margin-top:4px;max-width:520px;white-space:normal;">${lines.map(escapeHtml).join('<br>')}</div>` : '';
+}
+
+async function loadCollections(panel) {
+  const c = await adminFetch('/collections?limit=30');
+  const running = !!c.job_running;
+  const cur = c.current_run;
+  panel.innerHTML = `
+    <div class="card mb-4" style="padding:16px;">
+      <h4 class="mono-sm uppercase mb-2">${t('admin.run_title')}</h4>
+      <p class="mono-xs text-muted mb-3">${t('admin.run_desc')}</p>
+      <div class="flex gap-3 flex-wrap mb-3" id="admin-run-sectors">
+        ${c.sector_ids.map(id => `<label class="mono-xs flex items-center gap-1" style="cursor:pointer;">
+          <input type="checkbox" class="admin-run-sector" value="${escapeHtml(id)}" ${running ? 'disabled' : ''}> ${escapeHtml(sectorName(id))}</label>`).join('')}
+      </div>
+      <div class="flex gap-2 flex-wrap items-center">
+        <button class="btn btn-cyan mono-sm" id="admin-run-selected" type="button" ${running ? 'disabled' : ''}>${t('admin.run_selected')}</button>
+        <button class="btn btn-ghost mono-sm" id="admin-run-all" type="button" ${running ? 'disabled' : ''}>${t('admin.run_all')}</button>
+        <button class="btn btn-ghost mono-xs" id="admin-coll-refresh" type="button"><i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> ${t('admin.refresh')}</button>
+        <span class="mono-xs" id="admin-run-state" style="color:var(--cyan);">${running ? `${t('admin.run_in_progress')}${cur && cur.sectors ? ` (${escapeHtml(cur.sectors.map(sectorName).join(', '))})` : ''}` : ''}</span>
+      </div>
+      <p class="mono-xs mt-2" id="admin-run-msg" role="status"></p>
+    </div>
+    <div class="card" style="padding:16px;">
+      <h4 class="mono-sm uppercase mb-3">${t('admin.history_title')}</h4>
+      ${c.runs.length ? `<div style="overflow-x:auto;"><table class="ds-table" id="admin-runs-table"><thead><tr>
+        <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.th_when')}</th>
+        <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.th_trigger')}</th>
+        <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.th_sectors')}</th>
+        <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.th_state')}</th>
+        <th class="mono-xs text-muted" style="text-align:right;padding:6px 10px;">${t('admin.th_stored')}</th></tr></thead><tbody>
+        ${c.runs.map(r => {
+          const tk = `admin.triggers.${r.trigger}`; const trig = t(tk) === tk ? r.trigger : t(tk);
+          const color = RUN_STYLE[r.status] || 'var(--text-muted)';
+          const secs = Array.isArray(r.sectors) ? r.sectors : [];
+          const secTxt = secs.length >= c.sector_ids.length ? t('admin.all_sectors') : secs.map(sectorName).join(', ');
+          return `<tr data-run-status="${escapeHtml(r.status)}">
+            <td class="mono-xs" style="padding:8px 10px;white-space:nowrap;">${fmtDateTime(r.started_at)}</td>
+            <td class="mono-xs" style="padding:8px 10px;">${escapeHtml(trig)}${r.triggered_by ? `<div class="text-muted">${escapeHtml(r.triggered_by)}</div>` : ''}</td>
+            <td class="mono-xs" style="padding:8px 10px;">${escapeHtml(secTxt)}${runDetails(r)}</td>
+            <td style="padding:8px 10px;"><span class="badge" style="color:${color};border-color:${color};background:transparent;">${t(`admin.run_status.${r.status}`)}</span></td>
+            <td class="mono-xs" style="padding:8px 10px;text-align:right;">${Number(r.total_stored || 0).toLocaleString()}</td></tr>`;
+        }).join('')}</tbody></table></div>` : `<p class="mono-sm text-muted" id="admin-no-runs">${t('admin.no_runs')}</p>`}
+    </div>`;
+  if (window.lucide) window.lucide.createIcons();
+
+  const msg = document.getElementById('admin-run-msg');
+  const start = async (sectors) => {
+    try {
+      const r = await adminFetch('/collections/run', { method: 'POST', body: { sectors } });
+      msg.textContent = r.status === 'started' ? t('admin.run_started') : t('admin.run_already');
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) { handlePanelError(err); return; }
+      msg.textContent = `${t('admin.load_failed')}: ${err.message}`;
+      return;
+    }
+    renderPanel();
+  };
+  document.getElementById('admin-run-all')?.addEventListener('click', () => start(null));
+  document.getElementById('admin-run-selected')?.addEventListener('click', () => {
+    const picked = [...document.querySelectorAll('.admin-run-sector:checked')].map(i => i.value);
+    if (!picked.length) { msg.textContent = t('admin.run_pick'); return; }
+    start(picked);
+  });
+  document.getElementById('admin-coll-refresh')?.addEventListener('click', renderPanel);
+
+  // While a harvest runs, refresh the history every few seconds until it ends.
+  clearTimeout(_pollTimer);
+  if (running) {
+    _pollTimer = setTimeout(() => { if (_tab === 'collections' && document.getElementById('admin-panel')) renderPanel(); }, 4000);
+  }
 }
 
 /* ── Audit journal ───────────────────────────────────────────────────────── */

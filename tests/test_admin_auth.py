@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app import admin as admin_mod
 from app import main as main_mod
-from app.admin import build_overview, compute_alerts
+from app.admin import compute_alerts
 from app.config import settings
 from app.schemas import ObservationCreate
 from app.security import rate_limiter

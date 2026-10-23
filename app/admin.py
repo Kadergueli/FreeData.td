@@ -7,6 +7,7 @@ administrator (ADMIN_EMAILS = permanent owners, plus the table_admins list).
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -16,6 +17,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from app.config import settings
 from app.security import rate_limiter
@@ -230,3 +232,42 @@ def overview(admin: AdminUser = Depends(require_admin)) -> dict:
 @router.get("/audit-log")
 def audit_log(limit: int = Query(default=100, ge=1, le=500), admin: AdminUser = Depends(require_admin)) -> dict:
     return {"entries": _store().list_audit(limit)}
+
+
+# ── Collections: history + manual runs ───────────────────────────────────────
+
+class RunRequest(BaseModel):
+    sectors: list[str] | None = None  # None / empty = every sector
+
+
+@router.get("/collections")
+def collections(limit: int = Query(default=30, ge=1, le=100), admin: AdminUser = Depends(require_admin)) -> dict:
+    status = scheduler_service.get_status()
+    try:
+        runs = scheduler_service.history.list_runs(limit)
+    except Exception as exc:
+        logger.error("harvest history unreadable: %s", exc)
+        raise HTTPException(status_code=503, detail="Harvest history could not be read from the database.") from exc
+    return {
+        "sector_ids": list(SECTOR_IDS),
+        "job_running": status["job_running"],
+        "current_run": status.get("current_run"),
+        "next_run": status.get("next_run"),
+        "runs": runs,
+    }
+
+
+@router.post("/collections/run", status_code=202)
+async def run_collection(body: RunRequest | None = None, admin: AdminUser = Depends(require_admin)) -> dict:
+    sectors = list(dict.fromkeys(body.sectors)) if body and body.sectors else None
+    try:
+        started = scheduler_service.start_background_job(sectors, trigger="admin", triggered_by=admin.email)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if started:
+        await asyncio.to_thread(
+            _store().log, admin.email, "harvest_run", ",".join(sectors) if sectors else "all",
+            {"sectors": sectors or list(SECTOR_IDS)},
+        )
+        _cache_set("admin_overview", None)
+    return {"status": "started" if started else "already_running"}

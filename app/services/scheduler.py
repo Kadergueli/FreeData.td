@@ -15,7 +15,8 @@ from app.agents import (
     MarketsAgent,
     TransportAgent,
 )
-from app.services.storage import ObservationRepository
+from app.services.harvest_runs import HarvestRunStore, summarize_results
+from app.services.storage import SECTOR_IDS, ObservationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +35,17 @@ class AutonomousHarvesterScheduler:
         self.next_run: datetime | None = None
         self.last_result: dict[str, Any] | None = None
         self.repository = ObservationRepository()
+        self.history = HarvestRunStore(self.repository)
+        # Set by the caller for the run about to start (read once inside the job lock).
+        self._next_sectors: list[str] | None = None
+        self.current_run: dict[str, Any] | None = None
 
     def start(self) -> None:
         if self.is_running:
             return
         self.is_running = True
+        # A run still marked 'running' belongs to the process that just died.
+        self.history.close_stale()
         self._task = asyncio.create_task(self._scheduler_loop())
         logger.info("Autonomous Harvester Scheduler started (interval: %ds).", self.interval_seconds)
 
@@ -59,23 +66,36 @@ class AutonomousHarvesterScheduler:
             return
 
         while self.is_running:
-            await self.run_harvest_job()
+            await self.run_harvest_job(trigger="scheduler")
             self.next_run = datetime.now(UTC) + timedelta(seconds=self.interval_seconds)
             try:
                 await asyncio.sleep(self.interval_seconds)
             except asyncio.CancelledError:
                 break
 
-    def start_background_job(self) -> bool:
-        """Start a full harvest without waiting for it (an HTTP request would time out
-        long before 8 sectors finish). Returns False when one is already running."""
+    @staticmethod
+    def _validate_sectors(sectors: list[str] | None) -> None:
+        unknown = [x for x in (sectors or []) if x not in SECTOR_IDS]
+        if unknown:
+            raise ValueError(f"unknown sector(s): {', '.join(unknown)}")
+
+    def start_background_job(
+        self, sectors: list[str] | None = None, trigger: str = "api", triggered_by: str | None = None,
+    ) -> bool:
+        """Start a harvest (all sectors, or the given ones) without waiting for it (an HTTP
+        request would time out long before 8 sectors finish). Returns False when one is
+        already running."""
+        self._validate_sectors(sectors)
         if self._job_running or (self._bg_task is not None and not self._bg_task.done()):
             return False
-        self._bg_task = asyncio.create_task(self.run_harvest_job())
+        self._bg_task = asyncio.create_task(self.run_harvest_job(sectors, trigger, triggered_by))
         return True
 
-    async def run_harvest_job(self) -> dict[str, Any]:
+    async def run_harvest_job(
+        self, sectors: list[str] | None = None, trigger: str = "api", triggered_by: str | None = None,
+    ) -> dict[str, Any]:
         """Public entry-point — skips if a job is already in progress."""
+        self._validate_sectors(sectors)
         if self._job_running:
             logger.warning("Harvest job skipped because another job is already running.")
             return {
@@ -98,10 +118,26 @@ class AutonomousHarvesterScheduler:
                 }
 
             self._job_running = True
+            self._next_sectors = list(sectors) if sectors else None
+            planned = self._next_sectors or list(SECTOR_IDS)
+            run_id: int | None = None
+            result: dict[str, Any] | None = None
             try:
-                return await self._run_harvest_job()
+                run_id = await asyncio.to_thread(self.history.start, trigger, planned, triggered_by)
+                # no e-mail here: this dict is part of the public /scheduler-status payload
+                self.current_run = {"id": run_id, "trigger": trigger, "sectors": planned,
+                                    "started_at": datetime.now(UTC).isoformat()}
+                result = await self._run_harvest_job()
+                return result
             finally:
                 self._job_running = False
+                self.current_run = None
+                if result is None:  # the job itself crashed or was cancelled
+                    await asyncio.shield(asyncio.to_thread(self.history.finish, run_id, "failed", 0, {}))
+                else:
+                    status, summary = summarize_results(result.get("sectors") or {})
+                    await asyncio.shield(asyncio.to_thread(
+                        self.history.finish, run_id, status, int(result.get("total_stored") or 0), summary))
 
     async def _run_harvest_job(self) -> dict[str, Any]:
         logger.info("Starting scheduled autonomous data harvest across active sector agents...")
@@ -120,7 +156,10 @@ class AutonomousHarvesterScheduler:
             ("education", EducationAgent(self.repository)),
         ]
 
+        wanted = self._next_sectors
         for sec_name, agent in agents:
+            if wanted and sec_name not in wanted:
+                continue
             try:
                 res = await agent.run(source="all")
                 agent_results[sec_name] = res.model_dump(mode="json")
@@ -146,6 +185,7 @@ class AutonomousHarvesterScheduler:
             "last_run": self.last_run.isoformat() if self.last_run else None,
             "next_run": self.next_run.isoformat() if self.next_run else None,
             "last_result": self.last_result,
+            "current_run": self.current_run,
         }
 
 

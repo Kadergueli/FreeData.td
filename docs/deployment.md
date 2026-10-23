@@ -35,3 +35,10 @@ Lancement manuel : onglet Actions > « Daily harvest (all sectors) » > Run work
 
 Même connecté à Supabase, un compte absent de `ADMIN_EMAILS` / `table_admins` est refusé (403).
 Chaque connexion et chaque action sensible est écrite dans `table_admin_audit`.
+
+## Historique des collectes (admin > Collectes)
+
+Exécuter une fois `supabase/harvest_runs_setup.sql` (table `table_harvest_runs`, additive).
+Chaque collecte (planificateur, workflow GitHub, bouton admin) y est enregistrée : début, fin,
+déclencheur, secteurs, statut (`completed`, `partial`, `failed`, `interrupted`) et raisons d'échec.
+Une collecte restée « en cours » après un redémarrage est marquée `interrupted`.
