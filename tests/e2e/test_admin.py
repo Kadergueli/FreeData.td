@@ -1,4 +1,4 @@
-"""Patch A/B — admin UI: sign-in flow, dashboard, alerts, audit journal, error handling.
+"""Patch A/B/C — admin UI: sign-in flow, dashboard, alerts, collections, quarantine review, audit journal.
 
 The e2e server has no Supabase, so the browser is given a mocked config + auth endpoint
 and mocked /api/v1/admin/* answers. The real backend rules are covered by tests/test_admin_auth.py.
@@ -34,7 +34,22 @@ COLLECTIONS = {
 }
 
 
-def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collections=None, run_reply=None):
+QITEMS = [
+    {"id": 7, "status": "pending", "secteur": "health", "source_api": "World Bank", "date_reference": "2023-01-01",
+     "indicateur": "<img src=x onerror=alert(1)> rate", "valeur": 140.0, "unite": "%", "region": "national",
+     "flags": ["DOMAIN_VIOLATION", "SUPERVISOR_REVIEW"], "reviewed_by": None},
+    {"id": 8, "status": "pending", "secteur": "agriculture", "source_api": "FAOSTAT", "date_reference": "2022-01-01",
+     "indicateur": "Crop yield", "valeur": -5.0, "unite": "t/ha", "region": "Lac",
+     "flags": ["NEGATIVE_ERROR", "SUPERVISOR_REVIEW"], "reviewed_by": None},
+    {"id": 3, "status": "corrected", "secteur": "energy", "source_api": "World Bank", "date_reference": "2021-01-01",
+     "indicateur": "Access to electricity", "valeur": 180.0, "unite": "%", "region": "national", "corrected_value": 18.0,
+     "flags": ["DOMAIN_VIOLATION", "SUPERVISOR_REVIEW"], "reviewed_by": "boss@x.org", "reviewed_at": "2026-10-22T10:00:00",
+     "review_note": "<b>typo</b>"},
+]
+
+
+def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collections=None, run_reply=None,
+          qitems=None, review_status=200):
     page.route("**/api/v1/config", lambda r: r.fulfill(json={"admin": {"enabled": True, "supabase_url": SB, "anon_key": "anon"}}))
 
     def token(route):
@@ -62,6 +77,15 @@ def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collectio
             route.fulfill(status=202, json=run_reply or {"status": "started"})
         elif path.startswith("/collections"):
             route.fulfill(json=collections if collections is not None else COLLECTIONS)
+        elif path.startswith("/quarantine/"):
+            bodies.append(route.request.post_data_json)
+            route.fulfill(status=review_status, json={"status": "ok"} if review_status == 200 else {"detail": "already reviewed"})
+        elif path.startswith("/quarantine"):
+            want = path.split("status=")[1].split("&")[0] if "status=" in path else "pending"
+            data = QITEMS if qitems is None else qitems
+            items = [i for i in data if want == "all" or i["status"] == want]
+            counts = {st: len([i for i in data if i["status"] == st]) for st in ("pending", "approved", "corrected", "rejected")}
+            route.fulfill(json={"items": items, "counts": counts})
         elif path.startswith("/audit-log"):
             route.fulfill(json={"entries": [{"created_at": "2026-10-23T09:00:00", "admin_email": "me@x.org", "action": "login", "target": None, "detail": {}},
                                             {"created_at": "2026-10-23T09:05:00", "admin_email": "<img src=x onerror=alert(1)>", "action": "weird.action", "target": "<b>t</b>", "detail": {}}]})
@@ -243,3 +267,108 @@ def test_already_running_reply_is_explained(probe):
     probe.page.wait_for_selector("#admin-run-all")
     probe.page.click("#admin-run-all")
     probe.page.wait_for_selector("#admin-runs-table")
+
+
+# ── Patch C: quality / quarantine ───────────────────────────────────────────
+def _open_quality(probe):
+    _login(probe)
+    probe.page.wait_for_selector(".admin-tab")
+    probe.page.click('.admin-tab[data-tab="quality"]')
+    probe.page.wait_for_selector("#admin-q-filters")
+
+
+def test_quarantine_lists_pending_values_translated_and_escaped(probe):
+    _mock(probe.page)
+    _open_quality(probe)
+    probe.page.wait_for_selector("#admin-q-table")
+    rows = probe.page.locator("#admin-q-table tbody tr")
+    assert rows.count() == 2 and rows.nth(0).get_attribute("data-q-status") == "pending"
+    text = probe.page.inner_text("#admin-q-table")
+    assert "<img src=x" in text                                          # hostile name shown as text...
+    assert probe.page.locator("#admin-q-table img").count() == 0         # ...never interpreted as HTML
+    assert "hors du domaine" in text.lower() and "140" in text and "-5" in text  # reason translated, values visible
+    assert "admin." not in text and "DOMAIN_VIOLATION" not in text       # no raw keys or codes
+    assert "(2)" in probe.page.inner_text("#admin-q-filters")            # pending counter
+
+
+def test_approve_posts_to_the_right_row(probe):
+    calls = _mock(probe.page)
+    _open_quality(probe)
+    probe.page.wait_for_selector("#admin-q-table")
+    probe.page.click('tr[data-q-id="8"] .admin-q-act[data-act="approve"]')
+    probe.page.wait_for_selector("#admin-q-table")
+    assert ("POST", "/quarantine/8/approve") in [(m, p) for m, p, _ in calls]
+    assert [m for m, p, _ in calls if p.startswith("/quarantine?")] != []  # the list was reloaded
+
+
+def test_reject_posts_to_the_right_row(probe):
+    calls = _mock(probe.page)
+    _open_quality(probe)
+    probe.page.wait_for_selector("#admin-q-table")
+    probe.page.click('tr[data-q-id="7"] .admin-q-act[data-act="reject"]')
+    probe.page.wait_for_selector("#admin-q-table")
+    assert ("POST", "/quarantine/7/reject") in [(m, p) for m, p, _ in calls]
+
+
+def test_correct_requires_a_number_then_sends_value_and_note(probe):
+    calls = _mock(probe.page)
+    _open_quality(probe)
+    probe.page.wait_for_selector("#admin-q-table")
+    probe.page.click('tr[data-q-id="7"] .admin-q-act[data-act="correct"]')
+    probe.page.click(".admin-q-confirm")                                  # empty value
+    assert probe.page.inner_text("#admin-q-msg").strip() != "" and calls.bodies == []
+    probe.page.fill(".admin-q-value", "14")
+    probe.page.fill(".admin-q-note", "decimal slipped")
+    probe.page.click(".admin-q-confirm")
+    probe.page.wait_for_selector("#admin-q-table")
+    assert calls.bodies == [{"value": 14, "note": "decimal slipped"}]
+    assert ("POST", "/quarantine/7/correct") in [(m, p) for m, p, _ in calls]
+
+
+def test_correct_can_be_cancelled_without_calling_anything(probe):
+    calls = _mock(probe.page)
+    _open_quality(probe)
+    probe.page.wait_for_selector("#admin-q-table")
+    probe.page.click('tr[data-q-id="7"] .admin-q-act[data-act="correct"]')
+    probe.page.click(".admin-q-cancel")
+    probe.page.wait_for_selector('tr[data-q-id="7"] .admin-q-act[data-act="approve"]')
+    assert calls.bodies == []
+
+
+def test_value_already_handled_by_someone_else_refreshes_without_an_error_panel(probe):
+    _mock(probe.page, review_status=409)
+    _open_quality(probe)
+    probe.page.wait_for_selector("#admin-q-table")
+    probe.page.click('tr[data-q-id="7"] .admin-q-act[data-act="approve"]')
+    probe.page.wait_for_selector("#admin-q-table")
+    assert probe.page.locator("#admin-retry").count() == 0
+    assert "HTTP 409" not in probe.page.inner_text("#admin-panel")
+
+
+def test_reviewed_values_show_decision_reviewer_and_published_value(probe):
+    calls = _mock(probe.page)
+    _open_quality(probe)
+    probe.page.wait_for_selector("#admin-q-table")
+    probe.page.click('.admin-q-filter[data-status="corrected"]')
+    probe.page.wait_for_selector('tr[data-q-id="3"]')
+    assert any("status=corrected" in p for _, p, _ in calls)
+    row = probe.page.inner_text('tr[data-q-id="3"]')
+    assert "boss@x.org" in row and "18" in row and "180" in row
+    assert "<b>typo</b>" in row and probe.page.locator('tr[data-q-id="3"] b').count() == 0
+    assert probe.page.locator('tr[data-q-id="3"] .admin-q-act').count() == 0    # decided: no buttons
+
+
+def test_empty_queue_says_nothing_to_review(probe):
+    _mock(probe.page, qitems=[])
+    _open_quality(probe)
+    probe.page.wait_for_selector("#admin-q-empty")
+    assert probe.page.locator("#admin-q-table").count() == 0
+
+
+def test_quarantine_alert_on_the_overview_is_translated_with_its_number(probe):
+    alert = {"level": "warning", "code": "quarantine_pending", "message": "x", "params": {"count": 12}}
+    _mock(probe.page, overview=dict(OVERVIEW, alerts=[alert]))
+    _login(probe)
+    probe.page.wait_for_selector("#admin-sectors")
+    text = probe.page.inner_text("#admin-panel")
+    assert "12" in text and "{count}" not in text and "admin.alerts" not in text

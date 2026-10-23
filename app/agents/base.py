@@ -179,6 +179,7 @@ class BaseAgent(ABC):
 
             is_strictly_positive = any(k in ind.lower() for k in strictly_positive)
             is_valid_neg = any(k in ind.lower() for k in valid_negative)
+            is_percent_unit = "%" in obs.unit or "percent" in obs.unit.lower()
 
             if val < 0:
                 if "rainfall" in ind.lower() or "precip" in ind.lower():
@@ -193,8 +194,10 @@ class BaseAgent(ABC):
             elif "temp" in ind.lower():
                 if val < -5.0 or val > 55.0:
                     flags.extend(["DOMAIN_VIOLATION", "SUPERVISOR_REVIEW"])
-            elif "humidity" in ind.lower() or "rate" in ind.lower() or "percentage" in ind.lower():
-                if (val < 0.0 or val > 100.0) and "growth" not in ind.lower():
+            elif "humidity" in ind.lower() or "percentage" in ind.lower() or ("rate" in ind.lower() and is_percent_unit):
+                # 0-100 only binds quantities expressed in percent. A mortality rate "per 1,000
+                # live births" legitimately exceeds 100 (Chad: ~105), and inflation may be negative.
+                if (val < 0.0 or val > 100.0) and not is_valid_neg:
                     flags.extend(["DOMAIN_VIOLATION", "SUPERVISOR_REVIEW"])
 
             if ind in iqr_bounds:
@@ -245,7 +248,8 @@ class BaseAgent(ABC):
 
         accepted = self.process_data_science_rules(normalized_list)
 
-        stored = await asyncio.to_thread(self.repository.upsert_many, accepted, raw_record_id=raw_record_id)
+        report: dict[str, Any] = {}
+        stored = await asyncio.to_thread(self.repository.upsert_many, accepted, raw_record_id=raw_record_id, report=report)
         await asyncio.to_thread(
             self.repository.store_validation_report,
             raw_record_id=raw_record_id,
@@ -261,6 +265,7 @@ class BaseAgent(ABC):
             accepted=len(accepted),
             rejected=len(raw_records) - len(accepted),
             stored=stored,
+            held=int(report.get("held", 0)),
             started_at=started_at,
             completed_at=datetime.now(UTC),
             errors=errors,

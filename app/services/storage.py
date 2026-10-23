@@ -171,9 +171,16 @@ class ObservationRepository:
             )
             return None
 
-    def upsert_many(self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None) -> int:
+    def upsert_many(
+        self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None,
+        *, hold_for_review: bool = True, approved_by: str | None = None, report: dict[str, Any] | None = None,
+    ) -> int:
+        """Publish observations. Rows flagged SUPERVISOR_REVIEW go to quarantine instead (unless
+        hold_for_review=False, used when an administrator has just approved them); the number
+        held is returned through `report["held"]` when a dict is passed."""
         try:
-            return self._upsert_many(observations, raw_record_id)
+            return self._upsert_many(observations, raw_record_id, hold_for_review=hold_for_review,
+                                     approved_by=approved_by, report=report)
         finally:
             invalidate_cache()  # fresh data (or a partial write): drop cached aggregates
 
@@ -247,12 +254,44 @@ class ObservationRepository:
             logger.warning("SQLite save_study failed: %s", exc)
             raise RuntimeError(f"Impossible de persister le rapport d'analyse : {exc}") from exc
 
-    def _upsert_many(self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None) -> int:
+    def _upsert_many(
+        self, observations: Iterable[ObservationCreate], raw_record_id: int | None = None,
+        *, hold_for_review: bool = True, approved_by: str | None = None, report: dict[str, Any] | None = None,
+    ) -> int:
         rows = [self._serialise(observation) for observation in observations]
-        if not rows:
-            return 0
+        held: list[dict[str, Any]] = []
+        if hold_for_review:
+            held = [r for r in rows if "SUPERVISOR_REVIEW" in (r.get("flags") or [])]
+            held_ids = {id(r) for r in held}
+            rows = [r for r in rows if id(r) not in held_ids]
+        stored = self._publish_rows(rows, raw_record_id, approved_by) if rows else 0
+        if held:
+            from app.services.quarantine import QuarantineStore
+            # after publishing the clean rows: if holding fails, the error surfaces (sector
+            # error in the harvest history) and the next harvest tries again.
+            QuarantineStore(self).hold(held, raw_record_id)
+        if report is not None:
+            report["held"] = len(held)
+        return stored
+
+    def publish_reviewed(self, record: dict[str, Any], value: float, approved_by: str, extra_note: str | None = None) -> int:
+        """Publish one quarantined row after an administrator approved or corrected it."""
+        flags = [f for f in (record.get("flags") or []) if f != "SUPERVISOR_REVIEW"] + ["REVIEWED"]
+        notes = " ".join(x for x in (record.get("notes"), extra_note) if x) or None
+        observation = ObservationCreate(
+            sector=record["secteur"], indicator=record["indicateur"], value=value, unit=record.get("unite") or "unit",
+            reference_date=record["date_reference"], country_code=record.get("pays") or "TCD", region=record["region"],
+            source=record["source_api"], source_url=record.get("source_url"), license=record.get("licence") or "CC BY 4.0",
+            notes=notes, flags=sorted(set(flags)),
+        )
+        try:
+            return self._upsert_many([observation], record.get("id_raw"), hold_for_review=False, approved_by=approved_by)
+        finally:
+            invalidate_cache()
+
+    def _publish_rows(self, rows: list[dict[str, Any]], raw_record_id: int | None, approved_by: str | None) -> int:
         if self._supabase:
-            return self._store_supabase_pipeline_batch(rows, raw_record_id)
+            return self._store_supabase_pipeline_batch(rows, raw_record_id, approved_by)
         query = """INSERT INTO observations (sector, indicator, value, unit, reference_date, country_code, region, source, source_url, license, notes, collected_at)
                    VALUES (:sector, :indicator, :value, :unit, :reference_date, :country_code, :region, :source, :source_url, :license, :notes, :collected_at)
                    ON CONFLICT(sector, indicator, reference_date, region, source) DO UPDATE SET
@@ -311,7 +350,7 @@ class ObservationRepository:
             logger.info("Skipped %d unchanged rows already published", len(rows) - len(kept))
         return kept
 
-    def _store_supabase_pipeline_batch(self, rows: list[dict[str, Any]], raw_record_id: int | None) -> int:
+    def _store_supabase_pipeline_batch(self, rows: list[dict[str, Any]], raw_record_id: int | None, approved_by: str | None = None) -> int:
         """Write clean records then publish them using a single batch per table, avoiding duplicate entries."""
         # In-memory deduplication of incoming rows
         seen_rows: set[tuple[str, str, str, str, str]] = set()
@@ -408,7 +447,7 @@ class ObservationRepository:
                 "pays": row["country_code"][:3],
                 "licence": row["license"],
                 "score_qualite": score,
-                "approuve_par": "FreeDatatd DS Engine",
+                "approuve_par": approved_by or "FreeDatatd DS Engine",
                 "notes_publiques": notes,
             })
         try:

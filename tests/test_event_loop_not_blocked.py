@@ -15,7 +15,7 @@ class SlowRepo:
     def store_raw_batch(self, *a, **k):
         time.sleep(0.3)
 
-    def upsert_many(self, observations, raw_record_id=None):
+    def upsert_many(self, observations, raw_record_id=None, **kwargs):
         time.sleep(0.3)
         return len(list(observations))
 

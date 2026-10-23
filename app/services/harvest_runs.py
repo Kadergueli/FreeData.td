@@ -37,6 +37,7 @@ def summarize_results(sectors: dict[str, Any]) -> tuple[str, dict[str, Any]]:
                 "stored": int(res.get("stored") or 0),
                 "received": int(res.get("received") or 0),
                 "rejected": int(res.get("rejected") or 0),
+                "held": int(res.get("held") or 0),
             }
             if errors:
                 summary[name]["errors"] = errors

@@ -11,6 +11,7 @@ import { escapeHtml } from '../sanitize.js';
 
 const SECTOR_IDS = ['agriculture', 'environment', 'markets', 'transport', 'education', 'economy', 'health', 'energy'];
 let _tab = 'overview';
+let _qStatus = 'pending';
 let _pollTimer = null;
 let _me = null;
 
@@ -85,7 +86,7 @@ function renderLogin(message = '') {
 /* ── Dashboard shell ─────────────────────────────────────────────────────── */
 
 function renderDashboard() {
-  const tabs = [['overview', 'admin.tab_overview'], ['collections', 'admin.tab_collections'], ['audit', 'admin.tab_audit']];
+  const tabs = [['overview', 'admin.tab_overview'], ['collections', 'admin.tab_collections'], ['quality', 'admin.tab_quality'], ['audit', 'admin.tab_audit']];
   root().innerHTML = `
     <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
       <div>
@@ -124,7 +125,7 @@ function renderPanel() {
   const panel = document.getElementById('admin-panel');
   if (!panel) return;
   panel.innerHTML = `<p class="mono-sm text-muted"><span class="skeleton" style="width:240px;"></span></p>`;
-  ({ audit: loadAudit, collections: loadCollections }[_tab] || loadOverview)(panel).catch(handlePanelError);
+  ({ audit: loadAudit, collections: loadCollections, quality: loadQuality }[_tab] || loadOverview)(panel).catch(handlePanelError);
 }
 
 function handlePanelError(err) {
@@ -224,8 +225,8 @@ const RUN_STYLE = {
 
 function runDetails(r) {
   const res = r.results || {};
-  const lines = Object.entries(res).filter(([, v]) => v && (v.error || (v.errors && v.errors.length)))
-    .map(([sec, v]) => `${sectorName(sec)}: ${v.error || v.errors.join(' ; ')}`);
+  const lines = Object.entries(res).filter(([, v]) => v && (v.error || (v.errors && v.errors.length) || v.held > 0))
+    .map(([sec, v]) => `${sectorName(sec)}: ${[v.error, ...(v.errors || []), v.held > 0 ? t('admin.run_held').replace('{n}', v.held) : null].filter(Boolean).join(' ; ')}`);
   return lines.length ? `<div class="mono-xs text-muted" style="margin-top:4px;max-width:520px;white-space:normal;">${lines.map(escapeHtml).join('<br>')}</div>` : '';
 }
 
@@ -297,6 +298,87 @@ async function loadCollections(panel) {
   if (running) {
     _pollTimer = setTimeout(() => { if (_tab === 'collections' && document.getElementById('admin-panel')) renderPanel(); }, 4000);
   }
+}
+
+/* ── Quality: quarantine review ──────────────────────────────────────────── */
+
+function flagLabel(f) { const k = `admin.q_flags.${f}`; return t(k) === k ? f : t(k); }
+
+function fmtNum(v) { return typeof v === 'number' ? String(Number(v.toPrecision(10))) : '—'; }
+
+async function loadQuality(panel) {
+  const q = await adminFetch(`/quarantine?status=${encodeURIComponent(_qStatus)}&limit=200`);
+  const items = q.items || [];
+  const statuses = ['pending', 'approved', 'corrected', 'rejected', 'all'];
+  panel.innerHTML = `<div class="card" style="padding:16px;">
+    <h4 class="mono-sm uppercase mb-2">${t('admin.q_title')}</h4>
+    <p class="mono-xs text-muted mb-3">${t('admin.q_desc')}</p>
+    <div class="flex gap-2 flex-wrap mb-3" id="admin-q-filters">
+      ${statuses.map(st => `<button type="button" class="btn ${st === _qStatus ? 'btn-cyan' : 'btn-ghost'} mono-xs admin-q-filter" data-status="${st}" aria-pressed="${st === _qStatus}">
+        ${t(`admin.q_status.${st}`)}${st !== 'all' && q.counts ? ` (${Number(q.counts[st] || 0)})` : ''}</button>`).join('')}
+    </div>
+    <p class="mono-xs mb-2" id="admin-q-msg" role="status"></p>
+    ${items.length ? `<div style="overflow-x:auto;"><table class="ds-table" id="admin-q-table"><thead><tr>
+      <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.q_th_obs')}</th>
+      <th class="mono-xs text-muted" style="text-align:right;padding:6px 10px;">${t('admin.q_th_value')}</th>
+      <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.q_th_flags')}</th>
+      <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.q_th_review')}</th></tr></thead><tbody>
+      ${items.map(it => {
+        const pending = it.status === 'pending';
+        const published = it.status === 'corrected' ? it.corrected_value : it.status === 'approved' ? it.valeur : null;
+        return `<tr data-q-id="${Number(it.id)}" data-q-status="${escapeHtml(it.status)}">
+          <td class="mono-xs" style="padding:8px 10px;"><div class="fw-600">${escapeHtml(it.indicateur)}</div>
+            <div class="text-muted">${escapeHtml(sectorName(it.secteur))} · ${escapeHtml(it.region)} · ${escapeHtml(it.date_reference)} · ${escapeHtml(it.source_api)}</div></td>
+          <td class="mono-xs" style="padding:8px 10px;text-align:right;white-space:nowrap;">${escapeHtml(fmtNum(it.valeur))} ${escapeHtml(it.unite || '')}</td>
+          <td class="mono-xs" style="padding:8px 10px;">${(it.flags || []).filter(f => f !== 'SUPERVISOR_REVIEW').map(f => `<span class="badge" style="color:var(--amber);border-color:var(--amber);background:transparent;margin:0 4px 4px 0;">${escapeHtml(flagLabel(f))}</span>`).join('') || escapeHtml(flagLabel('SUPERVISOR_REVIEW'))}</td>
+          <td class="mono-xs" style="padding:8px 10px;min-width:230px;">${pending ? `
+            <div class="flex gap-2 flex-wrap admin-q-actions">
+              <button type="button" class="btn btn-cyan mono-xs admin-q-act" data-act="approve" data-id="${Number(it.id)}">${t('admin.q_approve')}</button>
+              <button type="button" class="btn btn-ghost mono-xs admin-q-act" data-act="correct" data-id="${Number(it.id)}">${t('admin.q_correct')}</button>
+              <button type="button" class="btn btn-ghost mono-xs admin-q-act" data-act="reject" data-id="${Number(it.id)}">${t('admin.q_reject')}</button>
+            </div>` : `<div><span class="badge">${t(`admin.q_status.${it.status}`)}</span>
+              ${published != null ? `<div class="text-muted">${escapeHtml(t('admin.q_published_as').replace('{value}', fmtNum(published)))}</div>` : ''}
+              <div class="text-muted">${escapeHtml(it.reviewed_by || '')} · ${fmtDateTime(it.reviewed_at)}</div>
+              ${it.review_note ? `<div class="text-muted">${escapeHtml(it.review_note)}</div>` : ''}</div>`}</td></tr>`;
+      }).join('')}</tbody></table></div>` : `<p class="mono-sm text-muted" id="admin-q-empty">${t(_qStatus === 'pending' ? 'admin.q_empty_pending' : 'admin.q_empty')}</p>`}
+  </div>`;
+
+  const msg = document.getElementById('admin-q-msg');
+  panel.querySelectorAll('.admin-q-filter').forEach(b => b.addEventListener('click', () => { _qStatus = b.dataset.status; renderPanel(); }));
+
+  const submit = async (id, act, body) => {
+    try {
+      await adminFetch(`/quarantine/${id}/${act}`, { method: 'POST', body });
+      showToast(t(`admin.q_done.${{ approve: 'approved', correct: 'corrected', reject: 'rejected' }[act]}`), 'success');
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) { handlePanelError(err); return; }
+      if (err.status === 409 || err.status === 404) { showToast(t('admin.q_conflict'), 'info'); }
+      else { msg.textContent = `${t('admin.load_failed')}: ${err.message}`; return; }
+    }
+    renderPanel();
+  };
+
+  panel.querySelectorAll('.admin-q-act').forEach(btn => btn.addEventListener('click', () => {
+    const id = Number(btn.dataset.id);
+    if (btn.dataset.act === 'correct') {
+      const cell = btn.closest('td');
+      cell.innerHTML = `<div class="admin-q-form flex gap-2 flex-wrap items-center">
+        <input type="number" step="any" class="admin-q-value" aria-label="${escapeHtml(t('admin.q_new_value'))}" placeholder="${escapeHtml(t('admin.q_new_value'))}" style="width:120px;">
+        <input type="text" maxlength="300" class="admin-q-note" aria-label="${escapeHtml(t('admin.q_note'))}" placeholder="${escapeHtml(t('admin.q_note'))}" style="width:160px;">
+        <button type="button" class="btn btn-cyan mono-xs admin-q-confirm">${t('admin.q_confirm')}</button>
+        <button type="button" class="btn btn-ghost mono-xs admin-q-cancel">${t('admin.q_cancel')}</button></div>`;
+      cell.querySelector('.admin-q-cancel').addEventListener('click', renderPanel);
+      cell.querySelector('.admin-q-confirm').addEventListener('click', () => {
+        const raw = cell.querySelector('.admin-q-value').value.trim();
+        const value = Number(raw);
+        if (raw === '' || !Number.isFinite(value)) { msg.textContent = t('admin.q_need_value'); return; }
+        submit(id, 'correct', { value, note: cell.querySelector('.admin-q-note').value.trim() || null });
+      });
+      cell.querySelector('.admin-q-value').focus();
+      return;
+    }
+    submit(id, btn.dataset.act, {});
+  }));
 }
 
 /* ── Audit journal ───────────────────────────────────────────────────────── */

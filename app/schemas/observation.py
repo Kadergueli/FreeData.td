@@ -49,6 +49,7 @@ class CollectionResult(BaseModel):
     accepted: int
     rejected: int
     stored: int
+    held: int = 0  # suspicious rows kept in quarantine for admin review (not published)
     started_at: datetime
     completed_at: datetime
     errors: list[str] = []

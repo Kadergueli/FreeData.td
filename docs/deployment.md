@@ -42,3 +42,13 @@ Exécuter une fois `supabase/harvest_runs_setup.sql` (table `table_harvest_runs`
 Chaque collecte (planificateur, workflow GitHub, bouton admin) y est enregistrée : début, fin,
 déclencheur, secteurs, statut (`completed`, `partial`, `failed`, `interrupted`) et raisons d'échec.
 Une collecte restée « en cours » après un redémarrage est marquée `interrupted`.
+
+## Quarantaine des valeurs suspectes (admin > Qualité)
+
+Exécuter une fois `supabase/quarantine_setup.sql` (table `table_quarantine`, additive).
+Une valeur impossible ou hors domaine (signalée `SUPERVISOR_REVIEW` : humidité > 100 %, température
+hors plage, rendement négatif...) n'est plus publiée automatiquement : elle attend dans l'onglet
+**Qualité**. L'administrateur la valide telle quelle, la corrige ou la rejette ; seules les valeurs
+validées ou corrigées arrivent dans `table_public` (colonne `approuve_par` = e-mail du relecteur).
+Une valeur déjà tranchée n'est pas reproposée à la collecte suivante, sauf si elle change.
+Chaque décision figure dans le journal d'audit ; l'aperçu affiche une alerte tant qu'il reste des valeurs en attente.

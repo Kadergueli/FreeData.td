@@ -17,13 +17,15 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.security import rate_limiter
 from app.services.admin_store import AdminStore
+from app.services.quarantine import STATUSES as QUARANTINE_STATUSES
+from app.services.quarantine import QuarantineStore
 from app.services.scheduler import scheduler_service
-from app.services.storage import SECTOR_IDS, ObservationRepository, _cache_get, _cache_set
+from app.services.storage import SECTOR_IDS, ObservationRepository, _cache_get, _cache_set, invalidate_cache
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,7 @@ def _age_hours(iso: str | None, now: datetime) -> float | None:
 
 def compute_alerts(
     *, stats: dict, sector_last: dict, scheduler: dict, audit: dict, llm_configured: bool, now: datetime,
+    quarantine_pending: int = 0,
 ) -> list[dict[str, Any]]:
     """Plain-rule alerts: each one says what is wrong, so the admin can act on it."""
     alerts: list[dict[str, Any]] = []
@@ -161,6 +164,8 @@ def compute_alerts(
     if scheduler.get("last_run") is None:
         add("info", "scheduler_idle", "No in-process harvest since this server started (the daily GitHub workflow is the main trigger).")
 
+    if quarantine_pending > 0:
+        add("warning", "quarantine_pending", f"{quarantine_pending} suspicious value(s) are held back and await your review.", count=quarantine_pending)
     if (audit.get("nb_anomalies") or 0) > 0:
         add("info", "anomalies", f"{audit['nb_anomalies']} validation anomalies are on record.", count=audit["nb_anomalies"])
     if not llm_configured:
@@ -176,9 +181,15 @@ def build_overview(repository: ObservationRepository, now: datetime | None = Non
     sector_last = repository.get_sector_last_update()
     audit = (repository.get_pipeline_audit() or {}).get("reports_summary") or {}
     scheduler = scheduler_service.get_status()
+    try:
+        quarantine = QuarantineStore(repository).counts()
+    except Exception as exc:  # table missing / DB hiccup: the overview must still load
+        logger.warning("quarantine counts unreadable: %s", exc)
+        quarantine = None
     alerts = compute_alerts(
         stats=stats, sector_last=sector_last, scheduler=scheduler, audit=audit,
         llm_configured=bool(settings.groq_api_key), now=now,
+        quarantine_pending=(quarantine or {}).get("pending", 0),
     )
     sectors = [
         {"id": sec, "count": (stats.get("sectors") or {}).get(sec), "last_published": sector_last.get(sec)}
@@ -200,6 +211,7 @@ def build_overview(repository: ObservationRepository, now: datetime | None = Non
             "total_clean": audit.get("total_clean"),
             "total_public": audit.get("total_public"),
         },
+        "quarantine": quarantine,
         "alerts": alerts,
         "health": "critical" if any(a["level"] == "critical" for a in alerts)
         else "warning" if any(a["level"] == "warning" for a in alerts) else "ok",
@@ -271,3 +283,86 @@ async def run_collection(body: RunRequest | None = None, admin: AdminUser = Depe
         )
         _cache_set("admin_overview", None)
     return {"status": "started" if started else "already_running"}
+
+
+# ── Quarantine: review of suspicious values ──────────────────────────────────
+
+class ReviewBody(BaseModel):
+    note: str | None = Field(default=None, max_length=300)
+
+
+class CorrectBody(ReviewBody):
+    value: float
+
+
+def _quarantine() -> QuarantineStore:
+    from app.main import repository
+    return QuarantineStore(repository)
+
+
+def _label(rec: dict[str, Any]) -> str:
+    return f"{rec['secteur']}/{rec['indicateur']}/{rec['date_reference']}/{rec['region']}"
+
+
+@router.get("/quarantine")
+def quarantine_list(
+    status: str = Query(default="pending"), limit: int = Query(default=100, ge=1, le=500),
+    admin: AdminUser = Depends(require_admin),
+) -> dict:
+    if status != "all" and status not in QUARANTINE_STATUSES:
+        raise HTTPException(status_code=422, detail="Unknown status.")
+    store = _quarantine()
+    try:
+        return {"items": store.list(status, limit), "counts": store.counts()}
+    except Exception as exc:
+        logger.error("quarantine unreadable: %s", exc)
+        raise HTTPException(status_code=503, detail="The quarantine could not be read from the database.") from exc
+
+
+async def _review(qid: int, kind: str, admin: AdminUser, note: str | None, value: float | None = None) -> dict:
+    from app.main import repository
+    store = QuarantineStore(repository)
+    rec = await asyncio.to_thread(store.get, qid)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No such quarantined value.")
+    if rec["status"] != "pending":
+        raise HTTPException(status_code=409, detail="This value was already reviewed.")
+    note = (note or "").strip() or None
+    new_value = float(rec["valeur"]) if kind == "approved" else value
+    # Claim the row first (atomic pending -> decided) so two admins cannot both act on it.
+    if not await asyncio.to_thread(store.decide, qid, kind, admin.email, note, value if kind == "corrected" else None):
+        raise HTTPException(status_code=409, detail="This value was already reviewed.")
+    if kind != "rejected":
+        extra = None
+        if kind == "corrected":
+            extra = f"[Valeur corrigée par un administrateur : {rec['valeur']:g} -> {new_value:g}]"
+        try:
+            await asyncio.to_thread(repository.publish_reviewed, rec, new_value, admin.email, extra)
+        except Exception as exc:
+            await asyncio.to_thread(store.reopen, qid)
+            logger.error("publishing reviewed value %s failed: %s", qid, exc)
+            if isinstance(exc, ValueError):
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail="Publishing failed; the value is back in the queue.") from exc
+    await asyncio.to_thread(
+        _store().log, admin.email, f"quarantine_{kind}", _label(rec),
+        {"id": qid, "original": rec["valeur"], "published": new_value if kind != "rejected" else None, "note": note},
+    )
+    invalidate_cache()
+    _cache_set("admin_overview", None)
+    return {"status": kind, "id": qid}
+
+
+@router.post("/quarantine/{qid}/approve")
+async def quarantine_approve(qid: int, body: ReviewBody | None = None, admin: AdminUser = Depends(require_admin)) -> dict:
+    return await _review(qid, "approved", admin, body.note if body else None)
+
+
+@router.post("/quarantine/{qid}/correct")
+async def quarantine_correct(qid: int, body: CorrectBody, admin: AdminUser = Depends(require_admin)) -> dict:
+    return await _review(qid, "corrected", admin, body.note, body.value)
+
+
+@router.post("/quarantine/{qid}/reject")
+async def quarantine_reject(qid: int, body: ReviewBody | None = None, admin: AdminUser = Depends(require_admin)) -> dict:
+    return await _review(qid, "rejected", admin, body.note if body else None)
