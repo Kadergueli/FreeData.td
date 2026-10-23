@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     collection_api_key: str | None = None
     collection_rate_limit_per_hour: int = 10
     nasa_firms_key: str | None = None
+    # Admin area. The publishable ("anon") key is public by design: the browser needs it to
+    # sign in through Supabase Auth. ADMIN_EMAILS are permanent owners (cannot be locked out).
+    supabase_anon_key: str | None = None
+    admin_emails: str = ""
     database_path: str = "data/freedatatd.db"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
@@ -25,6 +29,10 @@ class Settings(BaseSettings):
     @property
     def database_file(self) -> Path:
         return PROJECT_ROOT / self.database_path
+
+    @property
+    def owner_emails(self) -> set[str]:
+        return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
 
     @property
     def cors_origins(self) -> list[str]:

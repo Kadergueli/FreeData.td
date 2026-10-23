@@ -723,6 +723,37 @@ class ObservationRepository:
             _cache_set("stats", result)
         return result
 
+    def get_sector_last_update(self) -> dict[str, str | None]:
+        """Newest publication timestamp per sector (None = never published / unknown).
+        Used by the admin dashboard to tell "this sector stopped being collected" apart
+        from "this sector's source data is simply old" (annual World Bank series)."""
+        cached = _cache_get("sector_last_update", 60.0)
+        if cached is not None:
+            return dict(cached)
+        result: dict[str, str | None] = {}
+        if self._supabase:
+            for sec in SECTOR_IDS:
+                try:
+                    res = _with_retry(
+                        lambda sec=sec: self._supabase.table("table_public").select("date_publication").eq("secteur", sec)
+                        .order("date_publication", desc=True).limit(1).execute(),
+                        attempts=2, label=f"sector_last_update({sec})",
+                    )
+                    result[sec] = res.data[0].get("date_publication") if res.data else None
+                except Exception as exc:
+                    logger.warning("sector_last_update(%s) failed: %s", sec, exc)
+        else:
+            try:
+                with self._connection() as connection:
+                    result = {sec: None for sec in SECTOR_IDS}
+                    for row in connection.execute("SELECT sector, MAX(collected_at) AS m FROM observations GROUP BY sector"):
+                        result[str(row["sector"])] = row["m"]
+            except Exception as exc:
+                logger.warning("sector_last_update SQLite failed: %s", exc)
+        if result:
+            _cache_set("sector_last_update", dict(result))
+        return result
+
     def catalog(self) -> list[dict[str, Any]]:
         cached = _cache_get("catalog", 60.0)
         if cached is not None:

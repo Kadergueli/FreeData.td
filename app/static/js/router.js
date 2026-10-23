@@ -6,6 +6,7 @@ import { InsightsView } from './views/insights.js';
 import { ApiView } from './views/api.js';
 import { StatusView } from './views/status.js';
 import { TermsView } from './views/terms.js';
+import { AdminView } from './views/admin.js';
 import { destroyAllCharts } from './charts.js';
 import { t } from './i18n.js';
 
@@ -18,6 +19,7 @@ const routes = [
   { id: 'api', navKey: 'nav.api', view: ApiView },
   { id: 'status', navKey: 'nav.status', view: StatusView },
   { id: 'terms', navKey: 'nav.terms', view: TermsView },
+  { id: 'admin', navKey: 'nav.admin', view: AdminView }, // no nav tab: reached from the footer
 ];
 
 let _currentRouteId = 'home';

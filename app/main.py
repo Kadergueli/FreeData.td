@@ -27,6 +27,8 @@ from app.agents.ds_insights import (
     compute_seasonal_anomalies,
     compute_spatial_coverage,
 )
+from app.admin import admin_configured
+from app.admin import router as admin_router
 from app.config import settings
 from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
 from app.services.export import observations_to_csv, observations_to_parquet, observations_to_xml, parquet_available
@@ -84,6 +86,7 @@ class NoCacheJSMiddleware(BaseHTTPMiddleware):
         return response
 
 repository = ObservationRepository()
+app.include_router(admin_router)
 STATIC_DIR = Path(__file__).parent / "static"
 DASHBOARD = STATIC_DIR / "index.html"
 
@@ -112,6 +115,18 @@ def health() -> dict:
             "analysis_per_hour": settings.analysis_rate_limit_per_hour,
         },
         "exports": {"parquet": parquet_available()},
+    }
+
+
+@app.get("/api/v1/config")
+def public_config() -> dict:
+    """What the browser needs to sign admins in. The publishable key is public by design."""
+    return {
+        "admin": {
+            "enabled": admin_configured(),
+            "supabase_url": settings.supabase_url if admin_configured() else None,
+            "anon_key": settings.supabase_anon_key if admin_configured() else None,
+        }
     }
 
 
