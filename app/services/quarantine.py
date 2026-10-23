@@ -139,20 +139,38 @@ class QuarantineStore:
                 self._insert(rec, now)
         return len(seen)
 
-    def _insert(self, rec: dict[str, Any], now: str) -> None:
+    def _insert(self, rec: dict[str, Any], now: str, extra: dict[str, Any] | None = None) -> None:
+        extra = extra or {}
         if self._sb:
-            _with_retry(lambda: self._sb.table("table_quarantine").insert(rec).execute(),
+            _with_retry(lambda: self._sb.table("table_quarantine").insert({**rec, **extra}).execute(),
                         attempts=2, label="quarantine insert")
             return
+        data = {**rec, **extra, "created_at": now, "updated_at": now}
+        data["flags"] = json.dumps(data["flags"])
+        cols = list(data)
         with self._sqlite() as c:
-            c.execute(
-                """INSERT INTO quarantine (created_at, updated_at, secteur, source_api, date_reference, indicateur,
-                   valeur, unite, region, pays, licence, source_url, notes, flags, id_raw)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (now, now, rec["secteur"], rec["source_api"], rec["date_reference"], rec["indicateur"], rec["valeur"],
-                 rec["unite"], rec["region"], rec["pays"], rec["licence"], rec["source_url"], rec["notes"],
-                 json.dumps(rec["flags"]), rec["id_raw"]),
-            )
+            c.execute(f"INSERT INTO quarantine ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})",
+                      [data[k] for k in cols])
+
+    def suppress(self, rec: dict[str, Any], admin: str, note: str) -> None:
+        """Remember a value an administrator overrode (deleted or corrected): a later harvest that
+        brings back exactly this value is dropped instead of undoing the decision. Raises on failure."""
+        now = datetime.now(UTC).isoformat()
+        self._insert(rec, now, {"status": "rejected", "reviewed_by": admin, "reviewed_at": now, "review_note": note[:300]})
+
+    def drop_suppressed(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Remove serialised observations whose exact value was rejected or overridden before."""
+        if not rows:
+            return rows
+        existing = self._existing({r["sector"] for r in rows})
+
+        def blocked(r: dict[str, Any]) -> bool:
+            rec = to_record(r, None)
+            return any(e["status"] == "rejected" and _same(e["valeur"], rec["valeur"]) for e in existing.get(_key(rec), []))
+        kept = [r for r in rows if not blocked(r)]
+        if len(kept) < len(rows):
+            logger.info("Dropped %d value(s) an administrator already rejected or overrode", len(rows) - len(kept))
+        return kept
 
     def _update_pending(self, qid: int, rec: dict[str, Any], now: str) -> None:
         fields = {k: rec[k] for k in ("valeur", "notes", "flags", "id_raw")}

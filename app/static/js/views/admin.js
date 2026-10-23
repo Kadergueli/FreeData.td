@@ -12,6 +12,8 @@ import { escapeHtml } from '../sanitize.js';
 const SECTOR_IDS = ['agriculture', 'environment', 'markets', 'transport', 'education', 'economy', 'health', 'energy'];
 let _tab = 'overview';
 let _qStatus = 'pending';
+let _dSector = '';
+let _dQuery = '';
 let _pollTimer = null;
 let _me = null;
 
@@ -86,7 +88,7 @@ function renderLogin(message = '') {
 /* ── Dashboard shell ─────────────────────────────────────────────────────── */
 
 function renderDashboard() {
-  const tabs = [['overview', 'admin.tab_overview'], ['collections', 'admin.tab_collections'], ['quality', 'admin.tab_quality'], ['audit', 'admin.tab_audit']];
+  const tabs = [['overview', 'admin.tab_overview'], ['collections', 'admin.tab_collections'], ['quality', 'admin.tab_quality'], ['data', 'admin.tab_data'], ['reports', 'admin.tab_reports'], ['team', 'admin.tab_team'], ['audit', 'admin.tab_audit']];
   root().innerHTML = `
     <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
       <div>
@@ -125,7 +127,7 @@ function renderPanel() {
   const panel = document.getElementById('admin-panel');
   if (!panel) return;
   panel.innerHTML = `<p class="mono-sm text-muted"><span class="skeleton" style="width:240px;"></span></p>`;
-  ({ audit: loadAudit, collections: loadCollections, quality: loadQuality }[_tab] || loadOverview)(panel).catch(handlePanelError);
+  ({ audit: loadAudit, collections: loadCollections, quality: loadQuality, data: loadData, reports: loadReports, team: loadTeam }[_tab] || loadOverview)(panel).catch(handlePanelError);
 }
 
 function handlePanelError(err) {
@@ -378,6 +380,182 @@ async function loadQuality(panel) {
       return;
     }
     submit(id, btn.dataset.act, {});
+  }));
+}
+
+/* ── Shared helpers for the management tabs ─────────────────────────────── */
+
+const fill = (txt, vars) => Object.entries(vars).reduce((acc, [k, v]) => acc.replace(`{${k}}`, String(v)), txt);
+
+/** Run a mutating call; on success toast + reload, on 404/409 explain and reload, otherwise show the message. */
+async function mutate(path, body, okKey, msgEl, goneKey) {
+  try {
+    await adminFetch(path, { method: 'POST', body });
+    showToast(t(okKey), 'success');
+  } catch (err) {
+    if (err.status === 401 || err.status === 403) { handlePanelError(err); return; }
+    if ((err.status === 404 || err.status === 409) && goneKey) { showToast(t(goneKey), 'info'); }
+    else { msgEl.textContent = `${t('admin.load_failed')}: ${err.message}`; return; }
+  }
+  renderPanel();
+}
+
+/* ── Data: find, correct, delete, restore ────────────────────────────────── */
+
+async function loadData(panel) {
+  const params = new URLSearchParams({ limit: '50' });
+  if (_dSector) params.set('sector', _dSector);
+  if (_dQuery) params.set('q', _dQuery);
+  const [found, gone] = await Promise.all([adminFetch(`/data?${params}`), adminFetch('/data/deleted?limit=20')]);
+  const items = found.items || [];
+  const deleted = gone.items || [];
+  panel.innerHTML = `
+    <div class="card mb-4" style="padding:16px;">
+      <h4 class="mono-sm uppercase mb-2">${t('admin.d_title')}</h4>
+      <p class="mono-xs text-muted mb-3">${t('admin.d_desc')}</p>
+      <form class="flex gap-2 flex-wrap mb-3" id="admin-d-form">
+        <select id="admin-d-sector" class="mono-xs" aria-label="${escapeHtml(t('admin.d_sector_all'))}">
+          <option value="">${t('admin.d_sector_all')}</option>
+          ${SECTOR_IDS.map(id => `<option value="${id}" ${id === _dSector ? 'selected' : ''}>${escapeHtml(sectorName(id))}</option>`).join('')}
+        </select>
+        <input type="search" id="admin-d-q" class="mono-xs" maxlength="100" value="${escapeHtml(_dQuery)}" placeholder="${escapeHtml(t('admin.d_search_ph'))}" style="min-width:220px;">
+        <button class="btn btn-cyan mono-xs" type="submit">${t('admin.d_search')}</button>
+      </form>
+      <p class="mono-xs mb-2" id="admin-d-msg" role="status"></p>
+      ${items.length ? `<div style="overflow-x:auto;"><table class="ds-table" id="admin-d-table"><thead><tr>
+        <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.d_th_obs')}</th>
+        <th class="mono-xs text-muted" style="text-align:right;padding:6px 10px;">${t('admin.d_th_value')}</th>
+        <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.d_th_actions')}</th></tr></thead><tbody>
+        ${items.map(o => `<tr data-d-id="${Number(o.id)}">
+          <td class="mono-xs" style="padding:8px 10px;"><div class="fw-600">${escapeHtml(o.indicator)}</div>
+            <div class="text-muted">${escapeHtml(sectorName(o.sector))} · ${escapeHtml(o.region)} · ${escapeHtml(o.reference_date)} · ${escapeHtml(o.source)}</div>
+            ${o.approved_by && o.approved_by !== 'FreeDatatd DS Engine' ? `<div class="text-muted">${escapeHtml(o.approved_by)}</div>` : ''}</td>
+          <td class="mono-xs" style="padding:8px 10px;text-align:right;white-space:nowrap;">${escapeHtml(fmtNum(o.value))} ${escapeHtml(o.unit || '')}</td>
+          <td class="mono-xs admin-d-cell" style="padding:8px 10px;min-width:260px;">
+            <div class="flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-ghost mono-xs admin-d-act" data-act="correct" data-id="${Number(o.id)}">${t('admin.d_correct')}</button>
+              <button type="button" class="btn btn-ghost mono-xs admin-d-act" data-act="delete" data-id="${Number(o.id)}">${t('admin.d_delete')}</button>
+            </div></td></tr>`).join('')}</tbody></table></div>` : `<p class="mono-sm text-muted" id="admin-d-empty">${t('admin.d_none')}</p>`}
+    </div>
+    <div class="card" style="padding:16px;">
+      <h4 class="mono-sm uppercase mb-2">${t('admin.d_deleted_title')}</h4>
+      <p class="mono-xs text-muted mb-3">${t('admin.d_deleted_desc')}</p>
+      ${deleted.length ? `<div style="overflow-x:auto;"><table class="ds-table" id="admin-d-deleted"><tbody>
+        ${deleted.map(d => `<tr data-a-id="${Number(d.id)}">
+          <td class="mono-xs" style="padding:8px 10px;"><div class="fw-600">${escapeHtml(d.row.indicator)} — ${escapeHtml(fmtNum(d.row.value))} ${escapeHtml(d.row.unit || '')}</div>
+            <div class="text-muted">${escapeHtml(sectorName(d.row.sector))} · ${escapeHtml(d.row.region)} · ${escapeHtml(d.row.reference_date)}</div>
+            <div class="text-muted">${fmtDateTime(d.deleted_at)} ${escapeHtml(fill(t('admin.d_by'), { who: d.deleted_by }))} — ${escapeHtml(d.reason)}</div></td>
+          <td style="padding:8px 10px;"><button type="button" class="btn btn-ghost mono-xs admin-d-restore" data-id="${Number(d.id)}">${t('admin.d_restore')}</button></td></tr>`).join('')}
+        </tbody></table></div>` : `<p class="mono-sm text-muted" id="admin-d-nodeleted">${t('admin.d_deleted_none')}</p>`}
+    </div>`;
+
+  const msg = document.getElementById('admin-d-msg');
+  document.getElementById('admin-d-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    _dSector = document.getElementById('admin-d-sector').value;
+    _dQuery = document.getElementById('admin-d-q').value.trim();
+    renderPanel();
+  });
+  panel.querySelectorAll('.admin-d-restore').forEach(b => b.addEventListener('click', () =>
+    mutate(`/data/deleted/${Number(b.dataset.id)}/restore`, {}, 'admin.d_restored', msg, 'admin.d_gone')));
+
+  panel.querySelectorAll('.admin-d-act').forEach(btn => btn.addEventListener('click', () => {
+    const id = Number(btn.dataset.id);
+    const cell = btn.closest('td');
+    const isCorrect = btn.dataset.act === 'correct';
+    cell.innerHTML = `<div class="admin-d-form flex gap-2 flex-wrap items-center">
+      ${isCorrect ? `<input type="number" step="any" class="admin-d-value" aria-label="${escapeHtml(t('admin.d_new_value'))}" placeholder="${escapeHtml(t('admin.d_new_value'))}" style="width:120px;">` : ''}
+      <input type="text" maxlength="300" class="admin-d-reason" aria-label="${escapeHtml(t('admin.d_reason_ph'))}" placeholder="${escapeHtml(t('admin.d_reason_ph'))}" style="width:190px;">
+      <button type="button" class="btn ${isCorrect ? 'btn-cyan' : 'btn-ghost'} mono-xs admin-d-confirm" ${isCorrect ? '' : 'style="color:var(--red);border-color:var(--red);"'}>${t(isCorrect ? 'admin.d_confirm_correct' : 'admin.d_confirm_delete')}</button>
+      <button type="button" class="btn btn-ghost mono-xs admin-d-cancel">${t('admin.d_cancel')}</button></div>`;
+    cell.querySelector('.admin-d-cancel').addEventListener('click', renderPanel);
+    cell.querySelector('.admin-d-confirm').addEventListener('click', () => {
+      const reason = cell.querySelector('.admin-d-reason').value.trim();
+      if (reason.length < 3) { msg.textContent = t('admin.d_need_reason'); return; }
+      if (isCorrect) {
+        const raw = cell.querySelector('.admin-d-value').value.trim();
+        const value = Number(raw);
+        if (raw === '' || !Number.isFinite(value)) { msg.textContent = t('admin.d_need_value'); return; }
+        mutate(`/data/${id}/correct`, { value, reason }, 'admin.d_corrected', msg, 'admin.d_gone');
+      } else {
+        mutate(`/data/${id}/delete`, { reason }, 'admin.d_deleted', msg, 'admin.d_gone');
+      }
+    });
+    cell.querySelector(isCorrect ? '.admin-d-value' : '.admin-d-reason').focus();
+  }));
+}
+
+/* ── AI reports ──────────────────────────────────────────────────────────── */
+
+async function loadReports(panel) {
+  const { items } = await adminFetch('/reports?limit=50');
+  panel.innerHTML = `<div class="card" style="padding:16px;">
+    <h4 class="mono-sm uppercase mb-2">${t('admin.r_title')}</h4>
+    <p class="mono-xs text-muted mb-3">${t('admin.r_desc')}</p>
+    <p class="mono-xs mb-2" id="admin-r-msg" role="status"></p>
+    ${items.length ? items.map(r => `<div class="mb-3 admin-r-item" data-r-id="${Number(r.id)}" style="border-top:1px solid var(--border);padding-top:10px;">
+      <div class="flex justify-between flex-wrap gap-2 items-center">
+        <div class="mono-xs"><span class="fw-600">${r.sector ? escapeHtml(sectorName(r.sector)) : escapeHtml(t('admin.d_sector_all'))}</span>
+          · ${fmtDateTime(r.created_at)} · ${escapeHtml(r.model || '')} · ${escapeHtml(fill(t('admin.r_obs'), { n: Number(r.observations_used || 0) }))}</div>
+        <div class="admin-r-cell"><button type="button" class="btn btn-ghost mono-xs admin-r-del" data-id="${Number(r.id)}">${t('admin.r_delete')}</button></div>
+      </div>
+      <details class="mt-2"><summary class="mono-xs text-cyan" style="cursor:pointer;">${t('admin.r_show')}</summary>
+        <pre class="mono-xs" style="white-space:pre-wrap;margin-top:8px;">${escapeHtml(r.report || '')}</pre></details></div>`).join('')
+      : `<p class="mono-sm text-muted" id="admin-r-empty">${t('admin.r_none')}</p>`}
+  </div>`;
+  const msg = document.getElementById('admin-r-msg');
+  panel.querySelectorAll('.admin-r-del').forEach(btn => btn.addEventListener('click', () => {
+    const id = Number(btn.dataset.id);
+    const cell = btn.closest('.admin-r-cell');
+    cell.innerHTML = `<div class="flex gap-2 flex-wrap items-center">
+      <input type="text" maxlength="300" class="admin-r-reason" aria-label="${escapeHtml(t('admin.d_reason_ph'))}" placeholder="${escapeHtml(t('admin.d_reason_ph'))}" style="width:190px;">
+      <button type="button" class="btn btn-ghost mono-xs admin-r-confirm" style="color:var(--red);border-color:var(--red);">${t('admin.d_confirm_delete')}</button>
+      <button type="button" class="btn btn-ghost mono-xs admin-r-cancel">${t('admin.d_cancel')}</button></div>`;
+    cell.querySelector('.admin-r-cancel').addEventListener('click', renderPanel);
+    cell.querySelector('.admin-r-confirm').addEventListener('click', () => {
+      const reason = cell.querySelector('.admin-r-reason').value.trim();
+      if (reason.length < 3) { msg.textContent = t('admin.d_need_reason'); return; }
+      mutate(`/reports/${id}/delete`, { reason }, 'admin.r_deleted', msg, 'admin.d_gone');
+    });
+    cell.querySelector('.admin-r-reason').focus();
+  }));
+}
+
+/* ── Team (owners manage it) ─────────────────────────────────────────────── */
+
+async function loadTeam(panel) {
+  const { admins, can_manage: canManage } = await adminFetch('/admins');
+  panel.innerHTML = `<div class="card" style="padding:16px;">
+    <h4 class="mono-sm uppercase mb-2">${t('admin.tm_title')}</h4>
+    <p class="mono-xs text-muted mb-3">${t('admin.tm_desc')}</p>
+    <div style="overflow-x:auto;"><table class="ds-table" id="admin-team-table"><thead><tr>
+      <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.tm_th_email')}</th>
+      <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.tm_th_role')}</th>
+      <th class="mono-xs text-muted" style="text-align:left;padding:6px 10px;">${t('admin.tm_th_added')}</th>
+      <th></th></tr></thead><tbody>
+      ${admins.map(a => `<tr data-email="${escapeHtml(a.email)}">
+        <td class="mono-xs" style="padding:8px 10px;">${escapeHtml(a.email)}</td>
+        <td class="mono-xs" style="padding:8px 10px;"><span class="badge badge--cyan">${escapeHtml(t(`admin.tm_roles.${a.role}`))}</span>${a.permanent ? ` <span class="text-muted">${t('admin.tm_permanent')}</span>` : ''}</td>
+        <td class="mono-xs text-muted" style="padding:8px 10px;">${escapeHtml(a.added_by || '')}</td>
+        <td style="padding:8px 10px;">${canManage && !a.permanent && a.email !== _me.email ? `<button type="button" class="btn btn-ghost mono-xs admin-team-remove" data-email="${escapeHtml(a.email)}">${t('admin.tm_remove')}</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="mono-xs mt-3" id="admin-team-msg" role="status"></p>
+    ${canManage ? `<form class="flex gap-2 flex-wrap mt-3" id="admin-team-form">
+        <input type="email" id="admin-team-email" class="mono-xs" maxlength="254" required placeholder="${escapeHtml(t('admin.tm_add_ph'))}" aria-label="${escapeHtml(t('admin.tm_add_ph'))}" style="min-width:280px;">
+        <button class="btn btn-cyan mono-xs" type="submit">${t('admin.tm_add')}</button></form>
+      <p class="mono-xs text-muted mt-2">${t('admin.tm_hint')}</p>`
+      : `<p class="mono-xs text-muted mt-3" id="admin-team-readonly">${t('admin.tm_owner_only')}</p>`}
+  </div>`;
+  const msg = document.getElementById('admin-team-msg');
+  document.getElementById('admin-team-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = document.getElementById('admin-team-email').value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = t('admin.tm_invalid'); return; }
+    mutate('/admins', { email }, 'admin.tm_added', msg, null);
+  });
+  panel.querySelectorAll('.admin-team-remove').forEach(btn => btn.addEventListener('click', () => {
+    if (!window.confirm(fill(t('admin.tm_confirm_remove'), { email: btn.dataset.email }))) return;
+    mutate('/admins/remove', { email: btn.dataset.email }, 'admin.tm_removed', msg, null);
   }));
 }
 

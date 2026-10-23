@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.security import rate_limiter
 from app.services.admin_store import AdminStore
+from app.services.data_admin import DataAdminStore
 from app.services.quarantine import STATUSES as QUARANTINE_STATUSES
 from app.services.quarantine import QuarantineStore
 from app.services.scheduler import scheduler_service
@@ -366,3 +367,198 @@ async def quarantine_correct(qid: int, body: CorrectBody, admin: AdminUser = Dep
 @router.post("/quarantine/{qid}/reject")
 async def quarantine_reject(qid: int, body: ReviewBody | None = None, admin: AdminUser = Depends(require_admin)) -> dict:
     return await _review(qid, "rejected", admin, body.note if body else None)
+
+
+# ── Published data: find, correct, delete (archived), restore ───────────────
+
+def _reason(raw: str) -> str:
+    text = (raw or "").strip()
+    if len(text) < 3:
+        raise ValueError("A reason (3 characters or more) is required.")
+    return text[:300]
+
+
+class DataCorrectBody(BaseModel):
+    value: float
+    reason: str = Field(max_length=300)
+
+
+class DataDeleteBody(BaseModel):
+    reason: str = Field(max_length=300)
+
+
+def _data() -> DataAdminStore:
+    from app.main import repository
+    return DataAdminStore(repository)
+
+
+def _obs_label(o: dict[str, Any]) -> str:
+    return f"{o['sector']}/{o['indicator']}/{o['reference_date']}/{o['region']}"
+
+
+def _after_data_change() -> None:
+    invalidate_cache()
+    _cache_set("admin_overview", None)
+
+
+@router.get("/data")
+async def data_search(
+    sector: str | None = Query(default=None), q: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=200), admin: AdminUser = Depends(require_admin),
+) -> dict:
+    if sector and sector not in SECTOR_IDS:
+        raise HTTPException(status_code=422, detail="Unknown sector.")
+    try:
+        return {"items": await asyncio.to_thread(_data().search, sector, q, limit)}
+    except Exception as exc:
+        logger.error("data search failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Published data could not be read from the database.") from exc
+
+
+@router.post("/data/{oid}/correct")
+async def data_correct(oid: int, body: DataCorrectBody, admin: AdminUser = Depends(require_admin)) -> dict:
+    try:
+        reason = _reason(body.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    store = _data()
+    try:
+        before = await asyncio.to_thread(store.correct, oid, body.value, admin.email, reason)
+    except Exception as exc:
+        logger.error("data correct failed: %s", exc)
+        raise HTTPException(status_code=503, detail="The correction could not be saved; nothing was changed.") from exc
+    if before is None:
+        raise HTTPException(status_code=404, detail="No such published value.")
+    await asyncio.to_thread(_store().log, admin.email, "data_corrected", _obs_label(before),
+                            {"id": oid, "before": before["value"], "after": body.value, "reason": reason})
+    _after_data_change()
+    return {"status": "corrected", "id": oid}
+
+
+@router.post("/data/{oid}/delete")
+async def data_delete(oid: int, body: DataDeleteBody, admin: AdminUser = Depends(require_admin)) -> dict:
+    try:
+        reason = _reason(body.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    store = _data()
+    try:
+        row = await asyncio.to_thread(store.delete, oid, admin.email, reason)
+    except Exception as exc:
+        logger.error("data delete failed: %s", exc)
+        raise HTTPException(status_code=503, detail="The deletion could not be completed.") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such published value.")
+    await asyncio.to_thread(_store().log, admin.email, "data_deleted", _obs_label(row),
+                            {"id": oid, "value": row["value"], "reason": reason})
+    _after_data_change()
+    return {"status": "deleted", "id": oid}
+
+
+@router.get("/data/deleted")
+async def data_deleted(limit: int = Query(default=50, ge=1, le=200), admin: AdminUser = Depends(require_admin)) -> dict:
+    try:
+        return {"items": await asyncio.to_thread(_data().list_deleted, limit)}
+    except Exception as exc:
+        logger.error("deleted archive unreadable: %s", exc)
+        raise HTTPException(status_code=503, detail="The archive of deleted values could not be read.") from exc
+
+
+@router.post("/data/deleted/{aid}/restore")
+async def data_restore(aid: int, admin: AdminUser = Depends(require_admin)) -> dict:
+    store = _data()
+    try:
+        row = await asyncio.to_thread(store.restore, aid, admin.email)
+    except Exception as exc:
+        logger.error("data restore failed: %s", exc)
+        raise HTTPException(status_code=503, detail="The value could not be restored.") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="Nothing to restore (unknown or already restored).")
+    await asyncio.to_thread(_store().log, admin.email, "data_restored", _obs_label(row), {"archive_id": aid, "value": row["value"]})
+    _after_data_change()
+    return {"status": "restored", "id": aid}
+
+
+# ── Reports (AI studies) ─────────────────────────────────────────────────────
+
+@router.get("/reports")
+async def reports_list(limit: int = Query(default=50, ge=1, le=200), admin: AdminUser = Depends(require_admin)) -> dict:
+    from app.main import repository
+    try:
+        return {"items": await asyncio.to_thread(repository.list_studies, None, limit)}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Reports could not be read.") from exc
+
+
+@router.post("/reports/{rid}/delete")
+async def reports_delete(rid: int, body: DataDeleteBody, admin: AdminUser = Depends(require_admin)) -> dict:
+    from app.main import repository
+    try:
+        reason = _reason(body.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        deleted = await asyncio.to_thread(repository.delete_study, rid)
+    except Exception as exc:
+        logger.error("report delete failed: %s", exc)
+        raise HTTPException(status_code=503, detail="The report could not be deleted.") from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No such report.")
+    await asyncio.to_thread(_store().log, admin.email, "report_deleted", f"report:{rid}", {"reason": reason})
+    return {"status": "deleted", "id": rid}
+
+
+# ── Team (owner only) ────────────────────────────────────────────────────────
+
+class AdminEmailBody(BaseModel):
+    email: str = Field(max_length=254)
+
+
+def _clean_email(raw: str) -> str:
+    email = (raw or "").strip().lower()
+    local, _, domain = email.partition("@")
+    if not local or "." not in domain or " " in email or email.count("@") != 1 or len(email) > 254:
+        raise HTTPException(status_code=422, detail="Enter a valid e-mail address.")
+    return email
+
+
+@router.get("/admins")
+async def admins_list(admin: AdminUser = Depends(require_admin)) -> dict:
+    stored = await asyncio.to_thread(_store().list_admins)
+    owners = settings.owner_emails
+    team = [{"email": e, "role": "owner", "permanent": True} for e in sorted(owners)]
+    team += [{"email": a["email"], "role": a["role"], "permanent": False, "added_by": a.get("added_by"),
+              "created_at": a.get("created_at")} for a in stored if a["email"] not in owners]
+    return {"admins": team, "can_manage": admin.role == "owner"}
+
+
+@router.post("/admins", status_code=201)
+async def admins_add(body: AdminEmailBody, owner: AdminUser = Depends(require_owner)) -> dict:
+    email = _clean_email(body.email)
+    if email in settings.owner_emails:
+        raise HTTPException(status_code=409, detail="This person is already a permanent owner.")
+    try:
+        await asyncio.to_thread(_store().add_admin, email, "admin", owner.email)
+    except Exception as exc:
+        logger.error("add admin failed: %s", exc)
+        raise HTTPException(status_code=503, detail="The administrator could not be added.") from exc
+    await asyncio.to_thread(_store().log, owner.email, "admin_added", email, {})
+    return {"status": "added", "email": email}
+
+
+@router.post("/admins/remove")
+async def admins_remove(body: AdminEmailBody, owner: AdminUser = Depends(require_owner)) -> dict:
+    email = _clean_email(body.email)
+    if email in settings.owner_emails:
+        raise HTTPException(status_code=409, detail="A permanent owner cannot be removed here (it is set in ADMIN_EMAILS).")
+    if email == owner.email:
+        raise HTTPException(status_code=409, detail="You cannot remove yourself.")
+    try:
+        removed = await asyncio.to_thread(_store().remove_admin, email)
+    except Exception as exc:
+        logger.error("remove admin failed: %s", exc)
+        raise HTTPException(status_code=503, detail="The administrator could not be removed.") from exc
+    if not removed:
+        raise HTTPException(status_code=404, detail="No such administrator.")
+    await asyncio.to_thread(_store().log, owner.email, "admin_removed", email, {})
+    return {"status": "removed", "email": email}

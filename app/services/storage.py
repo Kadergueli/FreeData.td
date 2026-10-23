@@ -260,6 +260,12 @@ class ObservationRepository:
     ) -> int:
         rows = [self._serialise(observation) for observation in observations]
         held: list[dict[str, Any]] = []
+        if hold_for_review and rows:
+            try:  # values an administrator rejected / overrode must not silently come back
+                from app.services.quarantine import QuarantineStore
+                rows = QuarantineStore(self).drop_suppressed(rows)
+            except Exception as exc:
+                logger.warning("Could not check rejected values (%s) - publishing normally", exc)
         if hold_for_review:
             held = [r for r in rows if "SUPERVISOR_REVIEW" in (r.get("flags") or [])]
             held_ids = {id(r) for r in held}
@@ -646,6 +652,19 @@ class ObservationRepository:
         except Exception as exc:
             logger.warning("SQLite list_studies failed: %s", exc)
             return []
+
+    def delete_study(self, study_id: int) -> bool:
+        """Remove one saved report. Raises on a storage error (the admin must know it failed)."""
+        if self._supabase:
+            res = _with_retry(lambda: self._supabase.table("table_etudes").delete().eq("id", study_id).execute(),
+                              attempts=2, label="delete study")
+            deleted = bool(res.data)
+        else:
+            self._initialize_sqlite()
+            with self._connection() as connection:
+                deleted = connection.execute("DELETE FROM studies WHERE id = ?", (study_id,)).rowcount > 0
+        invalidate_cache()
+        return deleted
 
     @staticmethod
     def _public_to_observation(row: dict[str, Any]) -> dict[str, Any]:

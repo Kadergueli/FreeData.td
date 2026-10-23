@@ -1,4 +1,4 @@
-"""Patch A/B/C — admin UI: sign-in flow, dashboard, alerts, collections, quarantine review, audit journal.
+"""Patch A/B/C/D — admin UI: sign-in flow, dashboard, alerts, collections, quarantine review, audit journal.
 
 The e2e server has no Supabase, so the browser is given a mocked config + auth endpoint
 and mocked /api/v1/admin/* answers. The real backend rules are covered by tests/test_admin_auth.py.
@@ -48,8 +48,25 @@ QITEMS = [
 ]
 
 
+DATA = [
+    {"id": 41, "sector": "health", "indicator": "<img src=x onerror=alert(1)> Life expectancy", "value": 53.0, "unit": "years",
+     "reference_date": "2023-01-01", "region": "national", "source": "World Bank", "approved_by": "FreeDatatd DS Engine"},
+    {"id": 42, "sector": "agriculture", "indicator": "Crop yield", "value": 1.2, "unit": "t/ha",
+     "reference_date": "2022-01-01", "region": "Lac", "source": "FAOSTAT", "approved_by": "boss@x.org"},
+]
+DELETED = [{"id": 5, "deleted_at": "2026-10-22T10:00:00", "deleted_by": "boss@x.org", "reason": "<b>bad sensor</b>",
+            "row": {"sector": "energy", "indicator": "Access to electricity", "value": 180.0, "unit": "%",
+                    "reference_date": "2021-01-01", "region": "national"}}]
+REPORTS = [{"id": 9, "sector": "health", "model": "llama", "observations_used": 120, "created_at": "2026-10-20T10:00:00",
+            "report": "<script>alert(1)</script> Findings"}]
+TEAM = {"can_manage": True, "admins": [
+    {"email": "me@x.org", "role": "owner", "permanent": True},
+    {"email": "helper@x.org", "role": "admin", "permanent": False, "added_by": "me@x.org"},
+    {"email": "<b>evil</b>@x.org", "role": "admin", "permanent": False, "added_by": "me@x.org"}]}
+
+
 def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collections=None, run_reply=None,
-          qitems=None, review_status=200):
+          qitems=None, review_status=200, data=None, deleted=None, reports=None, team=None, mutate_status=200):
     page.route("**/api/v1/config", lambda r: r.fulfill(json={"admin": {"enabled": True, "supabase_url": SB, "anon_key": "anon"}}))
 
     def token(route):
@@ -77,14 +94,25 @@ def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collectio
             route.fulfill(status=202, json=run_reply or {"status": "started"})
         elif path.startswith("/collections"):
             route.fulfill(json=collections if collections is not None else COLLECTIONS)
+        elif route.request.method == "POST" and path.startswith(("/data/", "/reports/", "/admins")):
+            bodies.append(route.request.post_data_json)
+            route.fulfill(status=mutate_status, json={"status": "ok"} if mutate_status == 200 else {"detail": "gone"})
+        elif path.startswith("/data/deleted"):
+            route.fulfill(json={"items": DELETED if deleted is None else deleted})
+        elif path.startswith("/data"):
+            route.fulfill(json={"items": DATA if data is None else data})
+        elif path.startswith("/reports"):
+            route.fulfill(json={"items": REPORTS if reports is None else reports})
+        elif path.startswith("/admins"):
+            route.fulfill(json=TEAM if team is None else team)
         elif path.startswith("/quarantine/"):
             bodies.append(route.request.post_data_json)
             route.fulfill(status=review_status, json={"status": "ok"} if review_status == 200 else {"detail": "already reviewed"})
         elif path.startswith("/quarantine"):
             want = path.split("status=")[1].split("&")[0] if "status=" in path else "pending"
-            data = QITEMS if qitems is None else qitems
-            items = [i for i in data if want == "all" or i["status"] == want]
-            counts = {st: len([i for i in data if i["status"] == st]) for st in ("pending", "approved", "corrected", "rejected")}
+            qdata = QITEMS if qitems is None else qitems
+            items = [i for i in qdata if want == "all" or i["status"] == want]
+            counts = {st: len([i for i in qdata if i["status"] == st]) for st in ("pending", "approved", "corrected", "rejected")}
             route.fulfill(json={"items": items, "counts": counts})
         elif path.startswith("/audit-log"):
             route.fulfill(json={"entries": [{"created_at": "2026-10-23T09:00:00", "admin_email": "me@x.org", "action": "login", "target": None, "detail": {}},
@@ -372,3 +400,144 @@ def test_quarantine_alert_on_the_overview_is_translated_with_its_number(probe):
     probe.page.wait_for_selector("#admin-sectors")
     text = probe.page.inner_text("#admin-panel")
     assert "12" in text and "{count}" not in text and "admin.alerts" not in text
+
+
+# ── Patch D: data, reports, team ────────────────────────────────────────────
+def _open(probe, tab, ready):
+    _login(probe)
+    probe.page.wait_for_selector(".admin-tab")
+    probe.page.click(f'.admin-tab[data-tab="{tab}"]')
+    probe.page.wait_for_selector(ready)
+
+
+def _posts(calls):
+    return [(m, p) for m, p, _ in calls if m == "POST"]
+
+
+def test_data_tab_lists_values_escaped_with_archive(probe):
+    _mock(probe.page)
+    _open(probe, "data", "#admin-d-table")
+    assert probe.page.locator("#admin-d-table tbody tr").count() == 2
+    assert probe.page.locator("#admin-d-table img").count() == 0 and "<img src=x" in probe.page.inner_text("#admin-d-table")
+    assert "boss@x.org" in probe.page.inner_text('tr[data-d-id="42"]')
+    arch = probe.page.inner_text("#admin-d-deleted")
+    assert "<b>bad sensor</b>" in arch and probe.page.locator("#admin-d-deleted b").count() == 0 and "boss@x.org" in arch
+    assert "admin." not in probe.page.inner_text("#admin-panel") and "{who}" not in arch
+
+
+def test_data_search_sends_filters(probe):
+    calls = _mock(probe.page)
+    _open(probe, "data", "#admin-d-form")
+    probe.page.select_option("#admin-d-sector", "health")
+    probe.page.fill("#admin-d-q", "life")
+    probe.page.click("#admin-d-form button[type=submit]")
+    probe.page.wait_for_selector("#admin-d-table")
+    assert any("/data?" in p and "sector=health" in p and "q=life" in p for _, p, _ in calls)
+
+
+def test_correct_needs_value_and_reason_then_posts(probe):
+    calls = _mock(probe.page)
+    _open(probe, "data", "#admin-d-table")
+    probe.page.click('tr[data-d-id="42"] .admin-d-act[data-act="correct"]')
+    probe.page.click(".admin-d-confirm")
+    assert probe.page.inner_text("#admin-d-msg").strip() != "" and calls.bodies == []        # no reason
+    probe.page.fill(".admin-d-reason", "typo in source")
+    probe.page.click(".admin-d-confirm")
+    assert calls.bodies == []                                                               # no value
+    probe.page.fill(".admin-d-value", "12")
+    probe.page.click(".admin-d-confirm")
+    probe.page.wait_for_selector("#admin-d-table")
+    assert calls.bodies == [{"value": 12, "reason": "typo in source"}]
+    assert ("POST", "/data/42/correct") in _posts(calls)
+
+
+def test_delete_needs_a_reason_and_can_be_cancelled(probe):
+    calls = _mock(probe.page)
+    _open(probe, "data", "#admin-d-table")
+    probe.page.click('tr[data-d-id="41"] .admin-d-act[data-act="delete"]')
+    probe.page.click(".admin-d-cancel")
+    probe.page.wait_for_selector('tr[data-d-id="41"] .admin-d-act[data-act="delete"]')
+    assert calls.bodies == []
+    probe.page.click('tr[data-d-id="41"] .admin-d-act[data-act="delete"]')
+    probe.page.click(".admin-d-confirm")
+    assert calls.bodies == []
+    probe.page.fill(".admin-d-reason", "duplicate")
+    probe.page.click(".admin-d-confirm")
+    probe.page.wait_for_selector("#admin-d-table")
+    assert calls.bodies == [{"reason": "duplicate"}] and ("POST", "/data/41/delete") in _posts(calls)
+
+
+def test_restore_posts_to_the_archive_entry(probe):
+    calls = _mock(probe.page)
+    _open(probe, "data", "#admin-d-deleted")
+    probe.page.click(".admin-d-restore")
+    probe.page.wait_for_selector("#admin-d-table")
+    assert ("POST", "/data/deleted/5/restore") in _posts(calls)
+
+
+def test_value_gone_meanwhile_refreshes_without_an_error_panel(probe):
+    _mock(probe.page, mutate_status=404)
+    _open(probe, "data", "#admin-d-table")
+    probe.page.click('tr[data-d-id="41"] .admin-d-act[data-act="delete"]')
+    probe.page.fill(".admin-d-reason", "duplicate")
+    probe.page.click(".admin-d-confirm")
+    probe.page.wait_for_selector("#admin-d-table")
+    assert probe.page.locator("#admin-retry").count() == 0 and "HTTP 404" not in probe.page.inner_text("#admin-panel")
+
+
+def test_empty_data_search_has_a_message(probe):
+    _mock(probe.page, data=[], deleted=[])
+    _open(probe, "data", "#admin-d-empty")
+    assert probe.page.locator("#admin-d-nodeleted").count() == 1
+
+
+def test_reports_escape_and_delete_with_reason(probe):
+    calls = _mock(probe.page)
+    _open(probe, "reports", ".admin-r-item")
+    probe.page.click(".admin-r-item summary")
+    assert "<script>alert(1)</script>" in probe.page.inner_text(".admin-r-item")
+    probe.page.click(".admin-r-del")
+    probe.page.click(".admin-r-confirm")
+    assert calls.bodies == []
+    probe.page.fill(".admin-r-reason", "wrong figures")
+    probe.page.click(".admin-r-confirm")
+    probe.page.wait_for_selector(".admin-r-item")
+    assert calls.bodies == [{"reason": "wrong figures"}] and ("POST", "/reports/9/delete") in _posts(calls)
+
+
+def test_no_reports_message(probe):
+    _mock(probe.page, reports=[])
+    _open(probe, "reports", "#admin-r-empty")
+
+
+def test_team_owner_can_add_and_remove_but_not_remove_permanent_or_self(probe):
+    calls = _mock(probe.page)
+    _open(probe, "team", "#admin-team-table")
+    assert probe.page.locator("#admin-team-table .admin-team-remove").count() == 2        # only the two non-permanent
+    assert probe.page.locator('tr[data-email="me@x.org"] .admin-team-remove').count() == 0
+    assert probe.page.locator("#admin-team-table b").count() == 0                         # hostile e-mail is text
+    probe.page.fill("#admin-team-email", "not-an-email")
+    probe.page.evaluate("document.getElementById('admin-team-form').dispatchEvent(new Event('submit', {cancelable: true}))")
+    assert probe.page.inner_text("#admin-team-msg").strip() != "" and calls.bodies == []
+    probe.page.fill("#admin-team-email", "New.Person@x.org")
+    probe.page.click("#admin-team-form button[type=submit]")
+    probe.page.wait_for_selector("#admin-team-table")
+    assert calls.bodies == [{"email": "New.Person@x.org"}] and ("POST", "/admins") in _posts(calls)
+
+
+def test_team_removal_asks_for_confirmation(probe):
+    calls = _mock(probe.page)
+    _open(probe, "team", "#admin-team-table")
+    probe.page.once("dialog", lambda d: d.dismiss())
+    probe.page.click('tr[data-email="helper@x.org"] .admin-team-remove')
+    assert calls.bodies == []
+    probe.page.once("dialog", lambda d: d.accept())
+    probe.page.click('tr[data-email="helper@x.org"] .admin-team-remove')
+    probe.page.wait_for_selector("#admin-team-table")
+    assert calls.bodies == [{"email": "helper@x.org"}] and ("POST", "/admins/remove") in _posts(calls)
+
+
+def test_non_owner_sees_the_team_but_no_controls(probe):
+    _mock(probe.page, team=dict(TEAM, can_manage=False))
+    _open(probe, "team", "#admin-team-readonly")
+    assert probe.page.locator("#admin-team-form").count() == 0 and probe.page.locator(".admin-team-remove").count() == 0

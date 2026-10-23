@@ -52,3 +52,16 @@ hors plage, rendement négatif...) n'est plus publiée automatiquement : elle at
 validées ou corrigées arrivent dans `table_public` (colonne `approuve_par` = e-mail du relecteur).
 Une valeur déjà tranchée n'est pas reproposée à la collecte suivante, sauf si elle change.
 Chaque décision figure dans le journal d'audit ; l'aperçu affiche une alerte tant qu'il reste des valeurs en attente.
+
+## Gestion des données, rapports et équipe (admin > Données / Rapports IA / Équipe)
+
+Exécuter une fois `supabase/data_admin_setup.sql` (table `table_deleted_observations`, additive).
+
+- **Données** : recherche d'une valeur publiée, correction ou suppression. Un motif est obligatoire,
+  l'action est écrite dans le journal (avant / après). Une valeur supprimée est archivée et peut être
+  restaurée. La collecte suivante ne défait pas la décision tant que la source donne la même valeur ;
+  si la source publie une valeur révisée, celle-ci est publiée.
+- **Rapports IA** : suppression d'un rapport erroné ou obsolète (motif obligatoire).
+- **Équipe** : réservée aux propriétaires (`ADMIN_EMAILS`). Ajouter un administrateur = saisir son e-mail,
+  après avoir créé son compte dans Supabase > Authentication > Users (« Auto Confirm User »).
+  Le retirer coupe son accès immédiatement. Un propriétaire permanent ne peut pas être retiré ici.
