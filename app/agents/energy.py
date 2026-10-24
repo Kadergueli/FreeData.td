@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, wb_years
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class EnergyAgent(BaseAgent):
         async with httpx.AsyncClient(timeout=30) as client:
             for code, (name, unit) in self.WORLD_BANK_INDICATORS.items():
                 url = f"https://api.worldbank.org/v2/country/{self.CHAD_ISO3}/indicator/{code}"
-                params = {"format": "json", "per_page": 50, "date": "2015:2024"}
+                params = {"format": "json", "per_page": 50, "date": wb_years(2015)}
                 payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
                 if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
                     for item in payload[1]:

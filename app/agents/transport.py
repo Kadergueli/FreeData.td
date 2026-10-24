@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, recent_window, wb_years
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ class TransportAgent(BaseAgent):
         async with httpx.AsyncClient(timeout=30) as client:
             for code, (name, unit) in self.WORLD_BANK_INDICATORS.items():
                 url = f"https://api.worldbank.org/v2/country/TD/indicator/{code}"
-                params = {"format": "json", "per_page": 50, "date": "2015:2024"}
+                params = {"format": "json", "per_page": 50, "date": wb_years(2015)}
                 payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
                 if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
                     for item in payload[1]:
@@ -213,14 +213,15 @@ class TransportAgent(BaseAgent):
     async def _collect_open_meteo_transport(self) -> list[dict[str, Any]]:
         """Fetch transport corridor weather risk (visibility & heavy rainfall) for Chad hubs."""
         records: list[dict[str, Any]] = []
+        window = recent_window(months=6)
         async with httpx.AsyncClient(timeout=30) as client:
             for hub_name, coords in self.TRANSPORT_HUBS.items():
                 url = "https://archive-api.open-meteo.com/v1/archive"
                 params = {
                     "latitude": coords["lat"],
                     "longitude": coords["lon"],
-                    "start_date": "2024-01-01",
-                    "end_date": "2024-06-30",
+                    "start_date": window[0],
+                    "end_date": window[1],
                     "daily": "precipitation_sum,wind_speed_10m_max",
                     "timezone": "Africa/Ndjamena",
                 }

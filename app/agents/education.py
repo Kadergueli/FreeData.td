@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, wb_years
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ class EducationAgent(BaseAgent):
         async with httpx.AsyncClient(timeout=30) as client:
             for code, (name, unit) in self.WORLD_BANK_INDICATORS.items():
                 url = f"https://api.worldbank.org/v2/country/TD/indicator/{code}"
-                params = {"format": "json", "per_page": 50, "date": "2005:2024"}
+                params = {"format": "json", "per_page": 50, "date": wb_years(2005)}
                 payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
                 if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
                     for item in payload[1]:
@@ -142,7 +142,7 @@ class EducationAgent(BaseAgent):
         records: list[dict[str, Any]] = []
         async with httpx.AsyncClient(timeout=30) as client:
             url = "https://api.worldbank.org/v2/country/TD/indicator/SE.ADT.1524.LT.ZS"
-            params = {"format": "json", "per_page": 50, "date": "2005:2024"}
+            params = {"format": "json", "per_page": 50, "date": wb_years(2005)}
             payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
             if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
                 for item in payload[1]:
@@ -171,7 +171,7 @@ class EducationAgent(BaseAgent):
         records: list[dict[str, Any]] = []
         async with httpx.AsyncClient(timeout=30) as client:
             url = "https://api.worldbank.org/v2/country/TD/indicator/SE.ENR.PRIM.FM.ZS"
-            params = {"format": "json", "per_page": 50, "date": "2005:2024"}
+            params = {"format": "json", "per_page": 50, "date": wb_years(2005)}
             payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
             if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
                 for item in payload[1]:

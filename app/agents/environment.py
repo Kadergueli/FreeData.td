@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, nasa_power_years, recent_window
 from app.config import settings
 from app.schemas import ObservationCreate
 
@@ -85,14 +85,15 @@ class EnvironmentAgent(BaseAgent):
     async def _collect_open_meteo_weather(self) -> list[dict[str, Any]]:
         """Daily temperature & precipitation from Open-Meteo Archive API (free, no key)."""
         records: list[dict[str, Any]] = []
+        window = recent_window(months=12)
         async with httpx.AsyncClient(timeout=30) as client:
             for region_name, coords in self.CHAD_REGIONS.items():
                 url = "https://archive-api.open-meteo.com/v1/archive"
                 params = {
                     "latitude": coords["lat"],
                     "longitude": coords["lon"],
-                    "start_date": "2024-01-01",
-                    "end_date": "2024-12-31",
+                    "start_date": window[0],
+                    "end_date": window[1],
                     "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,precipitation_sum",
                     "timezone": "Africa/Ndjamena",
                 }
@@ -141,6 +142,7 @@ class EnvironmentAgent(BaseAgent):
     async def _collect_nasa_power(self) -> list[dict[str, Any]]:
         """Monthly temperature & precipitation from NASA POWER API (free, no key)."""
         records: list[dict[str, Any]] = []
+        power_years = nasa_power_years()
         async with httpx.AsyncClient(timeout=60) as client:
             for region_name, coords in self.CHAD_REGIONS.items():
                 url = "https://power.larc.nasa.gov/api/temporal/monthly/point"
@@ -149,8 +151,8 @@ class EnvironmentAgent(BaseAgent):
                     "community": "AG",
                     "longitude": coords["lon"],
                     "latitude": coords["lat"],
-                    "start": "2020",
-                    "end": "2024",
+                    "start": power_years[0],
+                    "end": power_years[1],
                     "format": "JSON",
                 }
                 res_json = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.2)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 import json
 import math
@@ -17,6 +17,33 @@ from app.schemas import CollectionResult, ObservationCreate
 from app.services.storage import ObservationRepository
 
 logger = logging.getLogger(__name__)
+
+
+def wb_years(first_year: int) -> str:
+    """World Bank `date` parameter from first_year up to the current year ("2015:2026")."""
+    return f"{first_year}:{datetime.now(UTC).year}"
+
+
+def recent_window(months: int = 12, lag_days: int = 7) -> tuple[str, str]:
+    """(start, end) ISO dates covering the last `months` months, ending `lag_days` ago.
+
+    Archive APIs (Open-Meteo) publish with a few days of delay, so asking for "today" returns
+    nulls. The window moves forward with the calendar: a frozen year would silently stop
+    collecting new data.
+    """
+    end = datetime.now(UTC).date() - timedelta(days=lag_days)
+    year, month = end.year, end.month - months
+    while month < 1:
+        month += 12
+        year -= 1
+    return date(year, month, 1).isoformat(), end.isoformat()
+
+
+def nasa_power_years(span: int = 5) -> tuple[str, str]:
+    """(start, end) years for NASA POWER monthly data: the last `span` years up to this one."""
+    year = datetime.now(UTC).year
+    return str(year - span + 1), str(year)
+
 
 
 def _retry_after_seconds(value: str | None, default: float) -> float:

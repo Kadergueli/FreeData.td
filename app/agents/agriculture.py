@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, nasa_power_years, recent_window, wb_years
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ class AgricultureAgent(BaseAgent):
         async with httpx.AsyncClient(timeout=30) as client:
             for code, (name, unit) in self.WORLD_BANK_INDICATORS.items():
                 url = f"https://api.worldbank.org/v2/country/TD/indicator/{code}"
-                params = {"format": "json", "per_page": 50, "date": "2015:2024"}
+                params = {"format": "json", "per_page": 50, "date": wb_years(2015)}
                 payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
                 if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
                     for item in payload[1]:
@@ -135,14 +135,15 @@ class AgricultureAgent(BaseAgent):
     async def _collect_open_meteo(self) -> list[dict[str, Any]]:
         """Collect real soil moisture, FAO evapotranspiration & crop stress indicators for Chad regions."""
         records: list[dict[str, Any]] = []
+        window = recent_window(months=6)
         async with httpx.AsyncClient(timeout=30) as client:
             for region_name, coords in self.CHAD_AGRICULTURAL_REGIONS.items():
                 url = "https://archive-api.open-meteo.com/v1/archive"
                 params = {
                     "latitude": coords["lat"],
                     "longitude": coords["lon"],
-                    "start_date": "2024-01-01",
-                    "end_date": "2024-06-30",
+                    "start_date": window[0],
+                    "end_date": window[1],
                     "daily": "et0_fao_evapotranspiration,soil_moisture_0_to_7cm_mean,soil_moisture_7_to_28cm_mean,vapor_pressure_deficit_max,shortwave_radiation_sum,precipitation_sum,temperature_2m_mean",
                     "timezone": "Africa/Ndjamena",
                 }
@@ -201,6 +202,7 @@ class AgricultureAgent(BaseAgent):
     async def _collect_nasa_power_agro(self) -> list[dict[str, Any]]:
         """Collect Photosynthetically Active Radiation (PAR) & root-zone soil wetness from NASA POWER AG API."""
         records: list[dict[str, Any]] = []
+        power_years = nasa_power_years()
         async with httpx.AsyncClient(timeout=60) as client:
             for region_name, coords in self.CHAD_AGRICULTURAL_REGIONS.items():
                 url = "https://power.larc.nasa.gov/api/temporal/monthly/point"
@@ -209,8 +211,8 @@ class AgricultureAgent(BaseAgent):
                     "community": "AG",
                     "longitude": coords["lon"],
                     "latitude": coords["lat"],
-                    "start": "2020",
-                    "end": "2024",
+                    "start": power_years[0],
+                    "end": power_years[1],
                     "format": "JSON",
                 }
                 res_json = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.2)
