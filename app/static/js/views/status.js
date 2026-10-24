@@ -4,7 +4,7 @@
  * (The former 24h "load" chart and "Charge Maximale : Optimale" were invented.)
  */
 
-import { fetchHealth, fetchAudit } from '../api_client.js';
+import { fetchHealth, fetchAudit, fetchSourcesFreshness } from '../api_client.js';
 import { formatScore, formatCount } from '../ui.js';
 import { t } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
@@ -12,7 +12,7 @@ import { escapeHtml } from '../sanitize.js';
 function formatAuditAgent(agent) {
   if (!agent) return t('status.agent_cleaning');
   const a = String(agent);
-  if (a.includes('Agent 2')) return t('status.agent_cleaning');
+  if (a.includes('Agent 2') || a.includes('Data Science')) return t('status.agent_cleaning');
   if (a.includes('Agent 1')) return t('status.agent_ingestion');
   if (a.includes('Agent 3')) return t('status.agent_publication');
   return a.replace(/Agent/g, 'Agent ').trim();
@@ -87,6 +87,26 @@ function renderScheduler(sch) {
     </div>${sectors}`;
 }
 
+function renderFreshness(sources) {
+  const box = document.getElementById('freshness-body');
+  if (!box) return;
+  if (!sources) { box.innerHTML = `<p class="mono-xs text-muted">${t('status.fresh_unavailable')}</p>`; return; }
+  if (!sources.length) { box.innerHTML = `<p class="mono-xs text-muted">${t('status.fresh_none')}</p>`; return; }
+  const badge = { ok: 'badge--valid', late: '', stale: '' };
+  box.innerHTML = `
+    <p class="body-text mb-3" style="font-size:12px;">${t('status.fresh_intro')}</p>
+    <div class="flex flex-col gap-2">${sources.map(s => `
+      <div class="flex justify-between items-center gap-3" data-source-status="${escapeHtml(s.status)}"
+           style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;">
+        <div style="min-width:0;flex:1;">
+          <span class="mono-xs fw-700">${escapeHtml(s.source)}</span>
+          <span class="mono-xs text-muted"> · ${escapeHtml(t(`sectors.names.${s.sector}`))} · ${formatCount(s.rows)} ${t('common.records')}</span>
+        </div>
+        <span class="mono-xs text-muted" style="flex-shrink:0;">${t('status.fresh_latest')} : ${escapeHtml(s.latest_reference || '—')}</span>
+        <span class="badge ${badge[s.status] || ''} mono-xs" style="flex-shrink:0;">${t(`status.fresh_${s.status}`)}</span>
+      </div>`).join('')}</div>`;
+}
+
 export const StatusView = {
   render() {
     return `
@@ -147,6 +167,13 @@ export const StatusView = {
 
       <div class="card mb-6" style="padding:16px;border-color:var(--border-strong);">
         <h4 class="mono-sm uppercase mb-4 flex items-center gap-2">
+          <i data-lucide="calendar-check" style="width:16px;height:16px;"></i> ${t('status.fresh_title')}
+        </h4>
+        <div id="freshness-body"><span class="skeleton" style="width:240px;"></span></div>
+      </div>
+
+      <div class="card mb-6" style="padding:16px;border-color:var(--border-strong);">
+        <h4 class="mono-sm uppercase mb-4 flex items-center gap-2">
           <i data-lucide="clock" style="width:16px;height:16px;"></i> ${t('status.sched_title')}
         </h4>
         <div id="scheduler-body"><span class="skeleton" style="width:240px;"></span></div>
@@ -157,10 +184,12 @@ export const StatusView = {
   async init() {
     if (window.lucide) window.lucide.createIcons();
 
-    const [health, audit] = await Promise.all([
+    const [health, audit, freshness] = await Promise.all([
       fetchHealth().catch(() => null),
       fetchAudit().catch(() => null),
+      fetchSourcesFreshness().catch(() => null),
     ]);
+    renderFreshness(freshness);
 
     const backendEl = document.getElementById('status-storage-backend');
     if (backendEl) {

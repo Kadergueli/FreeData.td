@@ -163,3 +163,14 @@ def test_failed_sector_and_missing_llm_are_reported():
 
 def test_unreadable_database_is_critical():
     assert _alerts(stats={"sectors": {}, "last_update": None})[0]["code"] == "data_unreadable"
+
+
+def test_stale_source_raises_a_warning_with_its_details():
+    stale = [{"source": "Open-Meteo Archive", "sector": "environment", "latest_reference": "2024-12-31",
+              "age_days": 663, "max_age_days": 21}]
+    base = dict(stats={"sectors": {"environment": 5}, "last_update": "2026-10-24T00:00:00+00:00"}, sector_last={},
+                scheduler={}, audit={}, llm_configured=True, now=datetime(2026, 10, 25, tzinfo=UTC))
+    alerts = compute_alerts(**base, stale_sources=stale)
+    (a,) = [x for x in alerts if x["code"] == "source_stale"]
+    assert a["level"] == "warning" and a["params"]["source"] == "Open-Meteo Archive" and a["params"]["days"] == 663
+    assert not [x for x in compute_alerts(**base) if x["code"] == "source_stale"]

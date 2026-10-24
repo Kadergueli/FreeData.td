@@ -205,6 +205,12 @@ def list_studies(sector: str | None = None, limit: int = Query(default=20, ge=1,
     return {"studies": studies}
 
 
+@app.get("/api/v1/sources/freshness")
+def sources_freshness() -> dict:
+    """Per source: newest measurement date, age and status (ok / late / stale)."""
+    return {"sources": repository.source_freshness()}
+
+
 @app.get("/api/v1/pipeline/audit")
 def pipeline_audit() -> dict:
     return repository.get_pipeline_audit()

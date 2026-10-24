@@ -129,7 +129,7 @@ def _age_hours(iso: str | None, now: datetime) -> float | None:
 
 def compute_alerts(
     *, stats: dict, sector_last: dict, scheduler: dict, audit: dict, llm_configured: bool, now: datetime,
-    quarantine_pending: int = 0,
+    quarantine_pending: int = 0, stale_sources: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Plain-rule alerts: each one says what is wrong, so the admin can act on it."""
     alerts: list[dict[str, Any]] = []
@@ -165,6 +165,11 @@ def compute_alerts(
     if scheduler.get("last_run") is None:
         add("info", "scheduler_idle", "No in-process harvest since this server started (the daily GitHub workflow is the main trigger).")
 
+    for src in stale_sources or []:
+        add("warning", "source_stale",
+            f"Source '{src['source']}' ({src['sector']}) has no data newer than {src['latest_reference']} "
+            f"({src['age_days']} days; normal is {src['max_age_days']}).",
+            sector=src["sector"], source=src["source"], date=src["latest_reference"], days=src["age_days"])
     if quarantine_pending > 0:
         add("warning", "quarantine_pending", f"{quarantine_pending} suspicious value(s) are held back and await your review.", count=quarantine_pending)
     if (audit.get("nb_anomalies") or 0) > 0:
@@ -187,10 +192,15 @@ def build_overview(repository: ObservationRepository, now: datetime | None = Non
     except Exception as exc:  # table missing / DB hiccup: the overview must still load
         logger.warning("quarantine counts unreadable: %s", exc)
         quarantine = None
+    try:
+        stale_sources = [s for s in repository.source_freshness() if s["status"] == "stale"]
+    except Exception as exc:  # the overview must still load
+        logger.warning("source freshness unreadable: %s", exc)
+        stale_sources = []
     alerts = compute_alerts(
         stats=stats, sector_last=sector_last, scheduler=scheduler, audit=audit,
         llm_configured=bool(settings.groq_api_key), now=now,
-        quarantine_pending=(quarantine or {}).get("pending", 0),
+        quarantine_pending=(quarantine or {}).get("pending", 0), stale_sources=stale_sources,
     )
     sectors = [
         {"id": sec, "count": (stats.get("sectors") or {}).get(sec), "last_published": sector_last.get(sec)}

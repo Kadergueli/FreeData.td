@@ -81,6 +81,17 @@ export async function fetchCatalog() {
   }
 }
 
+/** Newest measurement per source with its status (ok / late / stale). */
+export async function fetchSourcesFreshness() {
+  try {
+    const data = await requestJson(`${BASE_URL}/sources/freshness`);
+    return Array.isArray(data.sources) ? data.sources : null;
+  } catch (err) {
+    console.warn('fetchSourcesFreshness error:', err);
+    return null;
+  }
+}
+
 export async function fetchAudit() {
   try {
     return await requestJson(`${BASE_URL}/pipeline/audit`);

@@ -821,6 +821,37 @@ class ObservationRepository:
             _cache_set("stats", result)
         return result
 
+    def source_freshness(self) -> list[dict[str, Any]]:
+        """Newest measurement per (sector, source), judged against each source's normal age."""
+        from datetime import UTC, datetime
+
+        from app.services.freshness import build_source_freshness
+
+        cached = _cache_get("source_freshness", 600.0)
+        if cached is not None:
+            return list(cached)
+        if self._supabase:
+            try:
+                rows = _with_retry(
+                    lambda: self._supabase.rpc("source_freshness").execute().data, label="source_freshness"
+                ) or []
+            except Exception as exc:
+                logger.warning("source_freshness failed: %s", exc)
+                raise StorageUnavailable("The data store is temporarily unavailable.") from exc
+        else:
+            with self._connection() as connection:
+                rows = [
+                    {"sector": r["sector"], "source": r["source"], "rows": r["n"],
+                     "latest_reference": r["newest"], "last_published": r["published"]}
+                    for r in connection.execute(
+                        "SELECT sector, source, COUNT(*) AS n, MAX(reference_date) AS newest, "
+                        "MAX(collected_at) AS published FROM observations GROUP BY sector, source"
+                    )
+                ]
+        result = build_source_freshness(rows, datetime.now(UTC).date())
+        _cache_set("source_freshness", result)
+        return list(result)
+
     def get_sector_last_update(self) -> dict[str, str | None]:
         """Newest publication timestamp per sector (None = never published / unknown).
         Used by the admin dashboard to tell "this sector stopped being collected" apart
