@@ -852,6 +852,30 @@ class ObservationRepository:
             _cache_set("sector_last_update", dict(result))
         return result
 
+    def export_rows(self, sector: str | None, region: str | None, limit: int) -> tuple[list[dict[str, Any]], bool]:
+        """Rows for a download, plus a flag telling whether the file is incomplete.
+
+        With a sector the newest `limit` rows are returned. Without one, the cap is shared
+        fairly between sectors (a plain "newest first" cut let one very large sector, such
+        as environment, fill the whole file): every sector gets an equal share, and the
+        unused share of small sectors is given to the ones that were cut.
+        """
+        if sector and sector.strip().lower() not in ("all", "tous"):
+            rows = self.list_observations(sector=sector, region=region, limit=limit)
+            return rows, len(rows) >= limit
+
+        share = max(1, limit // len(SECTOR_IDS))
+        by_sector = {sec: self.list_observations(sector=sec, region=region, limit=share) for sec in SECTOR_IDS}
+        cut = [sec for sec, rows in by_sector.items() if len(rows) >= share]
+        spare = limit - sum(len(rows) for rows in by_sector.values())
+        if cut and spare > 0:
+            bonus = spare // len(cut)
+            for sec in cut:
+                by_sector[sec] = self.list_observations(sector=sec, region=region, limit=share + bonus)
+            cut = [sec for sec in cut if len(by_sector[sec]) >= share + bonus]
+        rows = [row for sec in SECTOR_IDS for row in by_sector[sec]]
+        return rows[:limit], bool(cut)
+
     def catalog(self) -> list[dict[str, Any]]:
         cached = _cache_get("catalog", 60.0)
         if cached is not None:

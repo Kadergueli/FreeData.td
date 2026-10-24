@@ -10,9 +10,9 @@ from app.main import app
 
 def test_export_header_only_when_cap_is_hit(monkeypatch):
     client = TestClient(app)
-    monkeypatch.setattr(main.repository, "list_observations", lambda **k: [{"id": i} for i in range(main.EXPORT_LIMIT)])
+    monkeypatch.setattr(main.repository, "export_rows", lambda *a: ([{"id": 1}], True))
     assert client.get("/api/v1/export/json").headers.get("X-Export-Truncated") == "true"
-    monkeypatch.setattr(main.repository, "list_observations", lambda **k: [{"id": 1}])
+    monkeypatch.setattr(main.repository, "export_rows", lambda *a: ([{"id": 1}], False))
     assert "X-Export-Truncated" not in client.get("/api/v1/export/json").headers
 
 

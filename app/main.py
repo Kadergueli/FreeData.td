@@ -188,11 +188,11 @@ def pipeline_audit() -> dict:
 EXPORT_LIMIT = 5000
 
 
-def _export_headers(filename: str, rows: list) -> dict[str, str]:
+def _export_headers(filename: str, truncated: bool) -> dict[str, str]:
     """Download headers; flags an export that hit the row cap so the UI can warn
     instead of silently handing out an incomplete file."""
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-    if len(rows) >= EXPORT_LIMIT:
+    if truncated:
         headers["X-Export-Truncated"] = "true"
     return headers
 
@@ -209,7 +209,7 @@ def _safe_filename_part(sector: str | None) -> str:
 
 @app.get("/api/v1/export/csv", response_class=PlainTextResponse)
 def export_csv(sector: str | None = None, region: str | None = None) -> PlainTextResponse:
-    rows = repository.list_observations(sector=sector, region=region, limit=EXPORT_LIMIT)
+    rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     content = observations_to_csv(rows)
     name_parts = _safe_filename_part(sector)
     if region:
@@ -217,27 +217,27 @@ def export_csv(sector: str | None = None, region: str | None = None) -> PlainTex
     filename = f"freedatatd-{name_parts}-export.csv"
     return PlainTextResponse(
         content,
-        headers=_export_headers(filename, rows),
+        headers=_export_headers(filename, truncated),
         media_type="text/csv",
     )
 
 
 @app.get("/api/v1/export/json")
 def export_json(sector: str | None = None, region: str | None = None) -> JSONResponse:
-    rows = repository.list_observations(sector=sector, region=region, limit=EXPORT_LIMIT)
+    rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     name_parts = _safe_filename_part(sector)
     if region:
         name_parts += f"-{_safe_filename_part(region)}"
     filename = f"freedatatd-{name_parts}-export.json"
     return JSONResponse(
         content=rows,
-        headers=_export_headers(filename, rows),
+        headers=_export_headers(filename, truncated),
     )
 
 
 @app.get("/api/v1/export/xml", response_class=PlainTextResponse)
 def export_xml(sector: str | None = None, region: str | None = None) -> PlainTextResponse:
-    rows = repository.list_observations(sector=sector, region=region, limit=EXPORT_LIMIT)
+    rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     content = observations_to_xml(rows)
     name_parts = _safe_filename_part(sector)
     if region:
@@ -245,14 +245,14 @@ def export_xml(sector: str | None = None, region: str | None = None) -> PlainTex
     filename = f"freedatatd-{name_parts}-export.xml"
     return PlainTextResponse(
         content,
-        headers=_export_headers(filename, rows),
+        headers=_export_headers(filename, truncated),
         media_type="application/xml",
     )
 
 
 @app.get("/api/v1/export/parquet")
 def export_parquet(sector: str | None = None, region: str | None = None) -> Response:
-    rows = repository.list_observations(sector=sector, region=region, limit=EXPORT_LIMIT)
+    rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     try:
         content = observations_to_parquet(rows)
     except RuntimeError as exc:
@@ -263,7 +263,7 @@ def export_parquet(sector: str | None = None, region: str | None = None) -> Resp
     filename = f"freedatatd-{name_parts}-export.parquet"
     return Response(
         content=content,
-        headers=_export_headers(filename, rows),
+        headers=_export_headers(filename, truncated),
         media_type="application/octet-stream",
     )
 
