@@ -65,9 +65,35 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
 
+def _content_security_policy() -> str:
+    """Scripts only from our own origin (lucide and Chart.js are vendored). Styles keep
+    'unsafe-inline' because the UI uses style attributes; Google Fonts and the Supabase
+    Auth host (admin sign-in from the browser) are the only external origins."""
+    connect = ["'self'"]
+    if settings.supabase_url:
+        connect.append(settings.supabase_url.rstrip("/"))
+    connect.extend(origin for origin in settings.csp_connect_extra.split() if origin.startswith("https://"))
+    return "; ".join([
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: https:",
+        f"connect-src {' '.join(connect)}",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'self'",
+    ])
+
+
+CONTENT_SECURITY_POLICY = _content_security_policy()
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -108,7 +134,7 @@ def health() -> dict:
         "status": "ok",
         "project": "FreeDatatd",
         "storage_backend": repository.backend,
-        "scheduler": scheduler_service.get_status(),
+        "scheduler": scheduler_service.get_public_status(),
         # Real server-side limits/capabilities, so the UI states facts instead of hard-coded text.
         "limits": {
             "collection_per_hour": settings.collection_rate_limit_per_hour,
@@ -350,7 +376,7 @@ async def collect_education(source: str = "all") -> dict:
 
 @app.get("/api/v1/collection/scheduler-status")
 def scheduler_status() -> dict:
-    return scheduler_service.get_status()
+    return scheduler_service.get_public_status()
 
 
 @app.post("/api/v1/collection/run-scheduled-harvest", dependencies=[Depends(require_collection_access)])

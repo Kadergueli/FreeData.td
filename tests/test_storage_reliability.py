@@ -114,7 +114,7 @@ def test_store_raw_batch_logs_on_exception(tmp_path: Path, caplog: pytest.LogCap
     supabase = _FakeSupabase({"table_raw": ConnectionError("simulated network failure")})
     repo = _repo(tmp_path, supabase=supabase)
     with caplog.at_level(logging.WARNING, logger="app.services.storage"):
-        result = repo.store_raw_batch("health", "world-bank", [])
+        result = repo.store_raw_batch("health", "world-bank", [{"a": 1}])
     assert result is None
     assert "store_raw_batch" in caplog.text
     assert "simulated network failure" in caplog.text

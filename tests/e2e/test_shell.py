@@ -77,3 +77,28 @@ def test_chart_is_drawn_oldest_to_newest_when_data_exists(probe):
     probe.page.wait_for_function("window.__charts && window.__charts.length > 0")
     labels = probe.page.evaluate("window.__charts[window.__charts.length - 1].data.labels")
     assert labels == sorted(labels) and len(labels) > 1
+
+
+def test_no_csp_violation_on_any_page(csp_probe):
+    """Patch 0038: the Content-Security-Policy must not block anything the app really does."""
+    for route in ("", "#/sectors", "#/data", "#/sources", "#/insights", "#/api", "#/status", "#/admin"):
+        csp_probe.goto(route)
+    assert csp_probe.csp_violations == [], csp_probe.csp_violations
+    assert csp_probe.page_errors == []
+
+
+def test_real_vendored_libraries_load_under_csp(browser, server):
+    """No stubs here: the self-hosted lucide and Chart.js files must run under the real policy."""
+    ctx = browser.new_context()
+    page = ctx.new_page()
+    violations = []
+    page.on("console", lambda m: violations.append(m.text) if "Content Security Policy" in m.text else None)
+    page.route("**/fonts.g*", lambda r: r.fulfill(body="", content_type="text/css"))
+    resp = page.goto(f"{server}/")
+    assert "script-src 'self'" in resp.headers["content-security-policy"]
+    page.wait_for_load_state("networkidle")
+    assert page.evaluate("typeof window.lucide.createIcons") == "function"
+    assert page.evaluate("document.querySelectorAll('svg.lucide').length") > 0
+    assert page.evaluate("import('/static/js/charts.js').then(m => m.loadChartLib()).then(c => typeof c)") == "function"
+    assert violations == []
+    ctx.close()

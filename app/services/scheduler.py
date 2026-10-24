@@ -177,6 +177,30 @@ class AutonomousHarvesterScheduler:
         logger.info("Scheduled harvest completed: %d total records stored.", total_stored)
         return self.last_result
 
+    def get_public_status(self) -> dict[str, Any]:
+        """Status safe for unauthenticated visitors: counts and ok/failed flags only. Raw error
+        messages (library errors, URLs, internals) stay in the logs and the admin area."""
+        last = self.last_result or {}
+        sectors: dict[str, dict[str, Any]] = {}
+        for name, res in (last.get("sectors") or {}).items():
+            if not isinstance(res, dict) or res.get("error"):
+                sectors[name] = {"error": True}
+            else:
+                sectors[name] = {"stored": res.get("stored")}
+        return {
+            "is_running": self.is_running,
+            "job_running": self._job_running,
+            "interval_hours": self.interval_seconds // 3600,
+            "last_run": self.last_run.isoformat() if self.last_run else None,
+            "next_run": self.next_run.isoformat() if self.next_run else None,
+            "last_result": {
+                "timestamp": last.get("timestamp"),
+                "total_stored": last.get("total_stored"),
+                "status": last.get("status"),
+                "sectors": sectors,
+            } if last else None,
+        }
+
     def get_status(self) -> dict[str, Any]:
         return {
             "is_running": self.is_running,

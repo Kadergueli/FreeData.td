@@ -90,3 +90,9 @@ def test_empty_supabase_is_a_real_empty_answer_not_an_outage(tmp_path):
             return Q()
     repo = _repo(tmp_path, Empty())
     assert repo.list_observations() == []
+
+
+def test_empty_source_response_is_not_archived(tmp_path):
+    fake = RawFake()
+    assert _repo(tmp_path, fake).store_raw_batch("health", "x", []) is None
+    assert fake.inserted == []

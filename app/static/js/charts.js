@@ -11,7 +11,7 @@
 
 import { t } from './i18n.js';
 
-const CHART_JS_SRC = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js';
+const CHART_JS_SRC = '/static/vendor/chart-4.4.7.umd.js';
 const chartInstances = {};
 let _chartLibPromise = null;
 

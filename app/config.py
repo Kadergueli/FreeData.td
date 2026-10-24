@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     groq_api_key: str | None = None
     groq_model: str = "llama-3.3-70b-versatile"
     analysis_rate_limit_per_hour: int = 5
+    # Ceiling for all visitors together: per-IP limits do not stop many IPs from running up the AI bill.
+    analysis_global_limit_per_hour: int = 30
     collection_api_key: str | None = None
     collection_rate_limit_per_hour: int = 10
     nasa_firms_key: str | None = None
@@ -21,6 +23,8 @@ class Settings(BaseSettings):
     # sign in through Supabase Auth. ADMIN_EMAILS are permanent owners (cannot be locked out).
     supabase_anon_key: str | None = None
     admin_emails: str = ""
+    # Extra origins (space separated) the browser may call, on top of SUPABASE_URL. Rarely needed.
+    csp_connect_extra: str = ""
     database_path: str = "data/freedatatd.db"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 

@@ -60,6 +60,7 @@ def server(tmp_path_factory):
         **os.environ,
         "DATABASE_PATH": str(db),
         "SUPABASE_URL": "",
+        "CSP_CONNECT_EXTRA": "https://sb.test",  # the admin tests mock Supabase Auth on this origin
         "SUPABASE_SERVICE_ROLE_KEY": "",
         "COLLECTION_API_KEY": "e2e-admin-key",
     }
@@ -105,12 +106,12 @@ def browser():
 def _install_cdn_stubs(page, *, chart_ok: bool = True) -> None:
     def handler(route):
         url = route.request.url
-        if "chart.js" in url:
+        if "/static/vendor/chart-" in url:
             if chart_ok:
                 route.fulfill(body=CHART_STUB, content_type="application/javascript")
             else:
                 route.abort()
-        elif "lucide" in url:
+        elif "/static/vendor/lucide-" in url:
             route.fulfill(body=LUCIDE_STUB, content_type="application/javascript")
         elif "fonts.googleapis" in url or "fonts.gstatic" in url:
             route.fulfill(body="", content_type="text/css")
@@ -128,6 +129,8 @@ class Probe:
         self.base = base
         self.api_calls: list[str] = []
         self.page_errors: list[str] = []
+        self.csp_violations: list[str] = []
+        page.on("console", lambda m: self.csp_violations.append(m.text) if "Content Security Policy" in m.text else None)
         page.on("request", lambda r: self.api_calls.append(r.url.replace(base, "")) if "/api/" in r.url else None)
         page.on("pageerror", lambda e: self.page_errors.append(str(e)))
 
@@ -141,6 +144,18 @@ class Probe:
 
 @pytest.fixture
 def probe(browser, server):
+    # Playwright evaluates string expressions (wait_for_function...) with eval(), which the app's
+    # Content-Security-Policy rightly forbids; the policy itself is tested by `csp_probe`.
+    ctx = browser.new_context(viewport={"width": 1280, "height": 900}, bypass_csp=True)
+    page = ctx.new_page()
+    _install_cdn_stubs(page)
+    yield Probe(page, server)
+    ctx.close()
+
+
+@pytest.fixture
+def csp_probe(browser, server):
+    """Same as `probe` but with the real Content-Security-Policy enforced."""
     ctx = browser.new_context(viewport={"width": 1280, "height": 900})
     page = ctx.new_page()
     _install_cdn_stubs(page)
@@ -150,7 +165,7 @@ def probe(browser, server):
 
 @pytest.fixture
 def probe_no_chart_cdn(browser, server):
-    ctx = browser.new_context(viewport={"width": 1280, "height": 900})
+    ctx = browser.new_context(viewport={"width": 1280, "height": 900}, bypass_csp=True)
     page = ctx.new_page()
     _install_cdn_stubs(page, chart_ok=False)
     yield Probe(page, server)

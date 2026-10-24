@@ -55,6 +55,9 @@ def require_analysis_rate_limit(request: Request) -> None:
     client_id = request.client.host if request.client else "unknown"
     if not rate_limiter.allow(f"analysis:{client_id}", settings.analysis_rate_limit_per_hour):
         raise HTTPException(status_code=429, detail="Study-generation rate limit reached. Try again later.")
+    # Global ceiling, checked after the per-IP one so a blocked visitor does not use up the shared budget.
+    if not rate_limiter.allow("analysis:*global*", settings.analysis_global_limit_per_hour):
+        raise HTTPException(status_code=429, detail="Study generation is busy right now. Try again later.")
 
 
 def require_collection_rate_limit(request: Request) -> None:

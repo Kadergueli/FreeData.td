@@ -259,6 +259,12 @@ class BaseAgent(ABC):
         normalized_list: list[ObservationCreate] = []
         errors: list[str] = []
 
+        if not raw_records:
+            # A source answering with nothing is a silent failure (frozen date window, API moved,
+            # network blocked): surface it in the run result and the logs instead of "0 stored, OK".
+            logger.warning("%s/%s: the source returned no records.", self.sector, source)
+            errors.append("no data received from the source (check the source or its date window)")
+
         for raw in raw_records:
             try:
                 observation = self.normalize(raw)

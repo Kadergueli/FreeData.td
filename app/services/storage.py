@@ -175,7 +175,7 @@ class ObservationRepository:
         returns None rather than crashing the whole collection run over an
         archival step (downstream code already treats raw_record_id as optional).
         """
-        if not self._supabase:
+        if not self._supabase or not records:
             return None
         try:
             # One giant insert (15 MB of JSON) hits the statement timeout, so large batches are
