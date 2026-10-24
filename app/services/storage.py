@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import threading
@@ -83,10 +84,37 @@ def _with_retry(operation: Any, *, attempts: int = 3, base_delay: float = 0.3, l
 _WRITE_CHUNK = 500  # rows per Supabase request (one giant insert can exceed request limits)
 
 
+_RAW_PART_BYTES = 2_000_000  # max JSON size of one table_raw row
+
+
+def _split_raw_records(records: list[dict[str, Any]], max_bytes: int | None = None) -> list[list[dict[str, Any]]]:
+    """Split source records into parts whose JSON stays under max_bytes (at least one part)."""
+    max_bytes = max_bytes or _RAW_PART_BYTES
+    parts: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    size = 0
+    for record in records:
+        try:
+            record_size = len(json.dumps(record, default=str))
+        except Exception:
+            record_size = 1000
+        if current and size + record_size > max_bytes:
+            parts.append(current)
+            current, size = [], 0
+        current.append(record)
+        size += record_size
+    parts.append(current)
+    return parts
+
+
 def _chunks(items: list, size: int | None = None):
     size = size or _WRITE_CHUNK
     for i in range(0, len(items), size):
         yield items[i:i + size]
+
+
+class StorageUnavailable(RuntimeError):
+    """The configured database could not be read. Callers must answer 503, never an empty 200."""
 
 
 class ObservationRepository:
@@ -150,20 +178,30 @@ class ObservationRepository:
         if not self._supabase:
             return None
         try:
-            response = _with_retry(
-                lambda: self._supabase.table("table_raw").insert(
-                    {
-                        "secteur": sector,
-                        "source_api": source,
-                        "donnee_brute": records,
-                        "statut": "brut",
-                        "nb_lignes": len(records),
-                        "notes_agent": "Recorded automatically by FreeDatatd before normalization.",
-                    }
-                ).execute(),
-                label=f"store_raw_batch({sector})",
-            )
-            return response.data[0]["id"] if response.data else None
+            # One giant insert (15 MB of JSON) hits the statement timeout, so large batches are
+            # split into several rows of table_raw; the first id is returned as the archive id.
+            parts = _split_raw_records(records)
+            first_id: int | None = None
+            for index, part in enumerate(parts, start=1):
+                note = "Recorded automatically by FreeDatatd before normalization."
+                if len(parts) > 1:
+                    note += f" Part {index}/{len(parts)}."
+                response = _with_retry(
+                    lambda part=part, note=note: self._supabase.table("table_raw").insert(
+                        {
+                            "secteur": sector,
+                            "source_api": source,
+                            "donnee_brute": part,
+                            "statut": "brut",
+                            "nb_lignes": len(part),
+                            "notes_agent": note,
+                        }
+                    ).execute(),
+                    label=f"store_raw_batch({sector} {index}/{len(parts)})",
+                )
+                if first_id is None and response.data:
+                    first_id = response.data[0]["id"]
+            return first_id
         except Exception as exc:
             logger.warning(
                 "store_raw_batch(%s) failed (best-effort, collection continues): %s",
@@ -414,7 +452,7 @@ class ObservationRepository:
         log_payloads = [
             {
                 "id_donnee": clean_id,
-                "agent": "Agent Nettoyage & Data Science",
+                "agent": "Agent Data Science",
                 "type_operation": "Nettoyage & Validation",
                 "valeur_avant": "Payload source brut conservé en table_raw.",
                 "valeur_apres": f"{row['indicator']} = {row['value']} {row['unit']}",
@@ -519,10 +557,12 @@ class ObservationRepository:
                 query = query.order("date_reference", desc=True).limit(fetch_limit)
                 raw_obs = [self._public_to_observation(row) for row in query.execute().data]
             except Exception as exc:
-                logger.warning("Supabase list_observations query failed (%s), falling back to SQLite", exc)
-                raw_obs = []
+                # The database is configured but unreadable: say so (503) instead of serving
+                # an empty or stale local copy as if it were the truth.
+                logger.warning("Supabase list_observations query failed: %s", exc)
+                raise StorageUnavailable("The data store is temporarily unavailable.") from exc
 
-        if not raw_obs:
+        if not self._supabase:
             try:
                 import unicodedata
                 query = "SELECT * FROM observations"

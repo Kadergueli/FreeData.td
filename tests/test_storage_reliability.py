@@ -140,16 +140,20 @@ def test_store_validation_report_logs_on_exception(tmp_path: Path, caplog: pytes
 # P6 — list_observations SQLite fallback logs its exception
 # ---------------------------------------------------------------------------
 
-def test_list_observations_sqlite_fallback_logs_exception(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    """Supabase fails → SQLite fallback also fails → must log, not crash."""
+def test_list_observations_supabase_outage_raises_not_empty(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Supabase configured but down -> StorageUnavailable (503), never a silent empty/stale answer."""
+    from app.services.storage import StorageUnavailable
     supabase = _FakeSupabase({"table_public": ConnectionError("supabase down")})
     repo = _repo(tmp_path, supabase=supabase)
-    # Corrupt the db path so SQLite also fails
-    repo.database_path = tmp_path / "nonexistent_dir" / "test.db"
     with caplog.at_level(logging.WARNING, logger="app.services.storage"):
-        result = repo.list_observations()
-    assert result == []
-    assert "SQLite fallback list_observations also failed" in caplog.text
+        with pytest.raises(StorageUnavailable):
+            repo.list_observations()
+    assert "supabase down" in caplog.text
+
+
+def test_list_observations_sqlite_when_supabase_not_configured(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, supabase=None)
+    assert repo.list_observations() == []
 
 
 # ---------------------------------------------------------------------------

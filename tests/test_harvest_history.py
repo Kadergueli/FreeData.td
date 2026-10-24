@@ -173,9 +173,9 @@ def test_collections_endpoints_require_an_administrator(client):
 def test_admin_runs_chosen_sectors_and_sees_them_in_history_and_audit(client):
     r = client.post("/api/v1/admin/collections/run", json={"sectors": ["transport", "education", "transport"]}, headers=H)
     assert r.status_code == 202 and r.json() == {"status": "started"}
-    for _ in range(50):
+    for _ in range(200):  # generous: the full suite can run this on a loaded machine
         data = client.get("/api/v1/admin/collections", headers=H).json()
-        if data["runs"] and data["runs"][0]["status"] != "running":
+        if data["runs"] and data["runs"][0]["status"] != "running" and data["job_running"] is False:
             break
         time.sleep(0.1)
     run = data["runs"][0]

@@ -33,7 +33,7 @@ from app.config import settings
 from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
 from app.services.export import observations_to_csv, observations_to_parquet, observations_to_xml, parquet_available
 from app.services.scheduler import scheduler_service
-from app.services.storage import ObservationRepository, _cache_get, _cache_set
+from app.services.storage import ObservationRepository, StorageUnavailable, _cache_get, _cache_set
 
 
 @asynccontextmanager
@@ -375,6 +375,16 @@ async def generate_study(sector: str | None = None) -> dict:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.exception_handler(StorageUnavailable)
+async def storage_unavailable_handler(request: StarletteRequest, exc: StorageUnavailable) -> JSONResponse:
+    """Database outage: an honest 503 (clients and monitors can retry) instead of an empty 200."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Data store temporarily unavailable. Please retry shortly."},
+        headers={"Retry-After": "30"},
+    )
 
 
 @app.get("/api/v1/insights/cross-sector")

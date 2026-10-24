@@ -17,7 +17,7 @@ class _Q:
     def not_(self): return self
     def is_(self, *a, **k): return self
     def execute(self):
-        class R: data = [{"secteur": "agriculture", "indicateur": "i", "source_api": "s",
+        class R: data = [{"id": 1, "valeur": 1.0, "unite": "u", "secteur": "agriculture", "indicateur": "i", "source_api": "s",
                           "date_reference": "2020-01-01", "region": "Lac"}]
         return R()
 
