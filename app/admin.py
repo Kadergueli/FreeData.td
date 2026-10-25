@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.security import rate_limiter
 from app.services.admin_store import AdminStore
+from app.services.cadence import cadence_days
 from app.services.data_admin import DataAdminStore
 from app.services.quarantine import STATUSES as QUARANTINE_STATUSES
 from app.services.quarantine import QuarantineStore
@@ -155,7 +156,8 @@ def compute_alerts(
     for sec in SECTOR_IDS:
         if sectors.get(sec, 0) > 0:
             sec_age = _age_hours(sector_last.get(sec), now)
-            if sec_age is not None and sec_age > 24 * 14:
+            # A monthly sector is refreshed once a month: alert after two missed rhythms.
+            if sec_age is not None and sec_age > 24 * max(14, 2 * cadence_days(sec)):
                 add("warning", "sector_not_collected", f"Sector '{sec}' was not refreshed for {int(sec_age // 24)} days.", sector=sec, days=int(sec_age // 24))
 
     last_result = scheduler.get("last_result") or {}

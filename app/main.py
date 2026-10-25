@@ -385,16 +385,18 @@ def scheduler_status() -> dict:
 
 
 @app.post("/api/v1/collection/run-scheduled-harvest", dependencies=[Depends(require_collection_access)])
-async def trigger_harvest(background: bool = False) -> Response:
-    """Run the all-sector harvest. With ?background=true it returns 202 immediately and the
-    caller polls /collection/scheduler-status (used by the daily GitHub Actions workflow)."""
+async def trigger_harvest(background: bool = False, force: bool = False) -> Response:
+    """Run the harvest of the sectors that are due (each sector has its own rhythm, see
+    app/services/cadence.py); ?force=true collects all of them. With ?background=true it
+    returns 202 immediately and the caller polls /collection/scheduler-status (used by the
+    daily GitHub Actions workflow)."""
     if background:
-        started = scheduler_service.start_background_job()
+        started = scheduler_service.start_background_job(only_due=not force)
         return JSONResponse(
             status_code=202,
             content={"status": "started" if started else "already_running"},
         )
-    return JSONResponse(content=await scheduler_service.run_harvest_job())
+    return JSONResponse(content=await scheduler_service.run_harvest_job(only_due=not force))
 
 
 @app.post("/api/v1/studies", dependencies=[Depends(require_analysis_rate_limit)])

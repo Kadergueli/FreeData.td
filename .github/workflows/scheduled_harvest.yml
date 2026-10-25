@@ -1,8 +1,10 @@
-name: Daily harvest (all sectors)
+name: Daily harvest (sectors that are due)
 
 # Replaces the old agriculture-only run. The in-process scheduler cannot be relied on
 # (a sleeping Render instance restarts its 24 h timer), so this workflow wakes the
-# service, starts a harvest of ALL sectors and waits for the result.
+# service, starts a harvest and waits for the result. Each sector follows its own rhythm
+# (daily / weekly / monthly, see app/services/cadence.py): sectors collected recently are
+# skipped. To collect everything, add ?force=true to the run-scheduled-harvest call.
 #
 # Required repository secrets (Settings > Secrets and variables > Actions):
 #   APP_URL              e.g. https://your-service.onrender.com   (no trailing slash)
@@ -70,6 +72,7 @@ jobs:
 
           result = status.get("last_result") or {}
           print("Total stored:", result.get("total_stored"))
+          print("Not due, skipped:", ", ".join(result.get("skipped") or []) or "none")
           failed = []
           for sector, res in (result.get("sectors") or {}).items():
               err = res.get("error")
