@@ -149,7 +149,8 @@ class QuarantineStore:
         data["flags"] = json.dumps(data["flags"])
         cols = list(data)
         with self._sqlite() as c:
-            c.execute(f"INSERT INTO quarantine ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})",
+            # Column names come from the code-built record above, never from a request; values are bound.
+            c.execute(f"INSERT INTO quarantine ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})",  # nosec B608
                       [data[k] for k in cols])
 
     def suppress(self, rec: dict[str, Any], admin: str, note: str) -> None:

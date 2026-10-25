@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     analysis_global_limit_per_hour: int = 30
     collection_api_key: str | None = None
     collection_rate_limit_per_hour: int = 10
+    # Reading the public API needs no key, but one client must not be able to drain the free-tier
+    # bandwidth: a generous cap per IP and minute, and a stricter one for the heavy file exports.
+    read_rate_limit_per_minute: int = 120
+    export_rate_limit_per_minute: int = 10
     nasa_firms_key: str | None = None
     # Admin area. The publishable ("anon") key is public by design: the browser needs it to
     # sign in through Supabase Auth. ADMIN_EMAILS are permanent owners (cannot be locked out).

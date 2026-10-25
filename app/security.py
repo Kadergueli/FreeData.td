@@ -23,12 +23,13 @@ class RateLimiter:
             del self._requests[key]
         self._last_sweep = now
 
-    def allow(self, client_id: str, limit: int) -> bool:
+    def allow(self, client_id: str, limit: int, window: timedelta = timedelta(hours=1)) -> bool:
+        """True if the client made fewer than `limit` requests in the last `window` (max 1 hour)."""
         now = datetime.now(UTC)
-        threshold = now - timedelta(hours=1)
+        threshold = now - window
         with self._lock:
             if (now - self._last_sweep) > timedelta(minutes=10):
-                self._sweep(now, threshold)
+                self._sweep(now, now - timedelta(hours=1))
             timestamps = self._requests[client_id]
             while timestamps and timestamps[0] < threshold:
                 timestamps.popleft()
@@ -74,3 +75,27 @@ def require_collection_access(request: Request, x_collection_key: str | None = H
     client_id = request.client.host if request.client else "unknown"
     if not rate_limiter.allow(f"collection-admin:{client_id}", settings.collection_rate_limit_per_hour):
         raise HTTPException(status_code=429, detail="Collection rate limit reached. Try again later.")
+
+
+_MINUTE = timedelta(minutes=1)
+
+
+def read_limit_exceeded(request: Request) -> str | None:
+    """Rate-limit message when this visitor reads the public API too fast, else None.
+
+    Only GET routes of the public API are counted (static files, the health probe and the
+    admin area, which has its own authentication, are not). File exports have their own,
+    stricter bucket because each one reads thousands of rows."""
+    path = request.url.path
+    if request.method != "GET" or not path.startswith("/api/v1/"):
+        return None
+    if path in ("/api/v1/health", "/api/v1/config") or path.startswith("/api/v1/admin"):
+        return None
+    client_id = request.client.host if request.client else "unknown"
+    if path.startswith("/api/v1/export/") and not rate_limiter.allow(
+        f"export:{client_id}", settings.export_rate_limit_per_minute, _MINUTE
+    ):
+        return "Too many file exports. Try again in a minute."
+    if not rate_limiter.allow(f"read:{client_id}", settings.read_rate_limit_per_minute, _MINUTE):
+        return "Too many requests. Try again in a minute."
+    return None

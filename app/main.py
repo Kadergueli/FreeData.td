@@ -30,10 +30,10 @@ from app.agents.ds_insights import (
 from app.admin import admin_configured
 from app.admin import router as admin_router
 from app.config import settings
-from app.security import require_analysis_rate_limit, require_collection_access
+from app.security import read_limit_exceeded, require_analysis_rate_limit, require_collection_access
 from app.services.export import observations_to_csv, observations_to_parquet, observations_to_xml, parquet_available
 from app.services.scheduler import scheduler_service
-from app.services.storage import ObservationRepository, StorageUnavailable, _cache_get, _cache_set
+from app.services.storage import SECTOR_IDS, ObservationRepository, StorageUnavailable, _cache_get, _cache_set
 
 
 @asynccontextmanager
@@ -96,9 +96,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["X-XSS-Protection"] = "0"  # legacy filter is itself an attack surface; CSP replaces it
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
+
+
+class ReadRateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        message = read_limit_exceeded(request)
+        if message:
+            return JSONResponse(status_code=429, content={"detail": message}, headers={"Retry-After": "60"})
+        return await call_next(request)
 
 
 class NoCacheJSMiddleware(BaseHTTPMiddleware):
@@ -118,6 +128,7 @@ DASHBOARD = STATIC_DIR / "index.html"
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(NoCacheJSMiddleware)
+app.add_middleware(ReadRateLimitMiddleware)
 # Compress JSON / JS / CSS (182 KB of static assets shrink to ~50 KB).
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -157,8 +168,8 @@ def public_config() -> dict:
 
 @app.get("/api/v1/observations")
 def observations(
-    sector: str | None = None,
-    region: str | None = None,
+    sector: str | None = Query(default=None, max_length=40),
+    region: str | None = Query(default=None, max_length=100),
     q: str | None = Query(default=None, max_length=100, description="Free-text search (indicator, source, region, unit)"),
     limit: int = Query(default=200, ge=1, le=5000),
 ) -> list[dict]:
@@ -184,7 +195,7 @@ def regions() -> list[str]:
 
 
 @app.get("/api/v1/studies")
-def list_studies(sector: str | None = None, limit: int = Query(default=20, ge=1, le=100)) -> dict:
+def list_studies(sector: str | None = Query(default=None, max_length=40), limit: int = Query(default=20, ge=1, le=100)) -> dict:
     """Public, read-only report library — no LLM call, safe to fetch on every page load.
 
     For each study, also reports the *live* observation count for its sector so the
@@ -239,7 +250,7 @@ def _safe_filename_part(sector: str | None) -> str:
 
 
 @app.get("/api/v1/export/csv", response_class=PlainTextResponse)
-def export_csv(sector: str | None = None, region: str | None = None) -> PlainTextResponse:
+def export_csv(sector: str | None = Query(default=None, max_length=40), region: str | None = Query(default=None, max_length=100)) -> PlainTextResponse:
     rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     content = observations_to_csv(rows)
     name_parts = _safe_filename_part(sector)
@@ -254,7 +265,7 @@ def export_csv(sector: str | None = None, region: str | None = None) -> PlainTex
 
 
 @app.get("/api/v1/export/json")
-def export_json(sector: str | None = None, region: str | None = None) -> JSONResponse:
+def export_json(sector: str | None = Query(default=None, max_length=40), region: str | None = Query(default=None, max_length=100)) -> JSONResponse:
     rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     name_parts = _safe_filename_part(sector)
     if region:
@@ -267,7 +278,7 @@ def export_json(sector: str | None = None, region: str | None = None) -> JSONRes
 
 
 @app.get("/api/v1/export/xml", response_class=PlainTextResponse)
-def export_xml(sector: str | None = None, region: str | None = None) -> PlainTextResponse:
+def export_xml(sector: str | None = Query(default=None, max_length=40), region: str | None = Query(default=None, max_length=100)) -> PlainTextResponse:
     rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     content = observations_to_xml(rows)
     name_parts = _safe_filename_part(sector)
@@ -282,7 +293,7 @@ def export_xml(sector: str | None = None, region: str | None = None) -> PlainTex
 
 
 @app.get("/api/v1/export/parquet")
-def export_parquet(sector: str | None = None, region: str | None = None) -> Response:
+def export_parquet(sector: str | None = Query(default=None, max_length=40), region: str | None = Query(default=None, max_length=100)) -> Response:
     rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     try:
         content = observations_to_parquet(rows)
@@ -400,7 +411,9 @@ async def trigger_harvest(background: bool = False, force: bool = False) -> Resp
 
 
 @app.post("/api/v1/studies", dependencies=[Depends(require_analysis_rate_limit)])
-async def generate_study(sector: str | None = None) -> dict:
+async def generate_study(sector: str | None = Query(default=None, max_length=40)) -> dict:
+    if sector is not None and sector not in SECTOR_IDS:
+        raise HTTPException(status_code=422, detail=f"Unknown sector. Use one of: {', '.join(SECTOR_IDS)}.")
     try:
         result = await AnalysisAgent(repository).study(sector)
         return result.model_dump(mode="json")

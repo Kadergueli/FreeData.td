@@ -63,6 +63,8 @@ def server(tmp_path_factory):
         "CSP_CONNECT_EXTRA": "https://sb.test",  # the admin tests mock Supabase Auth on this origin
         "SUPABASE_SERVICE_ROLE_KEY": "",
         "COLLECTION_API_KEY": "e2e-admin-key",
+        "READ_RATE_LIMIT_PER_MINUTE": "100000",   # the browser tests fire many requests from one address
+        "EXPORT_RATE_LIMIT_PER_MINUTE": "100000",
     }
     subprocess.run([sys.executable, "-c", SEED], cwd=ROOT, env=env, check=True, capture_output=True)
     port = _free_port()

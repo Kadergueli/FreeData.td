@@ -21,3 +21,34 @@ jobs:
       - run: pip install -r requirements-dev.txt pyarrow
       - name: Unit and API tests
         run: python -m pytest -q --ignore=tests/e2e
+
+  browser-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements-dev.txt pyarrow playwright
+      - run: playwright install --with-deps chromium
+      - name: Browser tests
+        run: python -m pytest -q tests/e2e
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt ruff bandit pip-audit
+      - name: Lint (real errors only)
+        run: ruff check app --select E9,F
+      - name: Static security scan (medium and above)
+        run: bandit -q -r app -ll
+      - name: Known vulnerabilities in dependencies
+        run: pip-audit -r requirements.txt

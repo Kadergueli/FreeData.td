@@ -36,7 +36,7 @@ FreeData.td est la réponse à ce problème.
 
 - 🌐 **Plateforme web** : visualisation interactive, recherche, rapports d'analyse (servie par l'API à la racine `/`)
 - 📥 **Téléchargement** : CSV / JSON / XML par secteur et par région (Parquet si `pyarrow` est installé)
-- 🔌 **API publique en lecture, sans clé** : `GET /api/v1/observations?sector=health&q=...`, `GET /api/v1/stats`, documentation interactive sur `/docs`
+- 🔌 **API publique en lecture, sans clé** (limitée par adresse IP : 120 requêtes/min, 10 exports/min) : `GET /api/v1/observations?sector=health&q=...`, `GET /api/v1/stats`, documentation interactive sur `/docs`
 
 Déploiement (Render, collecte quotidienne via GitHub Actions) : voir [docs/deployment.md](docs/deployment.md).
 
