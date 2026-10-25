@@ -1,24 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import UTC, date, datetime
 import logging
 from typing import Any
 
 import httpx
 
 from app.agents.base import BaseAgent, recent_window, wb_years
+from app.agents.fews_prices import FEWS_URL, extract_items, parse_record
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
 
 
 class MarketsAgent(BaseAgent):
-    """Collects market, trade & price data for Chad from 4 major international open data sources:
-    1. World Bank (Trade, Inflation, FDI, Tariffs, Financial Inclusion)
-    2. WFP VAM (World Food Programme Vulnerability Analysis & Mapping Market Prices)
-    3. HDX / UN OCHA (Humanitarian Data Exchange Chad Market Datasets)
-    4. FAOSTAT Market (FAO Commodity & Food Price Index)
+    """Collects market, trade & price data for Chad:
+    1. World Bank (Trade, Inflation, FDI, Tariffs, Financial Inclusion), annual national series
+    2. FEWS NET (retail prices of staple foods by market, monthly or weekly)
+    3. WFP VAM market prices (legacy endpoint, kept as an optional extra source)
+    4. FAOSTAT Market (FAO consumer price index)
     """
 
     sector = "markets"
@@ -49,30 +50,32 @@ class MarketsAgent(BaseAgent):
         if source == "wfp":
             return await self._collect_wfp_prices()
 
-        if source == "hdx":
-            return await self._collect_hdx_ocha()
+        if source in ("fews", "fews-net"):
+            return await self._collect_fews_prices()
 
         if source == "faostat":
             return await self._collect_faostat_prices()
 
         if source in ("all", "auto"):
+            names = ("world-bank", "fews-net", "wfp", "faostat")
             results = await asyncio.gather(
                 self._collect_world_bank(),
+                self._collect_fews_prices(),
                 self._collect_wfp_prices(),
-                self._collect_hdx_ocha(),
                 self._collect_faostat_prices(),
                 return_exceptions=True,
             )
             combined: list[dict[str, Any]] = []
-            for res in results:
+            for name, res in zip(names, results):
                 if isinstance(res, list):
                     combined.extend(res)
                 elif isinstance(res, Exception):
-                    logger.error("MarketsAgent source failed: %s", res)
+                    logger.error("MarketsAgent source %s failed: %s", name, res)
+                    self.source_errors.append(f"{name}: {res}")
             return combined
 
         raise ValueError(
-            f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'wfp', 'hdx', 'faostat', 'demo'."
+            f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'fews-net', 'wfp', 'faostat', 'demo'."
         )
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
@@ -228,33 +231,38 @@ class MarketsAgent(BaseAgent):
             logger.warning("WFP direct endpoint failed: %s", exc)
         return records
 
-    # ─── Source 3: HDX / UN OCHA Chad Market Dataset ────────────────────────
-    async def _collect_hdx_ocha(self) -> list[dict[str, Any]]:
-        """Fetch metadata & market datasets for Chad from UN OCHA HDX (Humanitarian Data Exchange)."""
+    # ─── Source 2b: FEWS NET market prices ───────────────────────────────────
+    FEWS_HISTORY_YEARS = 10
+    FEWS_MAX_PAGES = 200
+
+    async def _collect_fews_prices(self) -> list[dict[str, Any]]:
+        """Retail prices of staple foods by market for the last FEWS_HISTORY_YEARS years.
+
+        Raises when the API cannot be reached or answers with an unreadable shape, so the
+        failure is reported in the run result instead of looking like "no new prices"."""
+        start = f"{datetime.now(UTC).year - self.FEWS_HISTORY_YEARS}-01-01"
+        params: dict[str, Any] | None = {"country_code": "TD", "format": "json", "start_date": start}
+        url: str | None = FEWS_URL
         records: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=30) as client:
-            url = "https://data.humdata.org/api/3/action/package_show"
-            params = {"id": "wfp-food-prices-for-chad"}
-            try:
-                res = await client.get(url, params=params)
-                res.raise_for_status()
-                payload = res.json()
-                result = payload.get("result", {})
-                num_resources = len(result.get("resources", []))
-
-                if num_resources > 0:
-                    records.append({
-                        "year": 2024,
-                        "value": float(num_resources),
-                        "source": "HDX / UN OCHA",
-                        "indicator": "Active market price datasets",
-                        "unit": "datasets",
-                        "region": "national",
-                        "url": url,
-                    })
-            except Exception as exc:
-                logger.warning("HDX / UN OCHA collection failed: %s", exc)
-
+        skipped = 0
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            for _ in range(self.FEWS_MAX_PAGES):
+                payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.3)
+                if payload is None:
+                    raise RuntimeError("FEWS NET did not answer (network error or HTTP error)")
+                items, url = extract_items(payload)
+                for item in items:
+                    parsed = parse_record(item)
+                    if parsed is None:
+                        skipped += 1
+                    else:
+                        records.append(parsed)
+                params = None            # the "next" URL already carries its query string
+                if not url:
+                    break
+        if skipped:
+            logger.info("FEWS NET: %d row(s) ignored (no price, date or product).", skipped)
+        logger.info("FEWS NET: collected %d price records.", len(records))
         return records
 
     # ─── Source 4: FAOSTAT Market & Food Price Index ────────────────────────
@@ -312,6 +320,7 @@ class MarketsAgent(BaseAgent):
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license="CC BY 4.0",
-            notes=f"Automated harvest by MarketsAgent from {record['source']}.",
+            license=str(record.get("license", "CC BY 4.0"))[:50],
+            notes=(f"Automated harvest by MarketsAgent from {record['source']}. {record['attribution']}"
+                   if record.get("attribution") else f"Automated harvest by MarketsAgent from {record['source']}."),
         )

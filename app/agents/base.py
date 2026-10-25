@@ -84,6 +84,9 @@ class BaseAgent(ABC):
 
     def __init__(self, repository: ObservationRepository) -> None:
         self.repository = repository
+        # One line per source that failed during collect(): a run can succeed overall (other
+        # sources answered) while one source is down, and that must not stay invisible.
+        self.source_errors: list[str] = []
 
     @staticmethod
     async def fetch_json_with_retry(
@@ -250,6 +253,7 @@ class BaseAgent(ABC):
 
     async def run(self, source: str = "demo") -> CollectionResult:
         started_at = datetime.now(UTC)
+        self.source_errors = []
         raw_records = await self.collect(source)
         # Storage calls are synchronous (Supabase client, sqlite3, time.sleep in the retry
         # helper). Run in a worker thread so a collection never freezes the API for everyone.
@@ -257,7 +261,7 @@ class BaseAgent(ABC):
         raw_record_id = await asyncio.to_thread(self.repository.store_raw_batch, self.sector, source, raw_records)
 
         normalized_list: list[ObservationCreate] = []
-        errors: list[str] = []
+        errors: list[str] = [f"source failed: {msg}" for msg in self.source_errors]
 
         if not raw_records:
             # A source answering with nothing is a silent failure (frozen date window, API moved,

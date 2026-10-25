@@ -69,6 +69,19 @@ export const OFFICIAL_SOURCES = [
     desc_en: 'Monthly food commodity price tracking (Maize, Millet, Sorghum, Rice) across Chad markets.'
   },
   {
+    id: 'fews-net',
+    name: 'FEWS NET Data Warehouse',
+    org_fr: 'Famine Early Warning Systems Network (FEWS NET)',
+    org_en: 'Famine Early Warning Systems Network (FEWS NET)',
+    sector_fr: 'Marchés & Prix Alimentaires',
+    sector_en: 'Markets & Food Prices',
+    sectorId: 'markets',
+    license: 'Réutilisation avec attribution (FEWS NET) / Reuse with attribution',
+    url: 'https://fews.net/data/markets-and-trade',
+    desc_fr: 'Prix de détail des denrées de base (mil, sorgho, maïs, riz...) par marché du Tchad, relevés mensuels ou hebdomadaires.',
+    desc_en: 'Retail prices of staple foods (millet, sorghum, maize, rice...) by market in Chad, collected monthly or weekly.'
+  },
+  {
     id: 'imf-data',
     name: 'IMF Data API',
     org_fr: 'Fonds Monétaire International (FMI)',
