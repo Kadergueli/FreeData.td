@@ -1,4 +1,4 @@
-"""Patch 0023 — repository: server search, honest chart, stale-response safety, collection."""
+"""Patch 0023 — repository: server search, honest chart, stale-response safety."""
 import json
 
 OBS_NULL = [{"id": 1, "sector": "health", "indicator": "Taux X", "value": None, "unit": "%",
@@ -47,7 +47,6 @@ def test_search_with_no_match_says_so_and_escapes_the_term(probe):
     probe.page.fill("#search-obs", '<img src=x onerror=alert(1)>"')
     probe.page.wait_for_selector("text=Aucun résultat pour")
     assert probe.page.locator("#obs-list-container img").count() == 0   # rendered as text, not HTML
-    assert not probe.page.is_visible("#btn-empty-harvest")               # a failed search is not "no data"
 
 
 def test_search_box_is_not_prefilled_from_stale_state(probe):
@@ -88,35 +87,21 @@ def test_slow_old_response_cannot_overwrite_newer_filter(probe):
     assert sectors and all("SANTÉ" in t.upper() or "HEALTH" in t.upper() for t in sectors)
 
 
-def test_admin_only_sector_disables_collection(probe):
-    probe.goto("#/data?sector=transport")
-    probe.page.wait_for_selector("#btn-data-harvest")
-    assert probe.page.is_disabled("#btn-data-harvest")
-    assert probe.page.get_attribute("#btn-data-harvest", "title")
-    probe.page.wait_for_selector("#obs-list-container .card")
-    assert probe.page.locator("#btn-empty-harvest").count() == 0
-
-
-def test_collect_targets_the_selected_sector_only(probe):
+def test_no_collection_control_on_any_sector_page(probe):
     posts = []
-    probe.page.route("**/api/v1/collection/*", lambda r: (posts.append(r.request.url), r.fulfill(status=200, content_type="application/json", body='{"stored":3}')))
-    probe.goto("#/data?sector=health")
-    _wait_list(probe)
-    probe.page.click("#btn-data-harvest")
-    probe.page.wait_for_selector(".toast--success")
-    assert len(posts) == 1 and "/collection/health" in posts[0]
+    probe.page.on("request", lambda r: posts.append(r.url) if "/api/v1/collection/" in r.url else None)
+    for sector in ("health", "environment", "transport"):
+        probe.goto(f"#/data?sector={sector}")
+        probe.page.wait_for_selector("#obs-list-container .card, #obs-list-container .obs-card-item")
+        assert probe.page.locator("#btn-data-harvest, #btn-empty-harvest").count() == 0
+    assert posts == []
 
 
-def test_empty_sector_offers_collection_for_that_sector(probe):
-    # 'environment' has no rows in the seed but is collectable.
-    posts = []
-    probe.page.route("**/api/v1/collection/*", lambda r: (posts.append(r.request.url), r.fulfill(status=200, content_type="application/json", body='{"stored":0}')))
+def test_empty_sector_explains_collection_is_automatic(probe):
     probe.goto("#/data?sector=environment")
-    probe.page.wait_for_selector("#btn-empty-harvest")
-    probe.page.click("#btn-empty-harvest")
-    probe.page.wait_for_selector(".toast")
-    assert len(posts) == 1 and "/collection/environment" in posts[0]
-    assert probe.page.is_enabled("#btn-empty-harvest") or probe.page.locator("#btn-empty-harvest").count() == 1
+    probe.page.wait_for_selector("#obs-list-container .card")
+    text = probe.page.inner_text("#obs-list-container").lower()
+    assert "automatiquement" in text
 
 
 def test_chart_plots_one_indicator_in_one_region(probe):

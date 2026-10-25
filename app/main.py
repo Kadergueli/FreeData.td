@@ -30,7 +30,7 @@ from app.agents.ds_insights import (
 from app.admin import admin_configured
 from app.admin import router as admin_router
 from app.config import settings
-from app.security import require_analysis_rate_limit, require_collection_access, require_collection_rate_limit
+from app.security import require_analysis_rate_limit, require_collection_access
 from app.services.export import observations_to_csv, observations_to_parquet, observations_to_xml, parquet_available
 from app.services.scheduler import scheduler_service
 from app.services.storage import ObservationRepository, StorageUnavailable, _cache_get, _cache_set
@@ -137,7 +137,6 @@ def health() -> dict:
         "scheduler": scheduler_service.get_public_status(),
         # Real server-side limits/capabilities, so the UI states facts instead of hard-coded text.
         "limits": {
-            "collection_per_hour": settings.collection_rate_limit_per_hour,
             "analysis_per_hour": settings.analysis_rate_limit_per_hour,
         },
         "exports": {"parquet": parquet_available()},
@@ -300,7 +299,7 @@ def export_parquet(sector: str | None = None, region: str | None = None) -> Resp
     )
 
 
-@app.post("/api/v1/collection/agriculture", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
+@app.post("/api/v1/collection/agriculture", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_agriculture(source: str = "all") -> dict:
     try:
         return (await AgricultureAgent(repository).run(source)).model_dump(mode="json")
@@ -310,7 +309,7 @@ async def collect_agriculture(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/environment", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
+@app.post("/api/v1/collection/environment", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_environment(source: str = "all") -> dict:
     try:
         return (await EnvironmentAgent(repository).run(source)).model_dump(mode="json")
@@ -320,7 +319,7 @@ async def collect_environment(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/markets", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
+@app.post("/api/v1/collection/markets", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_markets(source: str = "all") -> dict:
     try:
         return (await MarketsAgent(repository).run(source)).model_dump(mode="json")
@@ -330,7 +329,7 @@ async def collect_markets(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/economy", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
+@app.post("/api/v1/collection/economy", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_economy(source: str = "all") -> dict:
     try:
         return (await EconomyAgent(repository).run(source)).model_dump(mode="json")
@@ -340,7 +339,7 @@ async def collect_economy(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/health", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
+@app.post("/api/v1/collection/health", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_health(source: str = "all") -> dict:
     try:
         return (await HealthAgent(repository).run(source)).model_dump(mode="json")
@@ -350,7 +349,7 @@ async def collect_health(source: str = "all") -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/v1/collection/energy", status_code=202, dependencies=[Depends(require_collection_rate_limit)])
+@app.post("/api/v1/collection/energy", status_code=202, dependencies=[Depends(require_collection_access)])
 async def collect_energy(source: str = "all") -> dict:
     try:
         return (await EnergyAgent(repository).run(source)).model_dump(mode="json")

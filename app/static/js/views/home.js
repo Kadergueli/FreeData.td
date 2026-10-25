@@ -3,8 +3,7 @@
  */
 
 import { fetchObservations, fetchStats, fetchAudit } from '../api_client.js';
-import { PUBLIC_HARVEST_SECTORS, runHarvest } from '../harvest.js';
-import { showToast, formatDate, formatScore } from '../ui.js';
+import { formatDate, formatScore } from '../ui.js';
 import { navigateTo } from '../router.js';
 import { t, getLang } from '../i18n.js';
 import { OFFICIAL_SOURCES } from '../sources_catalog.js';
@@ -12,11 +11,6 @@ import { escapeHtml } from '../sanitize.js';
 
 const ALL_SECTOR_COUNT = 8;
 
-let _harvesting = false;
-
-function fmt(template, vars) {
-  return Object.entries(vars).reduce((acc, [k, v]) => acc.replace(`{${k}}`, v), template);
-}
 
 export const HomeView = {
   render() {
@@ -59,9 +53,6 @@ export const HomeView = {
         <div class="flex gap-3 flex-wrap">
           <button class="btn btn-primary" id="btn-explore">
             <i data-lucide="database" style="width:16px;height:16px;"></i> ${t('home.btn_explore')}
-          </button>
-          <button class="btn btn-cyan" id="btn-home-harvest">
-            <i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('home.btn_harvest')}
           </button>
         </div>
       </div>
@@ -181,9 +172,8 @@ export const HomeView = {
   },
 
   /** Called by the router once per render. Listeners are bound HERE, exactly once
-   *  per render; data (re)loading lives in loadData() so it can be re-run (after a
-   *  harvest) without stacking duplicate listeners — which used to make the
-   *  accordions stop opening after a collection. */
+   *  per render; data (re)loading lives in loadData() so it can be re-run without
+   *  stacking duplicate listeners. */
   async init() {
     document.getElementById('btn-explore')?.addEventListener('click', () => navigateTo('data'));
 
@@ -196,8 +186,6 @@ export const HomeView = {
       });
     });
 
-    document.getElementById('btn-home-harvest')?.addEventListener('click', () => HomeView.harvest());
-
     document.querySelectorAll('.sector-tag-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         navigateTo('data', { sector: e.currentTarget.getAttribute('data-sector') });
@@ -205,39 +193,6 @@ export const HomeView = {
     });
 
     await HomeView.loadData();
-  },
-
-  /** Sequential collection (one sector at a time): parallel runs spiked server memory
-   *  and burned the hourly quota in one click. Reports what REALLY happened. */
-  async harvest() {
-    if (_harvesting) return;
-    _harvesting = true;
-    const btn = document.getElementById('btn-home-harvest');
-    const idle = btn ? btn.innerHTML : '';
-    if (btn) btn.disabled = true;
-
-    let ok = 0;
-    try {
-      const res = await runHarvest(PUBLIC_HARVEST_SECTORS, (i, n, sector) => {
-        if (btn) {
-          btn.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${fmt(t('home.harvest_progress'), { i, n, sector: t(`sectors.names.${sector}`) })}`;
-          if (window.lucide) window.lucide.createIcons();
-        }
-      });
-      ok = res.ok;
-      if (res.rateLimited) showToast(t('home.harvest_rate_limited'), 'error');
-      else if (res.ok === 0) showToast(t('home.harvest_failed_all'), 'error');
-      else showToast(fmt(t('home.harvest_summary'), { ok: res.ok, n: res.n, stored: res.stored }), res.ok === res.n ? 'success' : 'info');
-    } finally {
-      _harvesting = false;
-      const again = document.getElementById('btn-home-harvest');
-      if (again) {
-        again.disabled = false;
-        again.innerHTML = idle || `<i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('home.btn_harvest')}`;
-        if (window.lucide) window.lucide.createIcons();
-      }
-    }
-    if (ok > 0) await HomeView.loadData();
   },
 
   async loadData() {

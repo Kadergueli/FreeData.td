@@ -319,7 +319,7 @@ export const ApiView = {
     if (limitsEl) {
       const l = health && health.limits;
       limitsEl.textContent = l
-        ? t('api.limits_msg').replace('{c}', l.collection_per_hour).replace('{a}', l.analysis_per_hour)
+        ? t('api.limits_msg').replace('{a}', l.analysis_per_hour)
         : t('api.limits_unknown');
     }
 

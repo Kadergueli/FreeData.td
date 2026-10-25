@@ -10,8 +10,7 @@
 
 import { fetchObservations, fetchStats } from '../api_client.js';
 import { initChartMais } from '../charts.js';
-import { runHarvest, isPublicHarvestSector, PUBLIC_HARVEST_SECTORS } from '../harvest.js';
-import { showToast, formatDate } from '../ui.js';
+import { formatDate } from '../ui.js';
 import { t, getLang } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
 
@@ -42,7 +41,6 @@ let totalKnown = null;
 let sortAsc = false;
 let isGridView = false;
 let _reqId = 0;
-let _harvesting = false;
 
 function formatObsValue(val) {
   if (val === null || val === undefined || val === '') return '—';
@@ -100,11 +98,6 @@ function pickSeries(rows) {
   return { rows: series, indicator, region, unit: (series[0] && series[0].unit) || '', indicators };
 }
 
-function harvestTargets() {
-  if (activeSector === 'tous') return PUBLIC_HARVEST_SECTORS;
-  return isPublicHarvestSector(activeSector) ? [activeSector] : [];
-}
-
 export const DataView = {
   render(params = {}) {
     activeSector = (params.sector || 'tous').toLowerCase();
@@ -115,14 +108,9 @@ export const DataView = {
     totalKnown = null;
     _reqId += 1; // invalidate anything still in flight from a previous visit
 
-    const adminOnly = harvestTargets().length === 0;
-
     return `
       <div class="flex justify-between items-start mb-4 flex-wrap gap-3">
         <h2 class="hero-title uppercase" style="font-size:20px;margin-bottom:0;">${t('data.title')}</h2>
-        <button class="btn btn-cyan" id="btn-data-harvest" ${adminOnly ? `disabled title="${escapeHtml(t('data.admin_only'))}"` : ''}>
-          <i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('common.collect')}
-        </button>
       </div>
 
       <div class="flex gap-2 mb-6">
@@ -192,12 +180,6 @@ export const DataView = {
           b.classList.toggle('btn-ghost', !on);
           b.setAttribute('aria-pressed', String(on));
         });
-        const harvestBtn = document.getElementById('btn-data-harvest');
-        if (harvestBtn && !_harvesting) {
-          const none = harvestTargets().length === 0;
-          harvestBtn.disabled = none;
-          if (none) harvestBtn.title = t('data.admin_only'); else harvestBtn.removeAttribute('title');
-        }
         currentLimit = PAGE_SIZE;
         chartIndicator = '';
         await DataView.loadDynamicData();
@@ -243,38 +225,7 @@ export const DataView = {
       DataView.renderChart();
     });
 
-    document.getElementById('btn-data-harvest')?.addEventListener('click', () => DataView.harvest());
-
     await DataView.loadDynamicData();
-  },
-
-  async harvest() {
-    const targets = harvestTargets();
-    if (_harvesting || targets.length === 0) return;
-    _harvesting = true;
-    const btns = ['btn-data-harvest', 'btn-empty-harvest'].map(id => document.getElementById(id)).filter(Boolean);
-    const idle = btns.map(b => b.innerHTML);
-    btns.forEach(b => { b.disabled = true; b.innerHTML = `<i data-lucide="loader" class="animate-spin" style="width:16px;height:16px;"></i> ${t('data.harvest_loading')}`; });
-    if (window.lucide) window.lucide.createIcons();
-
-    let res = { ok: 0, n: targets.length, stored: 0, rateLimited: false };
-    try {
-      res = await runHarvest(targets);
-    } finally {
-      _harvesting = false;
-      [ 'btn-data-harvest', 'btn-empty-harvest' ].map(id => document.getElementById(id)).forEach((b) => {
-        if (!b) return;
-        b.disabled = false;
-        const i = btns.indexOf(b);
-        if (i >= 0) b.innerHTML = idle[i];
-      });
-      if (window.lucide) window.lucide.createIcons();
-    }
-
-    if (res.rateLimited) showToast(t('home.harvest_rate_limited'), 'error');
-    else if (res.ok === 0) showToast(t('home.harvest_failed_all'), 'error');
-    else showToast(t('home.harvest_summary').replace('{ok}', res.ok).replace('{n}', res.n).replace('{stored}', res.stored), res.ok === res.n ? 'success' : 'info');
-    if (res.ok > 0) await DataView.loadDynamicData();
   },
 
   async loadDynamicData({ keepScroll = false } = {}) {
@@ -342,18 +293,14 @@ export const DataView = {
 
     if (sorted.length === 0) {
       const searching = searchQuery.trim() !== '';
-      const canHarvest = harvestTargets().length > 0 && !searching;
       container.innerHTML = `
         <div class="card mb-4" style="padding:24px;text-align:center;grid-column:1/-1;">
           <p class="mono-sm text-muted mb-3">${searching
             ? `${t('data.no_results')} « ${escapeHtml(searchQuery.trim())} ».`
             : `${t('data.empty_msg')} "${escapeHtml(activeSector.toUpperCase())}".`}</p>
-          ${canHarvest ? `<button class="btn btn-cyan mono-sm" id="btn-empty-harvest">
-            <i data-lucide="zap" style="width:16px;height:16px;"></i> ${t('data.empty_btn')}
-          </button>` : ''}
+          ${searching ? '' : `<p class="mono-xs text-muted">${t('data.empty_hint')}</p>`}
         </div>`;
       if (window.lucide) window.lucide.createIcons();
-      document.getElementById('btn-empty-harvest')?.addEventListener('click', () => DataView.harvest());
       return;
     }
 

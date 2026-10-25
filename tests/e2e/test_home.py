@@ -1,4 +1,4 @@
-"""Patch 0021 — home: real numbers, no duplicate listeners, honest + sequential harvest."""
+"""Patch 0021 — home: real numbers, no duplicate listeners, no public collection."""
 import json
 
 
@@ -32,66 +32,19 @@ def test_unknown_numbers_are_dashes_not_invented(probe):
     assert probe.page.inner_text("#stat-validation-score") == "—"
 
 
-def _mock_collection(probe, status_by_call=None, stored=7):
-    seen = []
-
-    def handler(route):
-        seen.append(route.request.url)
-        status = (status_by_call or {}).get(len(seen), 200)
-        body = {"stored": stored} if status == 200 else {"detail": "Collection rate limit reached."}
-        route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
-
-    probe.page.route("**/api/v1/collection/*", handler)
-    return seen
-
-
-def test_accordions_still_open_with_one_click_after_a_harvest(probe):
-    _mock_collection(probe)
+def test_home_has_no_collection_button_and_never_posts_a_collection(probe):
+    posts = []
+    probe.page.on("request", lambda r: posts.append(r.url) if "/api/v1/collection/" in r.url else None)
     probe.goto()
-    probe.page.click("#btn-home-harvest")
-    probe.page.wait_for_selector(".toast--success")
+    probe.page.wait_for_function("!document.querySelector('.stat-card .skeleton')")
+    assert probe.page.locator("#btn-home-harvest").count() == 0
+    assert "collecte en live" not in probe.page.inner_text("#app-main").lower()
+    assert posts == []
+
+
+def test_accordions_open_with_one_click(probe):
+    probe.goto()
     probe.page.click("[data-accordion-trigger=mission]")
     assert probe.page.eval_on_selector("[data-accordion=mission]", "e => e.classList.contains('is-open')")
     probe.page.click("[data-accordion-trigger=mission]")
     assert not probe.page.eval_on_selector("[data-accordion=mission]", "e => e.classList.contains('is-open')")
-
-
-def test_harvest_runs_sectors_one_after_another(probe):
-    order = []
-    probe.page.on("request", lambda r: order.append(("start", r.url)) if "/api/v1/collection/" in r.url else None)
-    probe.page.on("requestfinished", lambda r: order.append(("end", r.url)) if "/api/v1/collection/" in r.url else None)
-    _mock_collection(probe)
-    probe.goto()
-    probe.page.click("#btn-home-harvest")
-    probe.page.wait_for_selector(".toast--success")
-    kinds = [k for k, _ in order]
-    assert kinds == ["start", "end"] * 6, kinds  # never two in flight at once
-
-
-def test_harvest_reports_real_outcome_and_stops_on_rate_limit(probe):
-    dialogs = []
-    probe.page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
-    seen = _mock_collection(probe, status_by_call={3: 429})
-    probe.goto()
-    probe.page.click("#btn-home-harvest")
-    probe.page.wait_for_selector(".toast--error")
-    assert len(seen) == 3                      # stopped at the 429, did not hammer the rest
-    assert dialogs == []                       # no blocking alert()
-    assert "limite" in probe.page.inner_text(".toast--error").lower()
-    assert probe.page.is_enabled("#btn-home-harvest")
-
-
-def test_harvest_total_failure_is_not_reported_as_success(probe):
-    probe.page.route("**/api/v1/collection/*", lambda r: r.fulfill(status=503, content_type="application/json", body='{"detail":"down"}'))
-    probe.goto()
-    probe.page.click("#btn-home-harvest")
-    probe.page.wait_for_selector(".toast--error")
-    assert probe.page.locator(".toast--success").count() == 0
-
-
-def test_success_toast_summarises_stored_rows(probe):
-    _mock_collection(probe, stored=7)
-    probe.goto()
-    probe.page.click("#btn-home-harvest")
-    probe.page.wait_for_selector(".toast--success")
-    assert "6/6" in probe.page.inner_text(".toast--success") and "42" in probe.page.inner_text(".toast--success")

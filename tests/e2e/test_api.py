@@ -13,7 +13,7 @@ def test_no_fake_api_key_and_real_limits(probe):
     health = json.loads(probe.page.evaluate("fetch('/api/v1/health').then(r => r.text())"))
     lim = health["limits"]
     msg = probe.page.inner_text("#api-limits-msg")
-    assert str(lim["collection_per_hour"]) in msg and str(lim["analysis_per_hour"]) in msg
+    assert str(lim["analysis_per_hour"]) in msg and "collection_per_hour" not in lim
     assert "curl" in probe.page.inner_text("#api-examples")
 
 

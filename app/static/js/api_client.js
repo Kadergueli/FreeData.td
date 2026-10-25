@@ -101,24 +101,6 @@ export async function fetchAudit() {
   }
 }
 
-/** Trigger a live collection for one sector. Throws Error with .status
- *  (429 = rate limited, 401/403 = admin-only sector, 503 = backend unavailable). */
-export async function triggerHarvest(sector, source = 'all') {
-  return requestJson(
-    `${BASE_URL}/collection/${encodeURIComponent(sector)}?source=${encodeURIComponent(source)}`,
-    { method: 'POST', timeout: SLOW_TIMEOUT_MS },
-  );
-}
-
-// Per-sector wrappers kept for existing imports.
-export const triggerAgricultureHarvest = (source = 'all') => triggerHarvest('agriculture', source);
-export const triggerEnvironmentHarvest = (source = 'all') => triggerHarvest('environment', source);
-export const triggerMarketsHarvest = (source = 'all') => triggerHarvest('markets', source);
-export const triggerEconomyHarvest = (source = 'all') => triggerHarvest('economy', source);
-export const triggerHealthHarvest = (source = 'all') => triggerHarvest('health', source);
-export const triggerEnergyHarvest = (source = 'all') => triggerHarvest('energy', source);
-export const triggerTransportHarvest = (source = 'all') => triggerHarvest('transport', source);
-export const triggerEducationHarvest = (source = 'all') => triggerHarvest('education', source);
 
 export async function fetchStudies(sector = null, limit = 100) {
   try {

@@ -1,5 +1,5 @@
-"""Security tests for POST /api/v1/collection/* — auth split between public
-(rate-limit only) and admin-only (secret key + rate-limit) endpoints.
+"""Security tests for POST /api/v1/collection/* — every route needs the secret key
+(visitors never collect; only the scheduled workflow and administrators do).
 
 Every agent's `.collect()` is monkeypatched to avoid real network calls to
 external data sources (FAOSTAT, NASA, World Bank, ...) — these tests only
@@ -57,95 +57,45 @@ def _no_network_and_clean_rate_limiter(monkeypatch):
     rate_limiter._requests.clear()
 
 
-def test_public_sectors_do_not_require_a_key() -> None:
-    """agriculture/environment/markets/economy are called by the public
-    'COLLECT LIVE DATA' button — no secret key should be required."""
+ALL_SECTORS = PUBLIC_SECTORS + ADMIN_ONLY_SECTORS
+
+
+def test_every_collection_route_rejects_a_missing_key() -> None:
+    """No visitor can trigger a collection: every sector route needs the key."""
     client = TestClient(app)
-    for sector in PUBLIC_SECTORS:
+    for sector in ALL_SECTORS:
         response = client.post(f"/api/v1/collection/{sector}")
-        assert response.status_code == 202, f"{sector} should be reachable without a key (got {response.status_code}: {response.text})"
+        assert response.status_code == 401, f"{sector}: {response.status_code} {response.text}"
 
 
-def test_public_sectors_enforce_rate_limit() -> None:
-    """After collection_rate_limit_per_hour requests to the SAME public sector
-    endpoint from one IP, further requests are rejected with 429."""
+def test_every_collection_route_rejects_a_wrong_key() -> None:
     client = TestClient(app)
+    for sector in ALL_SECTORS:
+        response = client.post(f"/api/v1/collection/{sector}", headers={"X-Collection-Key": "wrong"})
+        assert response.status_code == 401, sector
+
+
+def test_every_collection_route_accepts_the_valid_key() -> None:
+    client = TestClient(app)
+    for sector in ALL_SECTORS:
+        response = client.post(f"/api/v1/collection/{sector}", headers={"X-Collection-Key": TEST_COLLECTION_API_KEY})
+        assert response.status_code == 202, f"{sector}: {response.text}"
+
+
+def test_collection_is_disabled_when_no_key_is_configured(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "collection_api_key", "")
+    client = TestClient(app)
+    for sector in ALL_SECTORS:
+        assert client.post(f"/api/v1/collection/{sector}").status_code == 503, sector
+
+
+def test_run_scheduled_harvest_requires_key() -> None:
+    assert TestClient(app).post("/api/v1/collection/run-scheduled-harvest").status_code == 401
+
+
+def test_collection_rate_limit_applies_even_with_the_key() -> None:
+    client = TestClient(app)
+    headers = {"X-Collection-Key": TEST_COLLECTION_API_KEY}
     limit = settings.collection_rate_limit_per_hour
-
-    statuses = [client.post("/api/v1/collection/agriculture").status_code for _ in range(limit)]
-    assert all(s == 202 for s in statuses), statuses
-
-    response = client.post("/api/v1/collection/agriculture")
-    assert response.status_code == 429
-
-
-def test_public_sectors_share_one_rate_limit_bucket_per_ip() -> None:
-    """The rate limit is per-IP, not per-sector: mixing calls across the 4
-    public sectors from the same IP should still hit the shared limit."""
-    client = TestClient(app)
-    limit = settings.collection_rate_limit_per_hour
-
-    statuses = []
-    for i in range(limit):
-        sector = PUBLIC_SECTORS[i % len(PUBLIC_SECTORS)]
-        statuses.append(client.post(f"/api/v1/collection/{sector}").status_code)
-    assert all(s == 202 for s in statuses), statuses
-
-    response = client.post(f"/api/v1/collection/{PUBLIC_SECTORS[0]}")
-    assert response.status_code == 429
-
-
-def test_admin_only_sectors_reject_missing_key() -> None:
-    """transport/education are never called by any UI button — they keep
-    requiring a secret key. With COLLECTION_API_KEY configured (forced by the
-    fixture above) but no header sent, the request must be rejected with 401."""
-    client = TestClient(app)
-    for sector in ADMIN_ONLY_SECTORS:
-        response = client.post(f"/api/v1/collection/{sector}")
-        assert response.status_code == 401, f"{sector} must reject a missing key (got {response.status_code}: {response.text})"
-
-
-def test_admin_only_sectors_reject_wrong_key() -> None:
-    client = TestClient(app)
-    response = client.post(
-        "/api/v1/collection/transport",
-        headers={"X-Collection-Key": "definitely-wrong-key"},
-    )
-    assert response.status_code == 401
-
-
-def test_admin_only_sectors_accept_valid_key() -> None:
-    client = TestClient(app)
-    response = client.post(
-        "/api/v1/collection/transport",
-        headers={"X-Collection-Key": TEST_COLLECTION_API_KEY},
-    )
-    assert response.status_code == 202, response.text
-
-
-def test_run_scheduled_harvest_still_requires_key() -> None:
-    """The scheduler's manual trigger is never called by any UI button either —
-    same admin-only treatment as transport/education."""
-    client = TestClient(app)
-    response = client.post("/api/v1/collection/run-scheduled-harvest")
-    assert response.status_code == 401
-
-
-def test_public_and_admin_rate_limit_buckets_are_independent() -> None:
-    """Exhausting the public rate-limit bucket must NOT lock out an
-    authenticated admin call on a different (key-protected) endpoint, and
-    vice versa — they use separate bucket namespaces."""
-    client = TestClient(app)
-    limit = settings.collection_rate_limit_per_hour
-
-    for _ in range(limit):
-        client.post("/api/v1/collection/agriculture")
-    exhausted = client.post("/api/v1/collection/agriculture")
-    assert exhausted.status_code == 429
-
-    # The admin-only endpoint should be unaffected by the public bucket being full.
-    admin_response = client.post(
-        "/api/v1/collection/transport",
-        headers={"X-Collection-Key": TEST_COLLECTION_API_KEY},
-    )
-    assert admin_response.status_code == 202, admin_response.text
+    assert all(client.post("/api/v1/collection/agriculture", headers=headers).status_code == 202 for _ in range(limit))
+    assert client.post("/api/v1/collection/agriculture", headers=headers).status_code == 429
