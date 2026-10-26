@@ -1,6 +1,6 @@
 # Development / test dependencies (not installed in production).
 -r requirements.txt
-pytest>=9.0.3,<10.0   # 8.x has a known advisory (PYSEC-2026-1845)
+pytest>=9.1.1,<10.0   # 8.x has a known advisory (PYSEC-2026-1845)
 # Optional, for tests/e2e (browser tests are skipped when absent):
 #   pip install playwright && playwright install chromium
 # Optional, for the Parquet export tests:
