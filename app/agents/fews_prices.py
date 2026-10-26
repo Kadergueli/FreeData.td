@@ -86,3 +86,38 @@ def parse_record(item: dict[str, Any]) -> dict[str, Any] | None:
         "license": LICENSE,
         "attribution": ATTRIBUTION,
     }
+
+
+def resolve_collisions(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int, int]:
+    """Make every (indicator, region, date) unique: the database key is exactly that, and a
+    second row with the same key inside one batch makes the whole upsert fail.
+
+    FEWS NET can list the same product at the same market on the same day twice (two units,
+    two qualities). Rows that differ by unit are kept apart by adding the unit to the
+    indicator ("Maize price (retail) [100kg]"); a row that is still identical is dropped
+    (the last one wins). Returns (records, renamed, dropped)."""
+    def key(r: dict[str, Any]) -> tuple:
+        return (r["indicator"], r["region"], r["year"], r["month"], r["day"])
+
+    groups: dict[tuple, list[dict[str, Any]]] = {}
+    for rec in records:
+        groups.setdefault(key(rec), []).append(rec)
+
+    out: list[dict[str, Any]] = []
+    renamed = dropped = 0
+    for group in groups.values():
+        if len(group) > 1 and len({r["unit"] for r in group}) > 1:
+            for rec in group:
+                unit = rec["unit"].split("/", 1)[-1]
+                rec["indicator"] = f"{rec['indicator']} [{unit}]"[:100]
+                renamed += 1
+            sub: dict[tuple, dict[str, Any]] = {}
+            for rec in group:
+                if key(rec) in sub:
+                    dropped += 1
+                sub[key(rec)] = rec
+            out.extend(sub.values())
+        else:
+            dropped += len(group) - 1
+            out.append(group[-1])
+    return out, renamed, dropped

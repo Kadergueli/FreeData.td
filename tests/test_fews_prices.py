@@ -152,3 +152,46 @@ def test_probe_explains_each_failure(monkeypatch, resp, expected):
 def test_probe_reports_network_error(monkeypatch):
     _patch_httpx(monkeypatch, error=httpx.ConnectError("blocked"))
     assert "NETWORK ERROR" in asyncio.run(cli.probe_prices())
+
+
+# ── same product / market / date listed twice (real FEWS NET data) ──
+def _rec(unit, value, indicator="Maize price (retail)", region="Lac", d=(2026, 8, 31)):
+    return {"year": d[0], "month": d[1], "day": d[2], "value": value, "indicator": indicator, "unit": unit, "region": region}
+
+
+def test_collisions_are_told_apart_by_unit():
+    from app.agents.fews_prices import resolve_collisions
+    out, renamed, dropped = resolve_collisions([_rec("XAF/kg", 300), _rec("XAF/100kg", 28000)])
+    assert renamed == 2 and dropped == 0
+    assert sorted(r["indicator"] for r in out) == ["Maize price (retail) [100kg]", "Maize price (retail) [kg]"]
+
+
+def test_identical_key_and_unit_keeps_the_last_row_only():
+    from app.agents.fews_prices import resolve_collisions
+    out, renamed, dropped = resolve_collisions([_rec("XAF/kg", 300), _rec("XAF/kg", 310)])
+    assert len(out) == 1 and out[0]["value"] == 310 and dropped == 1 and renamed == 0
+
+
+def test_no_collision_changes_nothing_and_keys_are_unique_after():
+    from app.agents.fews_prices import resolve_collisions
+    recs = [_rec("XAF/kg", 1), _rec("XAF/kg", 2, region="Batha"), _rec("XAF/kg", 3, d=(2026, 7, 31)),
+            _rec("XAF/kg", 4), _rec("XAF/ea", 5)]
+    out, _, _ = resolve_collisions(recs)
+    keys = [(r["indicator"], r["region"], r["year"], r["month"], r["day"]) for r in out]
+    assert len(keys) == len(set(keys))
+
+
+def test_collector_hands_unique_rows_to_the_pipeline(monkeypatch):
+    import asyncio
+
+    from app.agents import markets
+    payload = {"results": [
+        {"value": 300, "period_date": "2026-08-31", "product": "Maize", "admin_1": "Lac", "unit": "kg", "currency": "XAF"},
+        {"value": 28000, "period_date": "2026-08-31", "product": "Maize", "admin_1": "Lac", "unit": "100kg", "currency": "XAF"},
+    ], "next": None}
+
+    async def fake_fetch(self, client, url, **kw):
+        return payload
+    monkeypatch.setattr(markets.MarketsAgent, "fetch_json_with_retry", fake_fetch)
+    records = asyncio.run(markets.MarketsAgent(None)._collect_fews_prices())
+    assert len(records) == 2 and len({r["indicator"] for r in records}) == 2

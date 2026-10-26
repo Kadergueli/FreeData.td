@@ -11,7 +11,7 @@ async def probe_prices() -> str:
     """One real request to the FEWS NET API, summarised: does it answer, what shape, how fresh."""
     import httpx
 
-    from app.agents.fews_prices import FEWS_URL, extract_items, parse_record
+    from app.agents.fews_prices import FEWS_URL, extract_items, parse_record, resolve_collisions
 
     params = {"country_code": "TD", "format": "json", "start_date": "2024-01-01"}
     lines = [f"GET {FEWS_URL} {params}"]
@@ -33,6 +33,8 @@ async def probe_prices() -> str:
     lines.append(f"fields of the first record: {sorted(items[0].keys())}")
     parsed = [p for p in (parse_record(i) for i in items) if p]
     lines.append(f"usable price records: {len(parsed)} of {len(items)}")
+    parsed, renamed, dropped = resolve_collisions(parsed)
+    lines.append(f"same product/market/date listed twice: {renamed} told apart by unit, {dropped} duplicate(s) dropped -> {len(parsed)} to store")
     if parsed:
         newest = max((p["year"], p["month"], p["day"]) for p in parsed)
         lines.append(f"newest price date: {newest[0]}-{newest[1]:02d}-{newest[2]:02d}")

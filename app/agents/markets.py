@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from app.agents.base import BaseAgent, recent_window, wb_years
-from app.agents.fews_prices import FEWS_URL, extract_items, parse_record
+from app.agents.fews_prices import FEWS_URL, extract_items, parse_record, resolve_collisions
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -262,6 +262,9 @@ class MarketsAgent(BaseAgent):
                     break
         if skipped:
             logger.info("FEWS NET: %d row(s) ignored (no price, date or product).", skipped)
+        records, renamed, dropped = resolve_collisions(records)
+        if renamed or dropped:
+            logger.info("FEWS NET: %d row(s) told apart by unit, %d duplicate(s) dropped.", renamed, dropped)
         logger.info("FEWS NET: collected %d price records.", len(records))
         return records
 
