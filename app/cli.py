@@ -13,14 +13,20 @@ async def probe_prices() -> str:
 
     from app.agents.fews_prices import FEWS_URL, extract_items, parse_record, resolve_collisions
 
-    params = {"country_code": "TD", "format": "json", "start_date": "2024-01-01"}
+    from datetime import UTC, datetime
+
+    # same window as the real collector (MarketsAgent.FEWS_HISTORY_YEARS), so the probe tells the truth
+    params = {"country_code": "TD", "format": "json", "start_date": f"{datetime.now(UTC).year - 2}-01-01"}
     lines = [f"GET {FEWS_URL} {params}"]
     try:
         async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
             response = await client.get(FEWS_URL, params=params, headers={"User-Agent": "FreeData.td probe"})
     except httpx.HTTPError as exc:
         return "\n".join(lines + [f"NETWORK ERROR: {exc}"])
-    lines.append(f"HTTP {response.status_code}, content-type: {response.headers.get('content-type')}")
+    size = len(getattr(response, "content", b"") or b"") / 1e6
+    elapsed = getattr(response, "elapsed", None)
+    took = f" in {elapsed.total_seconds():.0f}s" if elapsed else ""
+    lines.append(f"HTTP {response.status_code}, content-type: {response.headers.get('content-type')}, {size:.1f} MB{took}")
     if response.status_code != 200:
         return "\n".join(lines + [f"BODY (start): {response.text[:300]!r}"])
     try:

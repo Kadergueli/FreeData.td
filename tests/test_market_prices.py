@@ -66,7 +66,7 @@ def test_collect_follows_pages_and_asks_for_chad_with_a_rolling_start(monkeypatc
     assert [r["indicator"] for r in records] == ["Millet price (retail) - Abéché", "Rice price (retail) - Abéché"]
     first_params = calls[0][1]
     assert first_params["country_code"] == "TD" and first_params["format"] == "json"
-    assert first_params["start_date"] == f"{__import__('datetime').datetime.now().year - 10}-01-01"
+    assert first_params["start_date"] == f"{__import__('datetime').datetime.now().year - 2}-01-01"
     assert calls[1][1] is None and "page=2" in calls[1][0]
 
 

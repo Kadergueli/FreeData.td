@@ -96,7 +96,11 @@ class BaseAgent(ABC):
         headers: dict[str, str] | None = None,
         max_retries: int = 3,
         throttle_seconds: float = 0.15,
+        errors: list[str] | None = None,
     ) -> Any:
+        """GET a JSON document, retrying transient failures. Returns None when it still fails;
+        the reason of the last failure (HTTP status, timeout...) is appended to `errors` so the
+        caller can report WHY, not just that it failed."""
         req_headers = {"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata.td)"}
         if headers:
             req_headers.update(headers)
@@ -110,6 +114,8 @@ class BaseAgent(ABC):
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
                     wait_time = _retry_after_seconds(retry_after, default=float(2 ** attempt))
+                    if errors is not None:
+                        errors[:] = ["HTTP 429 (rate limited)"]
                     logger.warning("HTTP 429 Rate limited on %s. Backing off for %.1fs (attempt %d/%d)", url, wait_time, attempt, max_retries)
                     await asyncio.sleep(wait_time)
                     continue
@@ -117,6 +123,8 @@ class BaseAgent(ABC):
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as exc:
+                if errors is not None:
+                    errors[:] = [f"HTTP {exc.response.status_code}: {exc.response.text[:120]!r}"]
                 if exc.response.status_code >= 500 and attempt < max_retries:
                     wait_time = float(2 ** attempt)
                     logger.warning("HTTP %d Server Error on %s. Retrying in %.1fs...", exc.response.status_code, url, wait_time)
@@ -125,6 +133,8 @@ class BaseAgent(ABC):
                     logger.warning("HTTP status error fetching %s: %s", url, exc)
                     return None
             except (httpx.RequestError, json.JSONDecodeError, ValueError, TypeError) as exc:
+                if errors is not None:
+                    errors[:] = [f"{type(exc).__name__}: {str(exc)[:150] or 'no detail'}"]
                 logger.warning("Network or format error fetching %s (attempt %d/%d): %s", url, attempt, max_retries, exc)
                 if attempt < max_retries:
                     await asyncio.sleep(1.0)

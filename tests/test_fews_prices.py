@@ -53,7 +53,7 @@ def _agent(monkeypatch, pages):
     """MarketsAgent whose HTTP layer serves `pages` in order (None = request failed)."""
     calls = []
 
-    async def fake_fetch(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15):
+    async def fake_fetch(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
         calls.append((url, params))
         return pages.pop(0)
 
@@ -69,7 +69,7 @@ def test_collect_follows_pagination_and_uses_a_rolling_start(monkeypatch):
     records = asyncio.run(agent._collect_fews_prices())
     assert len(records) == 2
     assert calls[0][1]["country_code"] == "TD" and calls[0][1]["start_date"].endswith("-01-01")
-    assert int(calls[0][1]["start_date"][:4]) >= 2016          # moves with the calendar (not frozen)
+    assert int(calls[0][1]["start_date"][:4]) == __import__("datetime").datetime.now().year - 2   # moves with the calendar
     assert calls[1] == ("https://fdw.fews.net/api/marketpricefacts/?page=2", None)
 
 
@@ -195,3 +195,44 @@ def test_collector_hands_unique_rows_to_the_pipeline(monkeypatch):
     monkeypatch.setattr(markets.MarketsAgent, "fetch_json_with_retry", fake_fetch)
     records = asyncio.run(markets.MarketsAgent(None)._collect_fews_prices())
     assert len(records) == 2 and len({r["indicator"] for r in records}) == 2
+
+
+# ── production failure: "did not answer" gave no reason ──
+def _client_with(handler):
+    import httpx
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+def test_failure_reason_is_reported_for_http_errors():
+    import httpx
+    async def run():
+        reasons = []
+        async with _client_with(lambda req: httpx.Response(403, text="Forbidden by edge")) as c:
+            got = await BaseAgent.fetch_json_with_retry(c, "https://x.test/", throttle_seconds=0, errors=reasons)
+        return got, reasons
+    got, reasons = asyncio.run(run())
+    assert got is None and reasons and reasons[0].startswith("HTTP 403") and "Forbidden by edge" in reasons[0]
+
+
+def test_failure_reason_is_reported_for_timeouts_and_reaches_the_run_error(monkeypatch):
+    import httpx
+    def boom(req):
+        raise httpx.ReadTimeout("read timed out")
+    monkeypatch.setattr("asyncio.sleep", lambda *a, **k: _noop())
+
+    async def _noop():
+        return None
+
+    async def run():
+        reasons = []
+        async with _client_with(boom) as c:
+            await BaseAgent.fetch_json_with_retry(c, "https://x.test/", throttle_seconds=0, max_retries=2, errors=reasons)
+        return reasons
+    assert asyncio.run(run())[0].startswith("ReadTimeout")
+
+    async def fake_fetch(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
+        errors.append("HTTP 403: 'blocked'")
+        return None
+    monkeypatch.setattr(BaseAgent, "fetch_json_with_retry", staticmethod(fake_fetch))
+    with pytest.raises(RuntimeError, match=r"FEWS NET did not answer \(HTTP 403: 'blocked'\)"):
+        asyncio.run(MarketsAgent(SimpleNamespace())._collect_fews_prices())

@@ -232,7 +232,9 @@ class MarketsAgent(BaseAgent):
         return records
 
     # ─── Source 2b: FEWS NET market prices ───────────────────────────────────
-    FEWS_HISTORY_YEARS = 10
+    # Two calendar years back is ~15 000 price rows (all products, all markets): enough for
+    # trends, and a response a free-tier server can download and hold in memory.
+    FEWS_HISTORY_YEARS = 2
     FEWS_MAX_PAGES = 200
 
     async def _collect_fews_prices(self) -> list[dict[str, Any]]:
@@ -245,11 +247,15 @@ class MarketsAgent(BaseAgent):
         url: str | None = FEWS_URL
         records: list[dict[str, Any]] = []
         skipped = 0
-        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+        # A large JSON answer can take a while to build on their side: patient read timeout.
+        timeout = httpx.Timeout(240.0, connect=20.0)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             for _ in range(self.FEWS_MAX_PAGES):
-                payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.3)
+                reason: list[str] = []
+                payload = await self.fetch_json_with_retry(
+                    client, url, params=params, throttle_seconds=0.3, errors=reason)
                 if payload is None:
-                    raise RuntimeError("FEWS NET did not answer (network error or HTTP error)")
+                    raise RuntimeError(f"FEWS NET did not answer ({reason[0] if reason else 'no detail'})")
                 items, url = extract_items(payload)
                 for item in items:
                     parsed = parse_record(item)
