@@ -7,3 +7,4 @@ data/*.db
 data/raw/*.json
 data/exports/*.csv
 .pytest-tmp/
+data/raw/*.xml

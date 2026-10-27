@@ -161,22 +161,61 @@ def test_probe_reports_unusable_field_names_and_http_errors(monkeypatch):
     assert "NETWORK ERROR" in asyncio.run(probe_prices())
 
 
-def test_probe_inseed_shows_status_type_and_body_start_for_each_request(monkeypatch):
+def _inseed_resp(status, text, ctype="application/xml", server="cloudflare"):
+    r = _Resp(status, None, text)
+    r.content = text.encode()
+    r.headers = {"content-type": ctype, "server": server}
+    return r
+
+
+def _no_sleep(monkeypatch):
+    async def instant(_): return None
+    monkeypatch.setattr("asyncio.sleep", instant)
+
+
+def test_probe_inseed_saves_good_answers_and_shows_the_data_section(monkeypatch, tmp_path):
     import httpx
-    from app.cli import INSEED_FORMATS, INSEED_PROBES, probe_inseed
-    r = _Resp(200, None, '{"header": {"id": "x"}, "dataSets": [{"series": {}}]}')
-    r.content = r.text.encode()
-    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(r))
-    out = asyncio.run(probe_inseed())
-    assert out.count("HTTP 200") == len(INSEED_PROBES) * len(INSEED_FORMATS)
-    assert '"dataSets"' in out and "pqvhyxg" in out and "urtpzwb" in out
+    from app.cli import INSEED_PROBES, probe_inseed
+    _no_sleep(monkeypatch)
+    xml = '<?xml version="1.0"?><Header/><DataSet><Series FREQ="A"><Obs TIME_PERIOD="2024" OBS_VALUE="1.5"/></Series></DataSet>'
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(_inseed_resp(200, xml)))
+    out = asyncio.run(probe_inseed(tmp_path))
+    assert out.count("HTTP 200") == len(INSEED_PROBES) and "<DataSet>" in out and "OBS_VALUE" in out
+    assert (tmp_path / "inseed_xxhsxif.xml").read_text(encoding="utf-8") == xml
 
 
-def test_probe_inseed_survives_network_errors_and_http_errors(monkeypatch):
+def test_probe_inseed_calls_the_key_with_literal_plus_signs(monkeypatch, tmp_path):
     import httpx
     from app.cli import probe_inseed
+    _no_sleep(monkeypatch)
+    seen = []
+
+    class C:
+        def __init__(self, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, params=None, headers=None):
+            seen.append((url, headers))
+            return _inseed_resp(200, "<DataSet/>")
+    monkeypatch.setattr(httpx, "AsyncClient", C)
+    asyncio.run(probe_inseed(tmp_path))
+    assert seen[0][0] == "https://chad.opendataforafrica.org/api/1.0/sdmx/data/xxhsxif?key=PCPI_IX+PCPI_CP_01_IX.2019"
+    assert all("FreeData.td" in h["User-Agent"] for _, h in seen)      # honest identification
+
+
+def test_probe_inseed_reports_a_bot_challenge_without_dumping_html(monkeypatch, tmp_path):
+    import httpx
+    from app.cli import probe_inseed
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(_inseed_resp(403, "<html><title>Just a moment...</title>", "text/html")))
+    out = asyncio.run(probe_inseed(tmp_path))
+    assert "BLOCKED by a Cloudflare bot challenge" in out and "<html>" not in out
+    assert not list(tmp_path.iterdir())
+
+
+def test_probe_inseed_survives_network_errors(monkeypatch, tmp_path):
+    import httpx
+    from app.cli import probe_inseed
+    _no_sleep(monkeypatch)
     monkeypatch.setattr(httpx, "AsyncClient", _fake_client(exc=httpx.ConnectError("blocked")))
-    assert "NETWORK ERROR" in asyncio.run(probe_inseed())
-    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(_Resp(403, None, "Forbidden")))
-    out = asyncio.run(probe_inseed())
-    assert "HTTP 403" in out and "Forbidden" in out
+    assert "NETWORK ERROR" in asyncio.run(probe_inseed(tmp_path))

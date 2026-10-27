@@ -55,38 +55,55 @@ async def probe_prices() -> str:
 INSEED_BASE = "https://chad.opendataforafrica.org/api/1.0/sdmx/data"
 # (label, dataflow, key) taken from the INSEED "Principaux indicateurs statistiques" page.
 INSEED_PROBES = [
+    ("Indice des prix a la consommation", "xxhsxif", "PCPI_IX+PCPI_CP_01_IX.2019"),
     ("Population par age et sexe", "pqvhyxg", "POPT+P0_4+P5_9.M+F.U+R"),
     ("Etablissements de sante par province", "urtpzwb", "TD+TD-BA+TD-LC.PUB+PRV.HN+CS.TOT"),
-    ("Indice des prix a la consommation", "xxhsxif", "PCPI_IX+PCPI_CP_01_IX.2019"),
+    ("Scolarisation par province", "gkvamx", "TBS.T+G+F.TD+TD-BA+TD-LC"),
 ]
-INSEED_FORMATS = [
-    ("default", {}),
-    ("json", {"Accept": "application/json"}),
-    ("sdmx-json", {"Accept": "application/vnd.sdmx.data+json"}),
-]
+INSEED_PAUSE_SECONDS = 4
 
 
-async def probe_inseed() -> str:
-    """A few real requests to the INSEED open-data portal (SDMX API): status, content type, size
-    and the start of the body, for 3 indicators x 3 formats. Nothing is stored."""
+async def probe_inseed(save_dir: Path | None = None) -> str:
+    """A few real requests to the INSEED open-data portal (SDMX API) with the honest
+    FreeData.td user agent. For each: status, content type, size, and the start of the data
+    section. Successful answers are saved as files (default data/raw/) so they can be sent
+    to Claude. A Cloudflare bot challenge is reported as such; it is never worked around."""
     import httpx
 
+    save_dir = save_dir or Path("data/raw")
     lines = [f"INSEED SDMX API: {INSEED_BASE}"]
+    headers = {"User-Agent": "FreeData.td probe (open data platform for Chad)"}
     try:
         async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
-            for label, flow, key in INSEED_PROBES:
+            for i, (label, flow, key) in enumerate(INSEED_PROBES):
+                if i:
+                    await asyncio.sleep(INSEED_PAUSE_SECONDS)
+                # the key is built into the URL as written on the INSEED page: '+' means "or" in SDMX
+                url = f"{INSEED_BASE}/{flow}?key={key}"
                 lines.append(f"\n== {label} ({flow}) ==")
-                for name, extra in INSEED_FORMATS:
-                    headers = {"User-Agent": "FreeData.td probe (open data platform for Chad)", **extra}
-                    try:
-                        r = await client.get(f"{INSEED_BASE}/{flow}", params={"key": key}, headers=headers)
-                    except httpx.HTTPError as exc:
-                        lines.append(f"[{name}] NETWORK ERROR: {type(exc).__name__}: {exc}")
-                        continue
-                    body = r.text if hasattr(r, "text") else ""
-                    size = len(getattr(r, "content", b"") or b"") / 1e3
-                    lines.append(f"[{name}] HTTP {r.status_code}, {r.headers.get('content-type')}, {size:.1f} kB")
-                    lines.append("   " + " ".join(body[:350].split()))
+                try:
+                    r = await client.get(url, headers=headers)
+                except httpx.HTTPError as exc:
+                    lines.append(f"NETWORK ERROR: {type(exc).__name__}: {exc}")
+                    continue
+                body = getattr(r, "text", "") or ""
+                size = len(getattr(r, "content", b"") or b"") / 1e3
+                lines.append(f"HTTP {r.status_code}, {r.headers.get('content-type')}, {size:.1f} kB, server: {r.headers.get('server')}")
+                if r.status_code == 403 and "Just a moment" in body:
+                    lines.append("   BLOCKED by a Cloudflare bot challenge (not an INSEED error).")
+                    continue
+                if r.status_code != 200:
+                    lines.append("   " + " ".join(body[:300].split()))
+                    continue
+                start = max(body.find("<DataSet"), body.find('"dataSets"'), 0)
+                lines.append("   " + " ".join(body[start:start + 700].split()))
+                try:
+                    save_dir.mkdir(parents=True, exist_ok=True)
+                    target = save_dir / f"inseed_{flow}.xml"
+                    target.write_text(body, encoding="utf-8")
+                    lines.append(f"   saved: {target}")
+                except OSError as exc:
+                    lines.append(f"   could not save the answer: {exc}")
     except Exception as exc:  # never crash a diagnostic: show what happened
         lines.append(f"ERROR: {type(exc).__name__}: {exc}")
     return "\n".join(lines)
