@@ -52,6 +52,46 @@ async def probe_prices() -> str:
     return "\n".join(lines)
 
 
+INSEED_BASE = "https://chad.opendataforafrica.org/api/1.0/sdmx/data"
+# (label, dataflow, key) taken from the INSEED "Principaux indicateurs statistiques" page.
+INSEED_PROBES = [
+    ("Population par age et sexe", "pqvhyxg", "POPT+P0_4+P5_9.M+F.U+R"),
+    ("Etablissements de sante par province", "urtpzwb", "TD+TD-BA+TD-LC.PUB+PRV.HN+CS.TOT"),
+    ("Indice des prix a la consommation", "xxhsxif", "PCPI_IX+PCPI_CP_01_IX.2019"),
+]
+INSEED_FORMATS = [
+    ("default", {}),
+    ("json", {"Accept": "application/json"}),
+    ("sdmx-json", {"Accept": "application/vnd.sdmx.data+json"}),
+]
+
+
+async def probe_inseed() -> str:
+    """A few real requests to the INSEED open-data portal (SDMX API): status, content type, size
+    and the start of the body, for 3 indicators x 3 formats. Nothing is stored."""
+    import httpx
+
+    lines = [f"INSEED SDMX API: {INSEED_BASE}"]
+    try:
+        async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
+            for label, flow, key in INSEED_PROBES:
+                lines.append(f"\n== {label} ({flow}) ==")
+                for name, extra in INSEED_FORMATS:
+                    headers = {"User-Agent": "FreeData.td probe (open data platform for Chad)", **extra}
+                    try:
+                        r = await client.get(f"{INSEED_BASE}/{flow}", params={"key": key}, headers=headers)
+                    except httpx.HTTPError as exc:
+                        lines.append(f"[{name}] NETWORK ERROR: {type(exc).__name__}: {exc}")
+                        continue
+                    body = r.text if hasattr(r, "text") else ""
+                    size = len(getattr(r, "content", b"") or b"") / 1e3
+                    lines.append(f"[{name}] HTTP {r.status_code}, {r.headers.get('content-type')}, {size:.1f} kB")
+                    lines.append("   " + " ".join(body[:350].split()))
+    except Exception as exc:  # never crash a diagnostic: show what happened
+        lines.append(f"ERROR: {type(exc).__name__}: {exc}")
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="FreeDatatd command-line tools")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -70,12 +110,19 @@ def main() -> None:
     export.add_argument("--format", choices=["csv", "json"], default="csv", help="Export format")
 
     commands.add_parser(
+        "probe-inseed",
+        help="Check the INSEED open-data (SDMX) API from this machine and show the response format",
+    )
+    commands.add_parser(
         "probe-prices",
         help="Check the FEWS NET market-price API for Chad from this machine (no database needed)",
     )
 
     args = parser.parse_args()
 
+    if args.command == "probe-inseed":
+        print(asyncio.run(probe_inseed()))
+        return
     if args.command == "probe-prices":
         print(asyncio.run(probe_prices()))
         return

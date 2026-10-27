@@ -159,3 +159,24 @@ def test_probe_reports_unusable_field_names_and_http_errors(monkeypatch):
     assert "UNREADABLE" in asyncio.run(probe_prices())
     monkeypatch.setattr(httpx, "AsyncClient", _fake_client(exc=httpx.ConnectError("blocked")))
     assert "NETWORK ERROR" in asyncio.run(probe_prices())
+
+
+def test_probe_inseed_shows_status_type_and_body_start_for_each_request(monkeypatch):
+    import httpx
+    from app.cli import INSEED_FORMATS, INSEED_PROBES, probe_inseed
+    r = _Resp(200, None, '{"header": {"id": "x"}, "dataSets": [{"series": {}}]}')
+    r.content = r.text.encode()
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(r))
+    out = asyncio.run(probe_inseed())
+    assert out.count("HTTP 200") == len(INSEED_PROBES) * len(INSEED_FORMATS)
+    assert '"dataSets"' in out and "pqvhyxg" in out and "urtpzwb" in out
+
+
+def test_probe_inseed_survives_network_errors_and_http_errors(monkeypatch):
+    import httpx
+    from app.cli import probe_inseed
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(exc=httpx.ConnectError("blocked")))
+    assert "NETWORK ERROR" in asyncio.run(probe_inseed())
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(_Resp(403, None, "Forbidden")))
+    out = asyncio.run(probe_inseed())
+    assert "HTTP 403" in out and "Forbidden" in out
