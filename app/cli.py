@@ -54,11 +54,16 @@ async def probe_prices() -> str:
 
 INSEED_BASE = "https://chad.opendataforafrica.org/api/1.0/sdmx/data"
 # (label, dataflow, key) taken from the INSEED "Principaux indicateurs statistiques" page.
+_PROVINCE_KEYS = ("TD+TD-BA+TD-BO+TD-CB+TD-GR+TD-HL+TD-KA+TD-LC+TD-LO+TD-LR+TD-MA+TD-MO+TD-ME+TD-MC+TD-OD+TD-SA"
+                  "+TD-TA+TD-WF+TD-ND+TD-BG+TD-EO+TD-SI+TD-TI+TD-EE")
+# Datasets already imported by InseedAgent use their registered key; the others are samples to look at
+# (keys exactly as written on the INSEED page) before they get a parser.
 INSEED_PROBES = [
-    ("Indice des prix a la consommation", "xxhsxif", "PCPI_IX+PCPI_CP_01_IX.2019"),
-    ("Population par age et sexe", "pqvhyxg", "POPT+P0_4+P5_9.M+F.U+R"),
-    ("Etablissements de sante par province", "urtpzwb", "TD+TD-BA+TD-LC.PUB+PRV.HN+CS.TOT"),
-    ("Scolarisation par province", "gkvamx", "TBS.T+G+F.TD+TD-BA+TD-LC"),
+    ("Indice des prix a la consommation", "xxhsxif", None),
+    ("Etablissements de sante par province", "urtpzwb", None),
+    ("Population par age et sexe", "pqvhyxg",
+     "POPT+P0_4+P5_9+P10_14+P15_19+P20_24+P25_29+P30_34+P35_39+P40_44+P45_49+P50_54+P55_59+P60_64+P65_69+P70_74+P75_79+P80_P.M+F.U+R"),
+    ("Scolarisation par province", "gkvamx", f"TBS.T+G+F.{_PROVINCE_KEYS}"),
 ]
 INSEED_PAUSE_SECONDS = 4
 
@@ -75,7 +80,10 @@ async def probe_inseed(save_dir: Path | None = None) -> str:
     headers = {"User-Agent": "FreeData.td probe (open data platform for Chad)"}
     try:
         async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
+            from app.agents.inseed import DATASETS
+
             for i, (label, flow, key) in enumerate(INSEED_PROBES):
+                key = key or DATASETS[flow].key
                 if i:
                     await asyncio.sleep(INSEED_PAUSE_SECONDS)
                 # the key is built into the URL as written on the INSEED page: '+' means "or" in SDMX
@@ -109,6 +117,22 @@ async def probe_inseed(save_dir: Path | None = None) -> str:
     return "\n".join(lines)
 
 
+async def import_inseed(paths: list[Path], repository=None) -> str:
+    """Turn saved INSEED SDMX files into observations through the normal pipeline."""
+    from app.agents.inseed import InseedAgent, load_files
+
+    if not paths:
+        return "No file to import: run probe-inseed first (it saves data/raw/inseed_*.xml)."
+    by_sector, problems = load_files(paths)
+    repository = repository or ObservationRepository()
+    lines = []
+    for sector, records in by_sector.items():
+        result = await InseedAgent(repository, sector, records).run("files")
+        lines.append(f"{sector}: {len(records)} read, {result.accepted} accepted, {result.rejected} rejected, {result.stored} stored")
+    lines += [f"PROBLEM {p}" for p in problems]
+    return "\n".join(lines) or "Nothing imported."
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="FreeDatatd command-line tools")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -126,6 +150,11 @@ def main() -> None:
     export.add_argument("--sector", default=None, help="Sector filter (e.g. agriculture)")
     export.add_argument("--format", choices=["csv", "json"], default="csv", help="Export format")
 
+    imp = commands.add_parser(
+        "import-inseed",
+        help="Import the INSEED answers saved by probe-inseed (data/raw/inseed_*.xml) into the database",
+    )
+    imp.add_argument("files", nargs="*", help="Files to import (default: every data/raw/inseed_*.xml)")
     commands.add_parser(
         "probe-inseed",
         help="Check the INSEED open-data (SDMX) API from this machine and show the response format",
@@ -137,6 +166,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if args.command == "import-inseed":
+        print(asyncio.run(import_inseed([Path(f) for f in args.files] or sorted(Path("data/raw").glob("inseed_*.xml")))))
+        return
     if args.command == "probe-inseed":
         print(asyncio.run(probe_inseed()))
         return

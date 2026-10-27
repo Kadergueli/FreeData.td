@@ -199,7 +199,8 @@ def test_probe_inseed_calls_the_key_with_literal_plus_signs(monkeypatch, tmp_pat
             return _inseed_resp(200, "<DataSet/>")
     monkeypatch.setattr(httpx, "AsyncClient", C)
     asyncio.run(probe_inseed(tmp_path))
-    assert seen[0][0] == "https://chad.opendataforafrica.org/api/1.0/sdmx/data/xxhsxif?key=PCPI_IX+PCPI_CP_01_IX.2019"
+    assert seen[0][0].startswith("https://chad.opendataforafrica.org/api/1.0/sdmx/data/xxhsxif?key=PCPI_IX+PCPI_CP_01_IX+")
+    assert seen[0][0].endswith(".2019") and "%2B" not in seen[0][0]
     assert all("FreeData.td" in h["User-Agent"] for _, h in seen)      # honest identification
 
 

@@ -66,3 +66,21 @@ Exécuter une fois `supabase/data_admin_setup.sql` (table `table_deleted_observa
 - **Équipe** : réservée aux propriétaires (`ADMIN_EMAILS`). Ajouter un administrateur = saisir son e-mail,
   après avoir créé son compte dans Supabase > Authentication > Users (« Auto Confirm User »).
   Le retirer coupe son accès immédiatement. Un propriétaire permanent ne peut pas être retiré ici.
+
+## Statistiques de l'INSEED (import depuis un PC)
+
+Le portail `chad.opendataforafrica.org` publie les indicateurs nationaux (santé, prix, population,
+éducation...) par une API SDMX protégée par Cloudflare : un serveur est souvent bloqué, et le
+défi anti-robot n'est jamais contourné. En attendant une clé d'accès ou une exportation fournie
+par l'INSEED, l'administrateur importe depuis son ordinateur :
+
+```
+pip install -r requirements.txt
+python -m app.cli probe-inseed     # télécharge et enregistre data/raw/inseed_<flux>.xml
+python -m app.cli import-inseed    # les range dans la base (par province quand l'INSEED la donne)
+```
+
+Seuls les flux dont la vraie réponse a été examinée sont importés (voir `DATASETS` dans
+`app/agents/inseed.py`) ; les autres sont enregistrés mais signalés « unknown dataset ».
+La mention « Source : INSEED. Contient des informations sous licence selon l'Accord de Licence
+Ouverte de l'INSEED. » est conservée sur chaque donnée.

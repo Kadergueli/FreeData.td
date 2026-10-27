@@ -20,6 +20,7 @@ SOURCE_MAX_AGE_DAYS: dict[str, int] = {
     "NASA POWER": 100,
     "NASA POWER Agro": 100,
     "World Bank": ANNUAL,
+    "INSEED": ANNUAL,
     "UNESCO UIS": ANNUAL,
     "UNICEF Data": ANNUAL,
     "FAOSTAT": ANNUAL,
