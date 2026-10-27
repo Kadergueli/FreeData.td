@@ -47,6 +47,11 @@ DATASETS: dict[str, Dataset] = {d.flow: d for d in (
     Dataset("urtpzwb", "Établissements de santé", "health", "établissements",
             "TD+TD-BA+TD-BO+TD-CB+TD-GR+TD-HL+TD-KA+TD-LC+TD-LO+TD-LR+TD-MA+TD-MO+TD-ME+TD-MC+TD-OD+TD-SA+TD-TA+TD-WF+TD-ND"
             "+TD-BG+TD-EO+TD-SI+TD-TI+TD-EE.PUB+PRV.HN+HP+HD+CS+CLI+CAM+CAS.TOT"),
+    # National only (no province in this table). Filed under economy: the platform has no demography
+    # sector and population is the denominator of every per-capita indicator.
+    Dataset("pqvhyxg", "Population", "economy", "habitants",
+            "POPT+P0_4+P5_9+P10_14+P15_19+P20_24+P25_29+P30_34+P35_39+P40_44+P45_49+P50_54+P55_59+P60_64"
+            "+P65_69+P70_74+P75_79+P80_P.M+F.U+R"),
     Dataset("xxhsxif", "Indice des prix à la consommation", "economy", "indice",
             "PCPI_IX+PCPI_CP_01_IX+PCPI_CP_02_IX+PCPI_CP_03_IX+PCPI_CP_04_IX+PCPI_CP_05_IX+PCPI_CP_06_IX"
             "+PCPI_CP_07_IX+PCPI_CP_08_IX+PCPI_CP_09_IX+PCPI_CP_10_IX+PCPI_CP_11_IX.2019"),
@@ -66,8 +71,26 @@ CODE_LABELS = {
     "PUB": "public", "PRV": "privé", "COM": "communautaire",
     "HN": "hôpital national", "HP": "hôpital provincial", "HD": "hôpital de district",
     "CS": "centre de santé", "CLI": "clinique",
+    "M": "hommes", "F": "femmes", "U": "urbain", "R": "rural", "POPT": "tous âges",
     "PCPI_IX": "indice général", "PCPI_CP_01_IX": "alimentation et boissons non alcoolisées",
 }
+_AGE_GROUP = re.compile(r"^P(\d{1,2})_(\d{1,2})$")
+_AGE_OPEN = re.compile(r"^P(\d{2})_P$")
+
+
+def code_label(code: str) -> str:
+    """Readable form of an INSEED code: known labels, age groups (P5_9 -> 5-9 ans), else the code."""
+    if code in CODE_LABELS:
+        return CODE_LABELS[code]
+    m = _AGE_GROUP.match(code)
+    if m:
+        return f"{m[1]}-{m[2]} ans"
+    m = _AGE_OPEN.match(code)
+    if m:
+        return f"{m[1]} ans et plus"
+    return code
+
+
 _PROVINCE_CODE = re.compile(r"^TD(-[A-Z]{2})?$")
 _SKIPPED_ATTRIBUTES = ("ID_", "REGIONID_")
 _IGNORED_VALUES = {"TOT"}          # "total" adds nothing to an indicator name
@@ -119,8 +142,8 @@ def parse_sdmx(xml_text: str, dataset: Dataset) -> list[dict[str, Any]]:
         for name, value in attrs.items():
             if name == "FREQ" or name.startswith(_SKIPPED_ATTRIBUTES) or value == region_code or value in _IGNORED_VALUES:
                 continue
-            parts.append(CODE_LABELS.get(value, value))
-        indicator = dataset.label + (" - " + ", ".join(parts) if parts else "")
+            parts.append(code_label(value))
+        base = dataset.label + (" - " + ", ".join(parts) if parts else "")
         for obs in (e for e in series if _local(e.tag) == "Obs"):
             when = parse_period(obs.attrib.get("TIME_PERIOD", ""))
             raw = (obs.attrib.get("OBS_VALUE") or "").strip()
@@ -132,6 +155,9 @@ def parse_sdmx(xml_text: str, dataset: Dataset) -> list[dict[str, Any]]:
                 continue
             if value != value:       # NaN
                 continue
+            # A figure for a year that has not happened yet is a projection: keep it apart so a
+            # forecast is never read as a measurement of that indicator.
+            indicator = base + (" (projection)" if when[0] > date.today().year else "")
             records.append({
                 "year": when[0], "month": when[1], "day": when[2], "value": value,
                 "indicator": indicator[:120], "unit": dataset.unit, "sector": dataset.sector,

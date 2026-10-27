@@ -95,3 +95,36 @@ def test_normalize_rounds_and_dates(tmp_path):
     obs = agent.normalize({"year": 2024, "month": 3, "day": 1, "value": 101.2345, "indicator": "Indice", "unit": "indice", "region": "national"})
     assert obs.reference_date == date(2024, 3, 1) and obs.value == 101.23 and obs.sector == "economy"
     assert agent.normalize({"year": 2024, "value": None, "indicator": "x"}) is None
+
+
+# ── population (pqvhyxg): national, age group x sex x urban/rural; real attribute names ──
+POP_XML = """<?xml version="1.0" encoding="utf-8"?><StructureSpecificData><DataSet>
+<Series GROUPE_D_GES="POPT" ID_GROUPE_X0020_D_X0027_ÂGES="POPT" SEXE="M" ID_SEXE="M" MILIEU="U" ID_MILIEU="U" FREQ="A">
+ <Obs TIME_PERIOD="2009" OBS_VALUE="1244239" /><Obs TIME_PERIOD="2099" OBS_VALUE="9999999" /></Series>
+<Series GROUPE_D_GES="P5_9" ID_GROUPE_X0020_D_X0027_ÂGES="P5_9" SEXE="F" ID_SEXE="F" MILIEU="R" ID_MILIEU="R" FREQ="A">
+ <Obs TIME_PERIOD="2020" OBS_VALUE="812345" /></Series>
+<Series GROUPE_D_GES="P80_P" SEXE="M" MILIEU="R" FREQ="A"><Obs TIME_PERIOD="2020" OBS_VALUE="1000" /></Series>
+</DataSet></StructureSpecificData>"""
+
+
+def test_population_series_are_national_and_readable():
+    recs = parse_sdmx(POP_XML, DATASETS["pqvhyxg"])
+    by = {(r["indicator"], r["year"]): r for r in recs}
+    assert ("Population - tous âges, hommes, urbain", 2009) in by
+    assert ("Population - 5-9 ans, femmes, rural", 2020) in by
+    assert ("Population - 80 ans et plus, hommes, rural", 2020) in by
+    assert {r["region"] for r in recs} == {"national"} and {r["sector"] for r in recs} == {"economy"}
+    assert by[("Population - 5-9 ans, femmes, rural", 2020)]["unit"] == "habitants"
+
+
+def test_future_years_are_labelled_projection_not_mixed_with_measurements():
+    recs = parse_sdmx(POP_XML, DATASETS["pqvhyxg"])
+    future = [r for r in recs if r["year"] == 2099]
+    assert future and future[0]["indicator"].endswith("(projection)")
+    assert not any(r["indicator"].endswith("(projection)") for r in recs if r["year"] <= 2020)
+
+
+def test_age_group_labels():
+    from app.agents.inseed import code_label
+    assert code_label("P0_4") == "0-4 ans" and code_label("P65_69") == "65-69 ans"
+    assert code_label("P80_P") == "80 ans et plus" and code_label("XYZ") == "XYZ"
