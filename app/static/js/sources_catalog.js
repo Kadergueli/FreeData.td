@@ -76,7 +76,8 @@ export const OFFICIAL_SOURCES = [
     sector_fr: 'Marchés & Prix Alimentaires',
     sector_en: 'Markets & Food Prices',
     sectorId: 'markets',
-    license: 'Réutilisation avec attribution (FEWS NET) / Reuse with attribution',
+    license: 'Reuse with attribution (FEWS NET)',
+    license_fr: 'Réutilisation avec attribution (FEWS NET)',
     url: 'https://fews.net/data/markets-and-trade',
     desc_fr: 'Prix de détail des denrées de base (mil, sorgho, maïs, riz...) par marché du Tchad, relevés mensuels ou hebdomadaires.',
     desc_en: 'Retail prices of staple foods (millet, sorghum, maize, rice...) by market in Chad, collected monthly or weekly.'
@@ -171,8 +172,35 @@ export const OFFICIAL_SOURCES = [
     url: 'https://data.worldbank.org/topic/energy-and-mining',
     desc_fr: 'Accès à l\'électricité (national, rural, urbain), énergies renouvelables et combustibles propres au Tchad.',
     desc_en: 'Access to electricity (national, rural, urban), renewable energy share, and clean cooking fuels for Chad.'
+  },
+  {
+    id: 'inseed-open-data',
+    name: 'INSEED Open Data (Chad Data Portal)',
+    org_fr: 'Institut National de la Statistique, des Études Économiques et Démographiques (INSEED)',
+    org_en: 'National Institute of Statistics, Economic and Demographic Studies (INSEED)',
+    sector_fr: 'Démographie, Santé & Prix',
+    sector_en: 'Demography, Health & Prices',
+    sectorId: 'demography',
+    license: 'INSEED Open Licence Agreement',
+    url: 'https://chad.opendataforafrica.org/tylheoe/principaux-indicateurs-statistiques',
+    desc_fr: 'Statistiques officielles nationales : population par âge et sexe, établissements de santé par province, indice des prix à la consommation.',
+    desc_en: 'Official national statistics: population by age and sex, health facilities by province, consumer price index.'
+  },
+  {
+    id: 'world-bank-demography',
+    name: 'World Bank Demography (WDI)',
+    org_fr: 'Groupe de la Banque Mondiale — Indicateurs du développement dans le monde',
+    org_en: 'World Bank Group — World Development Indicators',
+    sector_fr: 'Démographie & Population',
+    sector_en: 'Demography & Population',
+    sectorId: 'demography',
+    license: 'CC BY 4.0 Open Data',
+    url: 'https://data.worldbank.org/topic/population',
+    desc_fr: 'Population totale, croissance, structure par âge, urbanisation, natalité, mortalité, fécondité et migration nette du Tchad.',
+    desc_en: 'Total population, growth, age structure, urbanisation, birth and death rates, fertility and net migration for Chad.'
   }
 ];
+
 
 
 export function getSourceByQuery(sourceStr = '') {

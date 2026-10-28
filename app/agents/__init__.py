@@ -1,5 +1,6 @@
 from .agriculture import AgricultureAgent
 from .analysis import AnalysisAgent
+from .demography import DemographyAgent
 from .economy import EconomyAgent
 from .education import EducationAgent
 from .energy import EnergyAgent
@@ -11,6 +12,7 @@ from .transport import TransportAgent
 __all__ = [
     "AgricultureAgent",
     "AnalysisAgent",
+    "DemographyAgent",
     "EconomyAgent",
     "EducationAgent",
     "EnergyAgent",

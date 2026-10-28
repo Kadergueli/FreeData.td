@@ -7,6 +7,7 @@ from typing import Any
 
 from app.agents import (
     AgricultureAgent,
+    DemographyAgent,
     EconomyAgent,
     EducationAgent,
     EnergyAgent,
@@ -176,6 +177,7 @@ class AutonomousHarvesterScheduler:
             ("energy", EnergyAgent(self.repository)),
             ("transport", TransportAgent(self.repository)),
             ("education", EducationAgent(self.repository)),
+            ("demography", DemographyAgent(self.repository)),
         ]
 
         wanted = self._next_sectors

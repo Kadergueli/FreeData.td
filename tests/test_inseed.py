@@ -27,9 +27,9 @@ def test_series_become_observations_with_province_names_and_readable_codes():
     recs = parse_sdmx(HEALTH_XML, DS)
     assert [(r["year"], r["value"]) for r in recs] == [(2017, 4.0), (2018, 7.0), (2024, 12.5)]   # empty / "abc" skipped
     nat, lac = recs[0], recs[2]
-    assert nat["region"] == "national" and nat["indicator"] == "Établissements de santé - public, hôpital national"
-    assert lac["region"] == "Lac" and lac["indicator"] == "Établissements de santé - privé, clinique"
-    assert nat["sector"] == "health" and nat["unit"] == "établissements"
+    assert nat["region"] == "national" and nat["indicator"] == "Health facilities - public, national hospital"
+    assert lac["region"] == "Lac" and lac["indicator"] == "Health facilities - private, clinic"
+    assert nat["sector"] == "health" and nat["unit"] == "facilities"
 
 
 def test_unknown_codes_are_kept_as_they_are_not_guessed():
@@ -110,11 +110,11 @@ POP_XML = """<?xml version="1.0" encoding="utf-8"?><StructureSpecificData><DataS
 def test_population_series_are_national_and_readable():
     recs = parse_sdmx(POP_XML, DATASETS["pqvhyxg"])
     by = {(r["indicator"], r["year"]): r for r in recs}
-    assert ("Population - tous âges, hommes, urbain", 2009) in by
-    assert ("Population - 5-9 ans, femmes, rural", 2020) in by
-    assert ("Population - 80 ans et plus, hommes, rural", 2020) in by
-    assert {r["region"] for r in recs} == {"national"} and {r["sector"] for r in recs} == {"economy"}
-    assert by[("Population - 5-9 ans, femmes, rural", 2020)]["unit"] == "habitants"
+    assert ("Population - all ages, men, urban", 2009) in by
+    assert ("Population - 5-9 years, women, rural", 2020) in by
+    assert ("Population - 80 years and over, men, rural", 2020) in by
+    assert {r["region"] for r in recs} == {"national"} and {r["sector"] for r in recs} == {"demography"}
+    assert by[("Population - 5-9 years, women, rural", 2020)]["unit"] == "inhabitants"
 
 
 def test_future_years_are_labelled_projection_not_mixed_with_measurements():
@@ -126,5 +126,5 @@ def test_future_years_are_labelled_projection_not_mixed_with_measurements():
 
 def test_age_group_labels():
     from app.agents.inseed import code_label
-    assert code_label("P0_4") == "0-4 ans" and code_label("P65_69") == "65-69 ans"
-    assert code_label("P80_P") == "80 ans et plus" and code_label("XYZ") == "XYZ"
+    assert code_label("P0_4") == "0-4 years" and code_label("P65_69") == "65-69 years"
+    assert code_label("P80_P") == "80 years and over" and code_label("XYZ") == "XYZ"

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class ObservationCreate(BaseModel):
-    sector: Literal["agriculture", "markets", "transport", "education", "environment", "economy", "health", "energy"]
+    sector: Literal["agriculture", "markets", "transport", "education", "environment", "economy", "health", "energy", "demography"]
     indicator: str = Field(min_length=2, max_length=120)
     value: float
     unit: str = Field(min_length=1, max_length=40)

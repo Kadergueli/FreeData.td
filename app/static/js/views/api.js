@@ -20,14 +20,15 @@ let selectedRegion = 'all';
 let _downloading = false;
 
 const FORMATS = ['JSON', 'CSV', 'XML', 'PARQUET'];
-const SECTOR_IDS = ['all', 'agriculture', 'environment', 'markets', 'health', 'energy', 'economy', 'transport', 'education'];
+const SECTOR_IDS = ['all', 'agriculture', 'environment', 'markets', 'health', 'energy', 'economy', 'transport', 'education', 'demography'];
 
-// All 23 official administrative regions of Chad (ISO 3166-2:TD)
+// All 23 official administrative regions of Chad (ISO 3166-2:TD), spelled WITHOUT accents exactly like the
+// region names stored with the data (FEWS NET, INSEED): an accented filter would match nothing.
 const CHAD_REGIONS = [
-  'Batha', 'Barh El Gazel', 'Borkou', 'Chari-Baguirmi', 'Ennedi Est', 'Ennedi Ouest', 'Guéra',
+  'Batha', 'Barh el Gazel', 'Borkou', 'Chari-Baguirmi', 'Ennedi Est', 'Ennedi Ouest', 'Guera',
   'Hadjer-Lamis', 'Kanem', 'Lac', 'Logone Occidental', 'Logone Oriental', 'Mandoul',
-  'Mayo-Kebbi Est', 'Mayo-Kebbi Ouest', 'Moyen-Chari', "N'Djamena", 'Ouaddaï', 'Salamat',
-  'Sila', 'Tandjilé', 'Tibesti', 'Wadi Fira',
+  'Mayo-Kebbi Est', 'Mayo-Kebbi Ouest', 'Moyen-Chari', "N'Djamena", 'Ouaddai', 'Salamat',
+  'Sila', 'Tandjile', 'Tibesti', 'Wadi Fira',
 ];
 
 function getSectorLabel(secId) {

@@ -34,7 +34,7 @@ def test_recent_collection_is_skipped_and_old_one_is_due():
     runs = [_run(SECTOR_IDS, 24 * 3)]   # everything collected 3 days ago
     due, skipped = split_due(runs, list(SECTOR_IDS), NOW)
     assert set(due) == {"environment", "agriculture"}               # daily ones
-    assert set(skipped) == {"markets", "transport", "health", "education", "economy", "energy"}
+    assert set(skipped) == {"markets", "transport", "health", "education", "economy", "energy", "demography"}
 
 
 def test_weekly_and_monthly_become_due_on_time():
@@ -78,7 +78,7 @@ def test_automatic_run_collects_only_due_sectors_then_skips_them(sched, monkeypa
     calls = []
     _fake_agents(monkeypatch, calls)
     first = asyncio.run(sched.run_harvest_job(trigger="scheduler", only_due=True))
-    assert len(calls) == 8 and first["skipped"] == {}          # first time: everything is due
+    assert len(calls) == len(SECTOR_IDS) and first["skipped"] == {}          # first time: everything is due
     calls.clear()
     second = asyncio.run(sched.run_harvest_job(trigger="scheduler", only_due=True))
     assert calls == []                                          # collected a minute ago: nothing is due
@@ -112,7 +112,7 @@ def test_unreadable_history_means_everything_is_due(sched, monkeypatch):
     _fake_agents(monkeypatch, calls)
     monkeypatch.setattr(sched.history, "list_runs", lambda limit=30: (_ for _ in ()).throw(RuntimeError("db down")))
     asyncio.run(sched.run_harvest_job(trigger="scheduler", only_due=True))
-    assert len(calls) == 8
+    assert len(calls) == len(SECTOR_IDS)
 
 
 def test_endpoint_collects_due_only_unless_forced(monkeypatch):

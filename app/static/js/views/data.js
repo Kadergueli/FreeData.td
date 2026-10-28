@@ -28,6 +28,7 @@ function getSectorsFilter() {
     { id: 'transport', label: t('sectors.names.transport') },
     { id: 'education', label: t('sectors.names.education') },
     { id: 'economy', label: t('sectors.names.economy') },
+    { id: 'demography', label: t('sectors.names.demography') },
   ];
 }
 

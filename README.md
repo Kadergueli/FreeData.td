@@ -31,6 +31,7 @@ FreeData.td est la réponse à ce problème.
 | ⚡ Énergie | World Bank | ✅ En production |
 | 🚗 Transports | OpenStreetMap, HDX, World Bank | 🔒 Collecte administrateur |
 | 📚 Éducation | UNESCO UIS, UNICEF, World Bank | 🔒 Collecte administrateur |
+| 👥 Démographie | World Bank (WDI), INSEED (population par âge, sexe et milieu) | ✅ En production |
 
 ## Accès aux données
 

@@ -110,6 +110,7 @@ const TRANSLATIONS = {
         economy:     'ÉCONOMIE',
         health:      'SANTÉ',
         energy:      'ÉNERGIE',
+        demography:  'DÉMOGRAPHIE',
       },
     },
 
@@ -185,6 +186,9 @@ const TRANSLATIONS = {
         economy:     'ÉCONOMIE',
         health:      'SANTÉ',
         energy:      'ÉNERGIE',
+        transport:   'TRANSPORT',
+        education:   'ÉDUCATION',
+        demography:  'DÉMOGRAPHIE',
       },
       ds: {
         freshness_title:    'Fraîcheur des Données par Secteur',
@@ -592,6 +596,7 @@ const TRANSLATIONS = {
         economy:     'ECONOMY',
         health:      'HEALTH',
         energy:      'ENERGY',
+        demography:  'DEMOGRAPHY',
       },
     },
 
@@ -663,6 +668,9 @@ const TRANSLATIONS = {
         economy:     'ECONOMY',
         health:      'HEALTH',
         energy:      'ENERGY',
+        transport:   'TRANSPORT',
+        education:   'EDUCATION',
+        demography:  'DEMOGRAPHY',
       },
       ds: {
         freshness_title:    'Data Freshness by Sector',

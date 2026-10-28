@@ -24,7 +24,7 @@ function renderSourceCard(src) {
         <div>
           <div class="flex items-center gap-2 mb-1">
             <span class="mono-xs badge badge--cyan">${escapeHtml(String(sec).toUpperCase())}</span>
-            <span class="mono-xs badge badge--valid">${escapeHtml(src.license)}</span>
+            <span class="mono-xs badge badge--valid">${escapeHtml((en ? src.license : src.license_fr) || src.license)}</span>
           </div>
           <h3 class="mono-xl fw-700" style="color:var(--text);margin-top:4px;">${escapeHtml(src.name)}</h3>
           <p class="mono-xs text-cyan flex items-center gap-1 mt-1">

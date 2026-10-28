@@ -9,7 +9,7 @@ import { t, getLang } from '../i18n.js';
 import { OFFICIAL_SOURCES } from '../sources_catalog.js';
 import { escapeHtml } from '../sanitize.js';
 
-const ALL_SECTOR_COUNT = 8;
+const ALL_SECTOR_COUNT = 9;
 
 
 export const HomeView = {
@@ -30,6 +30,7 @@ export const HomeView = {
       { icon: 'zap',            id: 'energy',      name: t('sectors.names.energy') },
       { icon: 'truck',          id: 'transport',   name: t('sectors.names.transport') },
       { icon: 'graduation-cap', id: 'education',   name: t('sectors.names.education') },
+      { icon: 'users',          id: 'demography',  name: t('sectors.names.demography') },
     ];
 
     const rawCap = t('home.capabilities');

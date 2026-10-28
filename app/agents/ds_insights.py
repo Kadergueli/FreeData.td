@@ -26,7 +26,7 @@ _SOUDURE_MONTHS = {6, 7, 8, 9}
 # Secteurs reconnus par la plateforme
 _KNOWN_SECTORS = [
     "agriculture", "markets", "environment", "economy",
-    "health", "energy", "education", "transport",
+    "health", "energy", "education", "transport", "demography",
 ]
 
 # Paires de secteurs pour l'analyse de corrélation croisée

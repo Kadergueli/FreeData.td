@@ -21,12 +21,12 @@ def test_one_huge_sector_cannot_fill_the_file():
     per = {s: sum(1 for r in rows if r["sector"] == s) for s in SECTOR_IDS}
     assert len(rows) <= 5000 and truncated is True
     assert all(per[s] == 30 for s in SECTOR_IDS if s != "environment")   # small sectors complete
-    assert per["environment"] == 5000 - 30 * 7                           # leftover goes to the big one
+    assert per["environment"] == 5000 - 30 * (len(SECTOR_IDS) - 1)                           # leftover goes to the big one
 
 
 def test_everything_fits_means_not_truncated():
     rows, truncated = _repo({s: 100 for s in SECTOR_IDS}).export_rows(None, None, 5000)
-    assert len(rows) == 800 and truncated is False
+    assert len(rows) == 100 * len(SECTOR_IDS) and truncated is False
 
 
 def test_sector_filter_keeps_newest_rows_behaviour():

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 from app.agents import (
     AgricultureAgent,
     AnalysisAgent,
+    DemographyAgent,
     EconomyAgent,
     EducationAgent,
     EnergyAgent,
@@ -384,6 +385,16 @@ async def collect_transport(source: str = "all") -> dict:
 async def collect_education(source: str = "all") -> dict:
     try:
         return (await EducationAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/collection/demography", status_code=202, dependencies=[Depends(require_collection_access)])
+async def collect_demography(source: str = "all") -> dict:
+    try:
+        return (await DemographyAgent(repository).run(source)).model_dump(mode="json")
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:

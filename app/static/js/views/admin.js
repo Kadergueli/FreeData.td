@@ -9,7 +9,7 @@ import { showToast, formatDate } from '../ui.js';
 import { t } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
 
-const SECTOR_IDS = ['agriculture', 'environment', 'markets', 'transport', 'education', 'economy', 'health', 'energy'];
+const SECTOR_IDS = ['agriculture', 'environment', 'markets', 'transport', 'education', 'economy', 'health', 'energy', 'demography'];
 let _tab = 'overview';
 let _qStatus = 'pending';
 let _dSector = '';

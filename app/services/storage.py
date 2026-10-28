@@ -14,7 +14,7 @@ from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
 
-SECTOR_IDS = ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"]
+SECTOR_IDS = ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy", "demography"]
 
 # --- Small process-wide TTL cache for expensive, read-mostly aggregates -----
 # catalog()/list_regions() each pull thousands of rows from Supabase and
@@ -900,10 +900,11 @@ class ObservationRepository:
         cut = [sec for sec, rows in by_sector.items() if len(rows) >= share]
         spare = limit - sum(len(rows) for rows in by_sector.values())
         if cut and spare > 0:
-            bonus = spare // len(cut)
+            bonus, extra = divmod(spare, len(cut))     # the remainder goes to the first sectors, one row each
+            wanted = {sec: share + bonus + (1 if i < extra else 0) for i, sec in enumerate(cut)}
             for sec in cut:
-                by_sector[sec] = self.list_observations(sector=sec, region=region, limit=share + bonus)
-            cut = [sec for sec in cut if len(by_sector[sec]) >= share + bonus]
+                by_sector[sec] = self.list_observations(sector=sec, region=region, limit=wanted[sec])
+            cut = [sec for sec in cut if len(by_sector[sec]) >= wanted[sec]]
         rows = [row for sec in SECTOR_IDS for row in by_sector[sec]]
         return rows[:limit], bool(cut)
 

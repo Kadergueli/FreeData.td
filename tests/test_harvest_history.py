@@ -70,7 +70,7 @@ def _fake_agents(monkeypatch, calls, boom=()):
                     raise RuntimeError(f"{name} exploded")
                 return SimpleNamespace(stored=2, model_dump=lambda mode="json": {"stored": 2, "received": 3, "rejected": 1, "errors": []})
         return A
-    for cls in ("Agriculture", "Environment", "Markets", "Economy", "Health", "Energy", "Transport", "Education"):
+    for cls in ("Agriculture", "Environment", "Markets", "Economy", "Health", "Energy", "Transport", "Education", "Demography"):
         monkeypatch.setattr(sched_mod, f"{cls}Agent", make(cls.lower()))
 
 
@@ -97,7 +97,7 @@ def test_all_sectors_by_default_and_partial_failure_is_visible(sched, monkeypatc
     calls = []
     _fake_agents(monkeypatch, calls, boom=("transport",))
     asyncio.run(sched.run_harvest_job(trigger="scheduler"))
-    assert len(calls) == 8
+    assert len(calls) == 9
     row = sched.history.list_runs()[0]
     assert row["status"] == "partial" and row["trigger"] == "scheduler" and row["sectors"] == list(SECTOR_IDS)
     assert "transport exploded" in row["results"]["transport"]["error"]
@@ -189,10 +189,10 @@ def test_admin_runs_chosen_sectors_and_sees_them_in_history_and_audit(client):
 def test_empty_body_means_every_sector(client):
     assert client.post("/api/v1/admin/collections/run", headers=H).status_code == 202
     for _ in range(50):
-        if len(client.calls) == 8:
+        if len(client.calls) == 9:
             break
         time.sleep(0.1)
-    assert sorted(client.calls) == sorted(c.lower() for c in ("Agriculture", "Environment", "Markets", "Economy", "Health", "Energy", "Transport", "Education"))
+    assert sorted(client.calls) == sorted(c.lower() for c in ("Agriculture", "Environment", "Markets", "Economy", "Health", "Energy", "Transport", "Education", "Demography"))
 
 
 def test_unknown_sector_is_422_and_not_audited(client):

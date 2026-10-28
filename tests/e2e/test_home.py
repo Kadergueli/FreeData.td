@@ -15,7 +15,7 @@ def test_home_shows_real_totals_and_no_skeleton_left(probe):
     probe.goto()
     probe.page.wait_for_function("!document.querySelector('.stat-card .skeleton')")
     assert probe.page.inner_text("#stat-obs-count") == "60"          # seed: 60 observations
-    assert probe.page.inner_text("#stat-sectors-count") == "04 / 08"  # seed: 4 sectors hold data
+    assert probe.page.inner_text("#stat-sectors-count") == "04 / 09"  # seed: 4 sectors hold data
     assert probe.page.inner_text("#stat-validation-score") == "—"     # SQLite mode: no quality score is measured, so no fake 100%
     loc = probe.page.inner_text("#latest-location")
     assert "TCD" in loc and "TCH" not in loc  # real ISO code from the data, not a made-up default

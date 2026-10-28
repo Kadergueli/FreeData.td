@@ -6,7 +6,7 @@ graceful-degradation pattern already used by get_pipeline_audit()."""
 
 from pathlib import Path
 
-from app.services.storage import ObservationRepository
+from app.services.storage import SECTOR_IDS, ObservationRepository
 
 
 class _FakeQuery:
@@ -72,7 +72,7 @@ def test_catalog_skips_failing_sector_instead_of_raising(tmp_path: Path) -> None
 def test_catalog_returns_empty_list_if_every_sector_fails(tmp_path: Path) -> None:
     repository = ObservationRepository(database_path=tmp_path / "test.db")
     repository._supabase = _FakeSupabaseClient(
-        should_fail={"agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"}
+        should_fail=set(SECTOR_IDS)
     )
 
     result = repository.catalog()  # must NOT raise even if ALL sectors fail

@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)
 
 SOURCE_LABEL = "INSEED"
 LICENSE = "Licence Ouverte INSEED"
-ATTRIBUTION = "Source : INSEED. Contient des informations sous licence selon l'Accord de Licence Ouverte de l'INSEED."
+# The French sentence is the wording required by the licence; the English line is a courtesy translation.
+ATTRIBUTION = ("Source : INSEED. Contient des informations sous licence selon l'Accord de Licence Ouverte de l'INSEED. "
+               "(Source: INSEED. Contains information licensed under the INSEED Open Licence Agreement.)")
 PORTAL_URL = "https://chad.opendataforafrica.org/tylheoe/principaux-indicateurs-statistiques"
 
 
@@ -44,15 +46,14 @@ class Dataset:
 
 # Only datasets whose real answer has been seen are registered: add the others one by one.
 DATASETS: dict[str, Dataset] = {d.flow: d for d in (
-    Dataset("urtpzwb", "Établissements de santé", "health", "établissements",
+    Dataset("urtpzwb", "Health facilities", "health", "facilities",
             "TD+TD-BA+TD-BO+TD-CB+TD-GR+TD-HL+TD-KA+TD-LC+TD-LO+TD-LR+TD-MA+TD-MO+TD-ME+TD-MC+TD-OD+TD-SA+TD-TA+TD-WF+TD-ND"
             "+TD-BG+TD-EO+TD-SI+TD-TI+TD-EE.PUB+PRV.HN+HP+HD+CS+CLI+CAM+CAS.TOT"),
-    # National only (no province in this table). Filed under economy: the platform has no demography
-    # sector and population is the denominator of every per-capita indicator.
-    Dataset("pqvhyxg", "Population", "economy", "habitants",
+    # National only (no province in this table).
+    Dataset("pqvhyxg", "Population", "demography", "inhabitants",
             "POPT+P0_4+P5_9+P10_14+P15_19+P20_24+P25_29+P30_34+P35_39+P40_44+P45_49+P50_54+P55_59+P60_64"
             "+P65_69+P70_74+P75_79+P80_P.M+F.U+R"),
-    Dataset("xxhsxif", "Indice des prix à la consommation", "economy", "indice",
+    Dataset("xxhsxif", "Consumer price index", "economy", "index",
             "PCPI_IX+PCPI_CP_01_IX+PCPI_CP_02_IX+PCPI_CP_03_IX+PCPI_CP_04_IX+PCPI_CP_05_IX+PCPI_CP_06_IX"
             "+PCPI_CP_07_IX+PCPI_CP_08_IX+PCPI_CP_09_IX+PCPI_CP_10_IX+PCPI_CP_11_IX.2019"),
 )}
@@ -66,28 +67,29 @@ PROVINCES = {
     "TD-OD": "Ouaddai", "TD-SA": "Salamat", "TD-SI": "Sila", "TD-TA": "Tandjile", "TD-TI": "Tibesti",
     "TD-WF": "Wadi Fira",
 }
-# Only codes whose meaning is certain; any other code is shown as is rather than guessed.
+# Indicator names are English, like every other source of the platform (the interface itself is
+# bilingual). Only codes whose meaning is certain are translated; any other code is shown as is.
 CODE_LABELS = {
-    "PUB": "public", "PRV": "privé", "COM": "communautaire",
-    "HN": "hôpital national", "HP": "hôpital provincial", "HD": "hôpital de district",
-    "CS": "centre de santé", "CLI": "clinique",
-    "M": "hommes", "F": "femmes", "U": "urbain", "R": "rural", "POPT": "tous âges",
-    "PCPI_IX": "indice général", "PCPI_CP_01_IX": "alimentation et boissons non alcoolisées",
+    "PUB": "public", "PRV": "private", "COM": "community",
+    "HN": "national hospital", "HP": "provincial hospital", "HD": "district hospital",
+    "CS": "health centre", "CLI": "clinic",
+    "M": "men", "F": "women", "U": "urban", "R": "rural", "POPT": "all ages",
+    "PCPI_IX": "all items", "PCPI_CP_01_IX": "food and non-alcoholic beverages",
 }
 _AGE_GROUP = re.compile(r"^P(\d{1,2})_(\d{1,2})$")
 _AGE_OPEN = re.compile(r"^P(\d{2})_P$")
 
 
 def code_label(code: str) -> str:
-    """Readable form of an INSEED code: known labels, age groups (P5_9 -> 5-9 ans), else the code."""
+    """Readable form of an INSEED code: known labels, age groups (P5_9 -> 5-9 years), else the code."""
     if code in CODE_LABELS:
         return CODE_LABELS[code]
     m = _AGE_GROUP.match(code)
     if m:
-        return f"{m[1]}-{m[2]} ans"
+        return f"{m[1]}-{m[2]} years"
     m = _AGE_OPEN.match(code)
     if m:
-        return f"{m[1]} ans et plus"
+        return f"{m[1]} years and over"
     return code
 
 
