@@ -22,6 +22,10 @@ from app.services.storage import SECTOR_IDS, ObservationRepository
 
 logger = logging.getLogger(__name__)
 
+# Safety net: one sector that never answers must not keep the whole harvest "running" for ever
+# (and block every later run). The slowest legitimate sector (FEWS NET prices) takes ~2 minutes.
+SECTOR_TIMEOUT_SECONDS = 20 * 60
+
 
 class AutonomousHarvesterScheduler:
     """Background service that periodically collects open API data into Supabase/SQLite."""
@@ -185,9 +189,12 @@ class AutonomousHarvesterScheduler:
             if wanted is not None and sec_name not in wanted:
                 continue
             try:
-                res = await agent.run(source="all")
+                res = await asyncio.wait_for(agent.run(source="all"), timeout=SECTOR_TIMEOUT_SECONDS)
                 agent_results[sec_name] = res.model_dump(mode="json")
                 total_stored += res.stored
+            except asyncio.TimeoutError:
+                logger.error("Harvest of %s stopped: no end after %d s.", sec_name, SECTOR_TIMEOUT_SECONDS)
+                agent_results[sec_name] = {"error": f"stopped after {SECTOR_TIMEOUT_SECONDS // 60} minutes without finishing"}
             except Exception as exc:
                 logger.error("Error harvesting %s: %s", sec_name, exc)
                 agent_results[sec_name] = {"error": str(exc)}

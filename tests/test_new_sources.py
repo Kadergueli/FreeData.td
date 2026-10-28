@@ -234,3 +234,59 @@ def test_probe_sources_reports_each_source(monkeypatch):
     monkeypatch.setattr(osm, "_query", fake_query)
     out = run(cli.probe_sources())
     assert "IMF: FAILED - down" in out and "WFP (HDX): FAILED - down" in out and "HTTP 403" in out
+
+
+# ---------------------------------------------------------------- a collection must always end
+def test_osm_stops_early_when_the_first_requests_all_fail(monkeypatch):
+    calls = []
+
+    async def fake(client, query):
+        calls.append(query)
+        return None, "HTTP 504"
+    monkeypatch.setattr(osm, "_query", fake)
+    errors: list[str] = []
+    with pytest.raises(RuntimeError, match="stopped early: the source is not answering"):
+        run(osm.collect_osm_counts([osm.SCHOOLS], errors, pause=0))
+    assert len(calls) <= osm.MAX_FIRST_FAILURES + osm.CONCURRENCY      # not 23 x slow retries
+
+
+def test_osm_global_deadline_ends_a_hanging_server(monkeypatch):
+    async def hang(client, query):
+        await asyncio.sleep(60)
+    monkeypatch.setattr(osm, "_query", hang)
+    errors: list[str] = []
+    import time
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="time limit reached"):
+        run(osm.collect_osm_counts([osm.SCHOOLS], errors, pause=0, deadline_seconds=0.3))
+    assert time.monotonic() - started < 5
+
+
+def test_osm_never_runs_more_than_two_requests_at_once(monkeypatch):
+    live = {"now": 0, "max": 0}
+
+    async def fake(client, query):
+        live["now"] += 1
+        live["max"] = max(live["max"], live["now"])
+        await asyncio.sleep(0.01)
+        live["now"] -= 1
+        return _counts(3), ""
+    monkeypatch.setattr(osm, "_query", fake)
+    run(osm.collect_osm_counts([osm.SCHOOLS], [], pause=0))
+    assert live["max"] == osm.CONCURRENCY
+
+
+def test_a_sector_that_never_finishes_is_stopped_by_the_harvest(monkeypatch):
+    from app.services import scheduler as sched
+
+    class Hanging:
+        def __init__(self, repo): pass
+        async def run(self, source="all"):
+            await asyncio.sleep(60)
+
+    monkeypatch.setattr(sched, "SECTOR_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr(sched, "TransportAgent", Hanging)
+    service = sched.AutonomousHarvesterScheduler(interval_hours=24)
+    service._next_sectors = ["transport"]
+    result = run(service._run_harvest_job())
+    assert "stopped after" in result["sectors"]["transport"]["error"]

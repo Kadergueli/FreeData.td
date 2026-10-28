@@ -9,6 +9,7 @@ Data: © OpenStreetMap contributors, ODbL 1.0."""
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import logging
@@ -70,48 +71,68 @@ def parse_counts(payload: Any, expected: int) -> list[int] | None:
     return counts if len(counts) == expected else None
 
 
+REQUEST_TIMEOUT = 45.0       # seconds, per request (the query itself asks Overpass for at most 25 s)
+DEADLINE_SECONDS = 180.0     # the whole collection stops here, whatever happened
+CONCURRENCY = 2              # the public Overpass servers give 2 slots per address
+MAX_FIRST_FAILURES = 4       # this many failures before ANY success: the source is not answering, stop
+
+
 async def _query(client: httpx.AsyncClient, query: str) -> tuple[Any, str]:
-    """POST one query, trying each server; returns (payload or None, reason of the last failure)."""
+    """POST one query to each server in turn (one attempt each); returns (payload or None, reason)."""
     reason = "no detail"
     for url in OVERPASS_URLS:
-        for attempt in (1, 2):
-            try:
-                response = await client.post(url, data={"data": query},
-                                             headers={"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata.td)"})
-                if response.status_code == 200:
-                    return response.json(), ""
-                reason = f"HTTP {response.status_code}"
-                if response.status_code in (429, 504) and attempt == 1:
-                    await asyncio.sleep(8)       # busy server: wait for a free slot, once
-                    continue
-                break
-            except (httpx.RequestError, ValueError) as exc:
-                reason = f"{type(exc).__name__}: {str(exc)[:100] or 'no detail'}"
-                break
+        try:
+            response = await client.post(url, data={"data": query},
+                                         headers={"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata.td)"})
+            if response.status_code == 200:
+                return response.json(), ""
+            reason = f"HTTP {response.status_code}"
+        except (httpx.RequestError, ValueError) as exc:
+            reason = f"{type(exc).__name__}: {str(exc)[:100] or 'no detail'}"
     return None, reason
 
 
-async def collect_osm_counts(features: list[OsmFeature], errors: list[str], pause: float = 1.5) -> list[dict[str, Any]]:
+async def collect_osm_counts(features: list[OsmFeature], errors: list[str], pause: float = 1.0,
+                             deadline_seconds: float = DEADLINE_SECONDS) -> list[dict[str, Any]]:
     """Counts of the given features for every region, as raw records (monthly snapshots).
 
-    A region whose answer is missing is skipped and counted in `errors`; a region where EVERY
-    count is zero is also skipped (the ISO area was not found, which is not "nothing mapped").
-    Raises RuntimeError when no region answered at all, so the run reports the source as failed."""
+    Bounded in time: two regions at once, a per-request timeout, a global deadline, and an early
+    stop when the first requests all fail (a collection must never run for ever). A region whose
+    answer is missing is skipped and counted in `errors`; a region where EVERY count is zero is
+    also skipped (the ISO area was not found, which is not "nothing mapped"). Raises RuntimeError
+    when nothing could be collected, so the run reports the source as failed."""
     today = datetime.now(UTC)
+    started = time.monotonic()
     records: list[dict[str, Any]] = []
     failed: list[str] = []
+    skipped: list[str] = []
     empty: list[str] = []
-    last_reason = ""
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0)) as client:
-        for iso, region in REGIONS.items():
-            payload, reason = await _query(client, build_query(iso, features))
+    state: dict[str, Any] = {"ok": 0, "streak": 0, "stop": "", "reason": ""}
+    gate = asyncio.Semaphore(CONCURRENCY)
+
+    async def one(client: httpx.AsyncClient, iso: str, region: str) -> None:
+        async with gate:
+            remaining = deadline_seconds - (time.monotonic() - started)
+            if state["stop"] or remaining <= 0:
+                state["stop"] = state["stop"] or "time limit reached"
+                skipped.append(region)
+                return
+            try:
+                payload, reason = await asyncio.wait_for(_query(client, build_query(iso, features)), timeout=remaining)
+            except asyncio.TimeoutError:
+                state["stop"], payload, reason = "time limit reached", None, "time limit reached"
             counts = parse_counts(payload, len(features)) if payload is not None else None
             if counts is None:
                 failed.append(region)
-                last_reason = reason or "unexpected answer shape"
-            elif not any(counts):
-                empty.append(region)
+                state["reason"] = reason or "unexpected answer shape"
+                state["streak"] += 1
+                if state["ok"] == 0 and state["streak"] >= MAX_FIRST_FAILURES:
+                    state["stop"] = "the source is not answering"
             else:
+                state["ok"] += 1
+                state["streak"] = 0
+                if not any(counts):
+                    empty.append(region)
                 for feature, total in zip(features, counts):
                     if total > 0:
                         records.append({
@@ -120,9 +141,15 @@ async def collect_osm_counts(features: list[OsmFeature], errors: list[str], paus
                             "region": region, "url": "https://www.openstreetmap.org/copyright",
                         })
             await asyncio.sleep(pause)
-    if failed:
-        errors.append(f"OpenStreetMap: {len(failed)}/{len(REGIONS)} regions did not answer "
-                      f"(last reason: {last_reason}); first: {', '.join(failed[:3])}")
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(REQUEST_TIMEOUT, connect=15.0)) as client:
+        await asyncio.gather(*(one(client, iso, region) for iso, region in REGIONS.items()))
+
+    missing = failed + skipped
+    if missing:
+        stopped = f"; stopped early: {state['stop']}" if state["stop"] else ""
+        errors.append(f"OpenStreetMap: {len(missing)}/{len(REGIONS)} regions did not answer "
+                      f"(last reason: {state['reason'] or 'none'}{stopped}); first: {', '.join(missing[:3])}")
     if empty:
         errors.append(f"OpenStreetMap: no mapped feature found for {len(empty)} region(s): {', '.join(empty[:5])}")
     if not records:
