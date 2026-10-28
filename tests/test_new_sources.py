@@ -25,8 +25,10 @@ def _counts(*totals):
 
 
 def test_query_has_one_count_per_feature_and_the_iso_area():
-    q = osm.build_query("TD-LC", [osm.SCHOOLS, osm.AERODROMES])
-    assert 'area["ISO3166-2"="TD-LC"]' in q and q.count("out count;") == 2
+    q = osm.build_query("TD-LC", osm.SCHOOLS)
+    assert 'area["ISO3166-2"="TD-LC"]' in q and q.count("out count;") == 1 and "~" not in q
+    union = osm.build_query("TD-LC", osm.MAIN_ROADS)
+    assert union.count("(area.a);") == 2 and "~" not in union      # exact tags, unioned
 
 
 def test_parse_counts_checks_the_shape():
@@ -44,7 +46,9 @@ def _fake_query(answers):
 
 
 def test_collect_osm_counts_builds_regional_records(monkeypatch):
-    monkeypatch.setattr(osm, "_query", _fake_query(lambda iso: (_counts(7, 0), "")))
+    async def fake(client, query):
+        return (_counts(0), "") if "aerodrome" in query else (_counts(7), "")
+    monkeypatch.setattr(osm, "_query", fake)
     errors: list[str] = []
     records = run(osm.collect_osm_counts([osm.MAIN_ROADS, osm.AERODROMES], errors, pause=0))
     assert len(records) == len(osm.REGIONS)                      # the zero count is not stored
@@ -61,7 +65,7 @@ def test_partial_failure_is_reported_not_hidden(monkeypatch):
     errors: list[str] = []
     records = run(osm.collect_osm_counts([osm.SCHOOLS], errors, pause=0))
     assert len(records) == len(osm.REGIONS) - 2
-    assert "2/23 regions did not answer" in errors[0] and "HTTP 504" in errors[0]
+    assert "2/23 queries did not answer" in errors[0] and "HTTP 504" in errors[0]
 
 
 def test_unresolved_area_is_skipped_and_noted(monkeypatch):
@@ -73,7 +77,7 @@ def test_unresolved_area_is_skipped_and_noted(monkeypatch):
 
 def test_total_failure_raises(monkeypatch):
     monkeypatch.setattr(osm, "_query", _fake_query(lambda iso: (None, "HTTP 429")))
-    with pytest.raises(RuntimeError, match="did not answer"):
+    with pytest.raises(RuntimeError, match="queries did not answer"):
         run(osm.collect_osm_counts([osm.SCHOOLS], [], pause=0))
 
 

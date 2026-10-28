@@ -84,18 +84,23 @@ async def probe_sources() -> str:
     except Exception as exc:
         lines.append(f"WFP (HDX): FAILED - {exc}")
 
-    features = [osm.SCHOOLS, osm.HOSPITALS]
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0)) as client:
-            payload, reason = await osm._query(client, osm.build_query("TD-LC", features))
-        counts = osm.parse_counts(payload, len(features)) if payload is not None else None
-        if counts is None:
-            lines.append(f"OpenStreetMap (Lac): FAILED - {reason or 'unexpected answer: ' + str(payload)[:200]}")
-        else:
-            lines.append("OpenStreetMap (Lac): OK, " + ", ".join(f"{f.unit}={c}" for f, c in zip(features, counts))
-                         + ("  <- all zero: the ISO area was probably not found" if not any(counts) else ""))
-    except Exception as exc:
-        lines.append(f"OpenStreetMap (Lac): FAILED - {exc}")
+    import time
+
+    for feature in (osm.SCHOOLS, osm.HOSPITALS, osm.AERODROMES, osm.MAIN_ROADS):
+        began = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(osm.REQUEST_TIMEOUT, connect=15.0)) as client:
+                payload, reason = await osm._query(client, osm.build_query("TD-LC", feature))
+            counts = osm.parse_counts(payload, 1) if payload is not None else None
+            took = f"{time.monotonic() - began:.0f}s"
+            if counts is None:
+                lines.append(f"OpenStreetMap (Lac, {feature.unit}): FAILED after {took} - "
+                             f"{reason or 'unexpected answer: ' + str(payload)[:200]}")
+            else:
+                note = "  <- zero: the ISO area was probably not found" if counts[0] == 0 else ""
+                lines.append(f"OpenStreetMap (Lac, {feature.unit}): OK in {took}, {counts[0]}{note}")
+        except Exception as exc:
+            lines.append(f"OpenStreetMap (Lac, {feature.unit}): FAILED - {exc}")
     return "\n".join(lines)
 
 
