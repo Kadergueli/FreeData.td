@@ -60,6 +60,20 @@ def _clean_search_term(q: str | None, max_len: int = 100) -> str | None:
     return cleaned or None
 
 
+def _region_like_pattern(region: str) -> str:
+    """LIKE/ILIKE pattern that finds a region whatever its spelling.
+
+    The stored names are not uniform ("Guera", "Guéra", "Mongo (Guéra)", "Ouaddai",
+    "Abéché (Ouaddaï)", "N'Djamena" with a straight or a curly apostrophe...). The text is
+    stripped of accents, then every vowel and apostrophe becomes the one-character wildcard
+    `_`, so "Guera" and "Guéra" both match every spelling. User-typed `%`, `_` and `\\` are
+    dropped first so they cannot act as wildcards themselves."""
+    import unicodedata
+    plain = unicodedata.normalize("NFD", str(region)).encode("ascii", "ignore").decode("ascii")
+    plain = "".join(c for c in plain if c not in "%_\\").strip()
+    return "%" + "".join("_" if c in "aeiouAEIOU'`" else c for c in plain) + "%"
+
+
 def _with_retry(operation: Any, *, attempts: int = 3, base_delay: float = 0.3, label: str = "Supabase operation"):
     """Run a zero-arg callable, retrying on transient network errors (the same
     class of Windows socket flakiness — httpx.ReadError / WinError 10035 —
@@ -547,7 +561,7 @@ class ObservationRepository:
                 if sector:
                     query = query.eq("secteur", sector)
                 if region:
-                    query = query.ilike("region", f"%{region}%")
+                    query = query.ilike("region", _region_like_pattern(region))
                 if q:
                     # PostgREST uses '*' as the ilike wildcard inside or=(); _clean_search_term()
                     # already removed every filter-syntax character (',' '(' ')' '*' ...).
@@ -564,7 +578,6 @@ class ObservationRepository:
 
         if not self._supabase:
             try:
-                import unicodedata
                 query = "SELECT * FROM observations"
                 conditions: list[str] = []
                 parameters: list[Any] = []
@@ -572,13 +585,8 @@ class ObservationRepository:
                     conditions.append("sector = ?")
                     parameters.append(sector)
                 if region:
-                    unaccented = unicodedata.normalize('NFD', region).encode('ascii', 'ignore').decode('utf-8')
-                    if unaccented != region:
-                        conditions.append("(region LIKE ? COLLATE NOCASE OR region LIKE ? COLLATE NOCASE)")
-                        parameters.extend([f"%{region}%", f"%{unaccented}%"])
-                    else:
-                        conditions.append("region LIKE ? COLLATE NOCASE")
-                        parameters.append(f"%{region}%")
+                    conditions.append("region LIKE ? COLLATE NOCASE")
+                    parameters.append(_region_like_pattern(region))
                 if q:
                     like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
                     conditions.append(

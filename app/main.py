@@ -231,10 +231,11 @@ def pipeline_audit() -> dict:
 EXPORT_LIMIT = 5000
 
 
-def _export_headers(filename: str, truncated: bool) -> dict[str, str]:
+def _export_headers(filename: str, truncated: bool, row_count: int) -> dict[str, str]:
     """Download headers; flags an export that hit the row cap so the UI can warn
-    instead of silently handing out an incomplete file."""
-    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    instead of silently handing out an incomplete file, and gives the number of rows so
+    the UI can say "nothing matches" instead of saving a file that holds only headers."""
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"', "X-Export-Rows": str(row_count)}
     if truncated:
         headers["X-Export-Truncated"] = "true"
     return headers
@@ -246,7 +247,10 @@ def _safe_filename_part(sector: str | None) -> str:
     hyphen or underscore, preventing header-value/quote injection."""
     if not sector:
         return "all"
-    cleaned = "".join(c for c in sector if c.isalnum() or c in "-_")
+    import unicodedata
+    # ASCII only: an accented letter ("Guéra") would put a non-ASCII byte in the header.
+    plain = unicodedata.normalize("NFD", sector).encode("ascii", "ignore").decode("ascii")
+    cleaned = "".join(c for c in plain if c.isalnum() or c in "-_")
     return cleaned or "all"
 
 
@@ -260,7 +264,7 @@ def export_csv(sector: str | None = Query(default=None, max_length=40), region: 
     filename = f"freedatatd-{name_parts}-export.csv"
     return PlainTextResponse(
         content,
-        headers=_export_headers(filename, truncated),
+        headers=_export_headers(filename, truncated, len(rows)),
         media_type="text/csv",
     )
 
@@ -274,7 +278,7 @@ def export_json(sector: str | None = Query(default=None, max_length=40), region:
     filename = f"freedatatd-{name_parts}-export.json"
     return JSONResponse(
         content=rows,
-        headers=_export_headers(filename, truncated),
+        headers=_export_headers(filename, truncated, len(rows)),
     )
 
 
@@ -288,7 +292,7 @@ def export_xml(sector: str | None = Query(default=None, max_length=40), region: 
     filename = f"freedatatd-{name_parts}-export.xml"
     return PlainTextResponse(
         content,
-        headers=_export_headers(filename, truncated),
+        headers=_export_headers(filename, truncated, len(rows)),
         media_type="application/xml",
     )
 
@@ -306,7 +310,7 @@ def export_parquet(sector: str | None = Query(default=None, max_length=40), regi
     filename = f"freedatatd-{name_parts}-export.parquet"
     return Response(
         content=content,
-        headers=_export_headers(filename, truncated),
+        headers=_export_headers(filename, truncated, len(rows)),
         media_type="application/octet-stream",
     )
 

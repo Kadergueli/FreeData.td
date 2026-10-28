@@ -111,6 +111,10 @@ async function downloadExport() {
       try { detail = (await res.json()).detail; } catch (_) { /* not JSON */ }
       throw new Error(detail || `HTTP ${res.status}`);
     }
+    if (res.headers.get('X-Export-Rows') === '0') {
+      showToast(t('api.export_empty'), 'info');
+      return;
+    }
     const truncated = res.headers.get('X-Export-Truncated') === 'true';
     const blob = await res.blob();
     const cd = res.headers.get('Content-Disposition') || '';
