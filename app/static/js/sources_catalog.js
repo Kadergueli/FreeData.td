@@ -131,8 +131,8 @@ export const OFFICIAL_SOURCES = [
     sectorId: 'transport',
     license: 'ODbL (Open Database License)',
     url: 'https://www.openstreetmap.org/',
-    desc_fr: 'Nombre par région de routes principales, aérodromes, hôpitaux et écoles cartographiés par les contributeurs (ce qui est cartographié, pas ce qui existe).',
-    desc_en: 'Per-region counts of mapped main roads, aerodromes, hospitals and schools (what contributors have mapped, not what exists).'
+    desc_fr: 'Hôpitaux, cliniques et écoles cartographiés par région ; routes principales et aérodromes au niveau national (ce qui est cartographié, pas ce qui existe).',
+    desc_en: 'Mapped hospitals, clinics and schools per region; main roads and aerodromes nationally (what contributors have mapped, not what exists).'
   },
   {
     id: 'world-bank-health',

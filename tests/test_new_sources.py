@@ -46,16 +46,22 @@ def _fake_query(answers):
 
 
 def test_collect_osm_counts_builds_regional_records(monkeypatch):
+    seen = []
+
     async def fake(client, query):
+        seen.append(query)
         return (_counts(0), "") if "aerodrome" in query else (_counts(7), "")
     monkeypatch.setattr(osm, "_query", fake)
     errors: list[str] = []
-    records = run(osm.collect_osm_counts([osm.MAIN_ROADS, osm.AERODROMES], errors, pause=0))
-    assert len(records) == len(osm.REGIONS)                      # the zero count is not stored
-    first = records[0]
-    assert first["source"] == "OpenStreetMap" and first["unit"] == "segments" and first["value"] == 7.0
-    assert {r["region"] for r in records} == set(osm.REGIONS.values())
-    assert errors == []
+    records = run(osm.collect_osm_counts([osm.SCHOOLS, osm.MAIN_ROADS, osm.AERODROMES], errors, pause=0))
+    # schools: one query per region; roads and aerodromes: ONE national query each (too slow per region)
+    assert len(seen) == len(osm.REGIONS) + 2
+    assert sum('"ISO3166-1"="TD"' in q for q in seen) == 2
+    schools = [r for r in records if r["unit"] == "schools"]
+    assert {r["region"] for r in schools} == set(osm.REGIONS.values()) and schools[0]["value"] == 7.0
+    roads = [r for r in records if r["unit"] == "segments"]
+    assert len(roads) == 1 and roads[0]["region"] == "national"      # the zero aerodrome count is not stored
+    assert schools[0]["source"] == "OpenStreetMap" and errors == []
 
 
 def test_partial_failure_is_reported_not_hidden(monkeypatch):
@@ -145,14 +151,14 @@ def test_imf_collection_and_terms(monkeypatch):
 def test_imf_partial_and_total_failure(monkeypatch):
     async def partial(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
         code = url.split("/")[-2]
-        if code == "LUR":
+        if code == "BCA_NGDPD":
             if errors is not None:
                 errors[:] = ["HTTP 404"]
             return None
         return {"values": {code: {"TCD": {"2022": 1.5}}}}
     agent = _imf_agent(monkeypatch, partial)
     run(agent._collect_imf())
-    assert "1/8 series empty" in agent.source_errors[0] and "LUR (HTTP 404)" in agent.source_errors[0]
+    assert f"1/{len(IMF_INDICATORS)} series empty" in agent.source_errors[0] and "BCA_NGDPD (HTTP 404)" in agent.source_errors[0]
 
     async def dead(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
         return None

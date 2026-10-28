@@ -90,17 +90,17 @@ async def probe_sources() -> str:
         began = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(osm.REQUEST_TIMEOUT, connect=15.0)) as client:
-                payload, reason = await osm._query(client, osm.build_query("TD-LC", feature))
+                payload, reason = await osm._query(client, osm.build_query("TD" if feature.national else "TD-LC", feature))
             counts = osm.parse_counts(payload, 1) if payload is not None else None
             took = f"{time.monotonic() - began:.0f}s"
             if counts is None:
-                lines.append(f"OpenStreetMap (Lac, {feature.unit}): FAILED after {took} - "
+                lines.append(f"OpenStreetMap ({'whole country' if feature.national else 'Lac'}, {feature.unit}): FAILED after {took} - "
                              f"{reason or 'unexpected answer: ' + str(payload)[:200]}")
             else:
                 note = "  <- zero: the ISO area was probably not found" if counts[0] == 0 else ""
-                lines.append(f"OpenStreetMap (Lac, {feature.unit}): OK in {took}, {counts[0]}{note}")
+                lines.append(f"OpenStreetMap ({'whole country' if feature.national else 'Lac'}, {feature.unit}): OK in {took}, {counts[0]}{note}")
         except Exception as exc:
-            lines.append(f"OpenStreetMap (Lac, {feature.unit}): FAILED - {exc}")
+            lines.append(f"OpenStreetMap ({'whole country' if feature.national else 'Lac'}, {feature.unit}): FAILED - {exc}")
     return "\n".join(lines)
 
 

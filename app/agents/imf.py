@@ -13,15 +13,15 @@ from typing import Any
 IMF_URL = "https://www.imf.org/external/datamapper/api/v1"
 FIRST_YEAR = 2010
 
+# GGR_NGDP (government revenue) and LUR (unemployment) exist in the DataMapper but have no value
+# for Chad (checked with `probe-sources`), so they are not requested.
 IMF_INDICATORS: dict[str, tuple[str, str]] = {
     "NGDP_RPCH": ("Real GDP growth (IMF)", "%"),
     "PCPIPCH": ("Inflation, average consumer prices (IMF)", "%"),
     "GGXWDG_NGDP": ("General government gross debt (IMF)", "% of GDP"),
-    "GGR_NGDP": ("Government revenue (IMF)", "% of GDP"),
     "GGXCNL_NGDP": ("Government net lending/borrowing (IMF)", "% of GDP"),
     "BCA_NGDPD": ("Current account balance (IMF)", "% of GDP"),
     "NGDPD": ("GDP, current prices (IMF)", "billion USD"),
-    "LUR": ("Unemployment rate (IMF)", "%"),
 }
 
 
