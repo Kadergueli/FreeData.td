@@ -19,6 +19,23 @@ from app.services.storage import ObservationRepository
 logger = logging.getLogger(__name__)
 
 
+# Licence and attribution that must travel with the rows of a source whose terms differ from the
+# platform default (CC BY 4.0). Matched on the `source` text of a record.
+SOURCE_TERMS: dict[str, tuple[str, str]] = {
+    "OpenStreetMap": ("ODbL 1.0", "© OpenStreetMap contributors (openstreetmap.org/copyright)."),
+    "IMF": ("IMF terms of use", "Source: International Monetary Fund, World Economic Outlook (DataMapper)."),
+    "WFP": ("CC BY-IGO 3.0", "Source: World Food Programme (WFP), via the Humanitarian Data Exchange."),
+}
+
+
+def source_terms(source: str, agent_name: str) -> tuple[str, str]:
+    """(licence, notes) for a record: the source's own terms when known, else the default."""
+    for key, (licence, attribution) in SOURCE_TERMS.items():
+        if str(source).startswith(key):
+            return licence, attribution
+    return "CC BY 4.0", f"Automated harvest by {agent_name} from {source}."
+
+
 def wb_years(first_year: int) -> str:
     """World Bank `date` parameter from first_year up to the current year ("2015:2026")."""
     return f"{first_year}:{datetime.now(UTC).year}"

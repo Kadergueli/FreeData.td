@@ -52,6 +52,53 @@ async def probe_prices() -> str:
     return "\n".join(lines)
 
 
+async def probe_sources() -> str:
+    """Real requests to the IMF, the WFP file on HDX and OpenStreetMap (one region), through the
+    same code the collectors use. No database needed."""
+    from types import SimpleNamespace
+
+    import httpx
+
+    from app.agents import osm
+    from app.agents.economy import EconomyAgent
+    from app.agents.markets import MarketsAgent
+
+    lines: list[str] = []
+
+    econ = EconomyAgent(SimpleNamespace())
+    try:
+        rows = await econ._collect_imf()
+        years = sorted({r["year"] for r in rows})
+        lines.append(f"IMF: OK, {len(rows)} values, {len({r['indicator'] for r in rows})} series, years {years[0]}-{years[-1]}")
+        lines.append(f"     example: {rows[0]['indicator']} {rows[0]['year']} = {rows[0]['value']} {rows[0]['unit']}")
+    except Exception as exc:
+        lines.append(f"IMF: FAILED - {exc}")
+    lines += [f"     note: {e}" for e in econ.source_errors]
+
+    markets = MarketsAgent(SimpleNamespace())
+    try:
+        rows = await markets._collect_wfp_prices()
+        lines.append(f"WFP (HDX): OK, {len(rows)} prices, {len({r['region'] for r in rows})} markets, "
+                     f"{len({r['indicator'] for r in rows})} products, newest {max((r['year'], r['month']) for r in rows)}")
+        lines.append(f"     example: {rows[0]['indicator']} = {rows[0]['value']} {rows[0]['unit']} ({rows[0]['region']})")
+    except Exception as exc:
+        lines.append(f"WFP (HDX): FAILED - {exc}")
+
+    features = [osm.SCHOOLS, osm.HOSPITALS]
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0)) as client:
+            payload, reason = await osm._query(client, osm.build_query("TD-LC", features))
+        counts = osm.parse_counts(payload, len(features)) if payload is not None else None
+        if counts is None:
+            lines.append(f"OpenStreetMap (Lac): FAILED - {reason or 'unexpected answer: ' + str(payload)[:200]}")
+        else:
+            lines.append("OpenStreetMap (Lac): OK, " + ", ".join(f"{f.unit}={c}" for f, c in zip(features, counts))
+                         + ("  <- all zero: the ISO area was probably not found" if not any(counts) else ""))
+    except Exception as exc:
+        lines.append(f"OpenStreetMap (Lac): FAILED - {exc}")
+    return "\n".join(lines)
+
+
 INSEED_BASE = "https://chad.opendataforafrica.org/api/1.0/sdmx/data"
 # (label, dataflow, key) taken from the INSEED "Principaux indicateurs statistiques" page.
 _PROVINCE_KEYS = ("TD+TD-BA+TD-BO+TD-CB+TD-GR+TD-HL+TD-KA+TD-LC+TD-LO+TD-LR+TD-MA+TD-MO+TD-ME+TD-MC+TD-OD+TD-SA"
@@ -160,6 +207,10 @@ def main() -> None:
         help="Check the INSEED open-data (SDMX) API from this machine and show the response format",
     )
     commands.add_parser(
+        "probe-sources",
+        help="Check the IMF, WFP (HDX) and OpenStreetMap collectors from this machine (no database needed)",
+    )
+    commands.add_parser(
         "probe-prices",
         help="Check the FEWS NET market-price API for Chad from this machine (no database needed)",
     )
@@ -171,6 +222,9 @@ def main() -> None:
         return
     if args.command == "probe-inseed":
         print(asyncio.run(probe_inseed()))
+        return
+    if args.command == "probe-sources":
+        print(asyncio.run(probe_sources()))
         return
     if args.command == "probe-prices":
         print(asyncio.run(probe_prices()))

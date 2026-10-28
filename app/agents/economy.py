@@ -4,9 +4,12 @@ from datetime import date
 import logging
 from typing import Any
 
+import asyncio
+
 import httpx
 
-from app.agents.base import BaseAgent, wb_years
+from app.agents.base import BaseAgent, source_terms, wb_years
+from app.agents.imf import IMF_INDICATORS, IMF_URL, parse_imf
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -33,10 +36,48 @@ class EconomyAgent(BaseAgent):
         if source == "demo":
             return self._get_demo_records()
 
-        if source in ("world-bank", "all", "auto"):
+        if source == "world-bank":
             return await self._collect_world_bank()
 
-        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'demo'.")
+        if source == "imf":
+            return await self._collect_imf()
+
+        if source in ("all", "auto"):
+            names = ("world-bank", "imf")
+            results = await asyncio.gather(self._collect_world_bank(), self._collect_imf(), return_exceptions=True)
+            combined: list[dict[str, Any]] = []
+            for name, res in zip(names, results):
+                if isinstance(res, list):
+                    combined.extend(res)
+                elif isinstance(res, Exception):
+                    logger.error("EconomyAgent source %s failed: %s", name, res)
+                    self.source_errors.append(f"{name}: {res}")
+            return combined
+
+        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'imf', 'demo'.")
+
+    async def _collect_imf(self) -> list[dict[str, Any]]:
+        """IMF World Economic Outlook series (growth, inflation, debt, revenue, current account...).
+
+        Raises when no indicator could be read, so the run reports the failure; one indicator
+        failing is listed in the run errors without hiding the others."""
+        records: list[dict[str, Any]] = []
+        failed: list[str] = []
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            for code in IMF_INDICATORS:
+                reason: list[str] = []
+                payload = await self.fetch_json_with_retry(
+                    client, f"{IMF_URL}/{code}/TCD", throttle_seconds=0.3, errors=reason)
+                parsed = parse_imf(payload, code) if payload is not None else []
+                if parsed:
+                    records.extend(parsed)
+                else:
+                    failed.append(f"{code} ({reason[0] if reason else 'no data for Chad'})")
+        if failed:
+            self.source_errors.append(f"IMF: {len(failed)}/{len(IMF_INDICATORS)} series empty: {'; '.join(failed[:4])}")
+        if not records:
+            raise RuntimeError("IMF DataMapper returned nothing")
+        return records
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
         return [
@@ -110,6 +151,7 @@ class EconomyAgent(BaseAgent):
         if not val.is_integer():
             val = round(val, 2)
 
+        licence, notes = source_terms(str(record["source"]), "EconomyAgent")
         return ObservationCreate(
             sector="economy",
             indicator=str(record["indicator"]),
@@ -119,6 +161,6 @@ class EconomyAgent(BaseAgent):
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license="CC BY 4.0",
-            notes=f"Automated harvest by EconomyAgent from {record['source']}.",
+            license=licence,
+            notes=notes,
         )

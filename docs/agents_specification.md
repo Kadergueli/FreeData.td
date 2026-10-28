@@ -107,7 +107,7 @@ Different data domains update at drastically different frequencies. The harveste
 | **Market Cereal Prices** (WFP / FAO) | Weekly / Monthly | 24-Hour Automated Harvest |
 | **Macroeconomics** (BEAC / World Bank) | Monthly / Annual | Cached TTL (Skips redundant requests if data is <7 days old) |
 | **Education & Literacy** (UNESCO / UNICEF) | Annual | Annual census sync with local fallback cache |
-| **Transport Infrastructure** (OSM / HDX) | Monthly | Periodic 24h background sync |
+| **Transport Infrastructure** (OSM per region) | Monthly | Periodic 24h background sync |
 
 ---
 

@@ -24,13 +24,13 @@ FreeData.td est la réponse à ce problème.
 | Secteur | Sources principales | Statut |
 |---|---|---|
 | 🌾 Agriculture | World Bank, Open-Meteo, NASA POWER | ✅ En production |
-| 🛒 Marchés & Prix | WFP (HDX), FAOSTAT, World Bank | ✅ En production |
+| 🛒 Marchés & Prix | FEWS NET, WFP (HDX), FAOSTAT, World Bank | ✅ En production |
 | 🌍 Environnement | Open-Meteo, NASA POWER, NASA FIRMS | ✅ En production |
-| 💰 Économie | World Bank | ✅ En production |
-| 🏥 Santé | World Bank | ✅ En production |
+| 💰 Économie | World Bank, IMF (WEO) | ✅ En production |
+| 🏥 Santé | World Bank, OpenStreetMap (par région) | ✅ En production |
 | ⚡ Énergie | World Bank | ✅ En production |
-| 🚗 Transports | OpenStreetMap, HDX, World Bank | 🔒 Collecte administrateur |
-| 📚 Éducation | UNESCO UIS, UNICEF, World Bank | 🔒 Collecte administrateur |
+| 🚗 Transports | OpenStreetMap (par région), Open-Meteo, World Bank | 🔒 Collecte administrateur |
+| 📚 Éducation | UNESCO UIS, UNICEF, OpenStreetMap (par région), World Bank | 🔒 Collecte administrateur |
 | 👥 Démographie | World Bank (WDI), INSEED (population par âge, sexe et milieu) | ✅ En production |
 
 ## Accès aux données

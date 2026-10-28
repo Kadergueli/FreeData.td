@@ -1,5 +1,5 @@
 /**
- * FreeData.td — Official 10 Data Sources Catalog (Bilingual FR/EN)
+ * FreeData.td — Official Data Sources Catalog (Bilingual FR/EN)
  */
 
 export const OFFICIAL_SOURCES = [
@@ -63,10 +63,10 @@ export const OFFICIAL_SOURCES = [
     sector_fr: 'Marchés & Prix Alimentaires',
     sector_en: 'Markets & Food Prices',
     sectorId: 'markets',
-    license: 'CC BY 4.0 WFP Open Data',
-    url: 'https://data.humdata.org/organization/wfp',
-    desc_fr: 'Suivi mensuel des prix des denrées céréalières (Maïs, Mil, Sorgho, Riz) sur les marchés régionaux du Tchad.',
-    desc_en: 'Monthly food commodity price tracking (Maize, Millet, Sorghum, Rice) across Chad markets.'
+    license: 'CC BY-IGO 3.0',
+    url: 'https://data.humdata.org/dataset/wfp-food-prices-for-chad',
+    desc_fr: 'Prix mensuels de détail des denrées par marché (fichier WFP publié sur HDX, 3 dernières années).',
+    desc_en: 'Monthly retail food prices by market (WFP file published on HDX, last 3 years).'
   },
   {
     id: 'fews-net',
@@ -122,30 +122,17 @@ export const OFFICIAL_SOURCES = [
     desc_en: 'Basic education indicators, gender parity indexes, and out-of-school children statistics in Chad.'
   },
   {
-    id: 'hdx-ocha',
-    name: 'HDX (OCHA Data)',
-    org_fr: 'Humanitarian Data Exchange / UN OCHA',
-    org_en: 'Humanitarian Data Exchange / UN OCHA',
-    sector_fr: 'Transport & Logistique',
-    sector_en: 'Transport & Infrastructure',
-    sectorId: 'transport',
-    license: 'CC BY 4.0 Humanitarian License',
-    url: 'https://data.humdata.org/group/tcd',
-    desc_fr: 'Base de données sur l\'infrastructure logistique, les aéroports, pistes et réseaux de transport au Tchad.',
-    desc_en: 'Humanitarian logistics, airports, road networks, and infrastructure datasets for Chad.'
-  },
-  {
     id: 'openstreetmap',
     name: 'OpenStreetMap Network',
     org_fr: 'Fondation OpenStreetMap & Communauté Open Source',
     org_en: 'OpenStreetMap Foundation & Open Community',
-    sector_fr: 'Transport & Cartographie',
-    sector_en: 'Transport & Mapping',
+    sector_fr: 'Transport, Santé & Éducation',
+    sector_en: 'Transport, Health & Education',
     sectorId: 'transport',
     license: 'ODbL (Open Database License)',
     url: 'https://www.openstreetmap.org/',
-    desc_fr: 'Réseau routier open source, voies de communication et cartographie des infrastructures du Tchad.',
-    desc_en: 'Open source road transport network, airports, river ports, and geographical mapping for Chad.'
+    desc_fr: 'Nombre par région de routes principales, aérodromes, hôpitaux et écoles cartographiés par les contributeurs (ce qui est cartographié, pas ce qui existe).',
+    desc_en: 'Per-region counts of mapped main roads, aerodromes, hospitals and schools (what contributors have mapped, not what exists).'
   },
   {
     id: 'world-bank-health',

@@ -6,7 +6,10 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent, wb_years
+import asyncio
+
+from app.agents.base import BaseAgent, source_terms, wb_years
+from app.agents.osm import HOSPITALS, collect_osm_counts
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -40,10 +43,30 @@ class HealthAgent(BaseAgent):
         if source == "demo":
             return self._get_demo_records()
 
-        if source in ("world-bank", "all", "auto"):
+        if source == "world-bank":
             return await self._collect_world_bank()
 
-        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'demo'.")
+        if source == "open-street-map":
+            return await self._collect_open_street_map()
+
+        if source in ("all", "auto"):
+            names = ("world-bank", "open-street-map")
+            results = await asyncio.gather(
+                self._collect_world_bank(), self._collect_open_street_map(), return_exceptions=True)
+            combined: list[dict[str, Any]] = []
+            for name, res in zip(names, results):
+                if isinstance(res, list):
+                    combined.extend(res)
+                elif isinstance(res, Exception):
+                    logger.error("HealthAgent source %s failed: %s", name, res)
+                    self.source_errors.append(f"{name}: {res}")
+            return combined
+
+        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'open-street-map', 'demo'.")
+
+    async def _collect_open_street_map(self) -> list[dict[str, Any]]:
+        """Mapped hospitals and clinics per region (OpenStreetMap contributors)."""
+        return await collect_osm_counts([HOSPITALS], self.source_errors)
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
         return [
@@ -117,6 +140,7 @@ class HealthAgent(BaseAgent):
         if not val.is_integer():
             val = round(val, 2)
 
+        licence, notes = source_terms(str(record["source"]), "HealthAgent")
         return ObservationCreate(
             sector="health",
             indicator=str(record["indicator"]),
@@ -126,6 +150,6 @@ class HealthAgent(BaseAgent):
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license="CC BY 4.0",
-            notes=f"Automated harvest by HealthAgent from {record['source']}.",
+            license=licence,
+            notes=notes,
         )

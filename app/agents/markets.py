@@ -7,7 +7,8 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent, recent_window, wb_years
+from app.agents.base import BaseAgent, source_terms, wb_years
+from app.agents.wfp_prices import HDX_PACKAGE_ID, HDX_PACKAGE_URL, parse_wfp_csv, pick_csv_url
 from app.agents.fews_prices import FEWS_URL, extract_items, parse_record, resolve_collisions
 from app.schemas import ObservationCreate
 
@@ -146,89 +147,31 @@ class MarketsAgent(BaseAgent):
                                 continue
         return records
 
-    # ─── Source 2: WFP VAM Market Prices ─────────────────────────────────────
+    # ─── Source 2: WFP market prices (CSV published on HDX) ──────────────────
+    WFP_HISTORY_YEARS = 3
+
     async def _collect_wfp_prices(self) -> list[dict[str, Any]]:
-        """Fetch commodity food prices for Chad from WFP VAM API."""
-        records: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=30) as client:
-            try:
-                # Get Chad's WFP country adm0code
-                countries_url = "https://api.vam.wfp.org/geodata/CountriesInRegion"
-                res = await client.get(countries_url, params={"region": "WCA"})
-                res.raise_for_status()
-                countries = res.json()
+        """Monthly retail prices by market and product from the WFP file on HDX.
 
-                chad_id = None
-                if isinstance(countries, list):
-                    for c in countries:
-                        if c.get("iso3") == self.CHAD_ISO3 or c.get("adm0_name", "").lower() == "chad":
-                            chad_id = c.get("adm0_code")
-                            break
-
-                if not chad_id:
-                    return await self._collect_wfp_direct(client)
-
-                prices_url = "https://api.vam.wfp.org/MarketPrices/PriceMonthly"
-                start_date, end_date = recent_window(months=24, lag_days=0)
-                params = {"adm0Code": chad_id, "startDate": start_date, "endDate": end_date}
-                res = await client.get(prices_url, params=params)
-                res.raise_for_status()
-                data = res.json()
-
-                if isinstance(data, list):
-                    for item in data:
-                        commodity = item.get("commodityName", "Unknown commodity")
-                        price = item.get("commodityPriceFlag") or item.get("commodityPrice")
-                        market = item.get("marketName", "national")
-                        unit_name = item.get("commodityUnitName", "XAF/kg")
-                        price_date = item.get("commodityPriceDate", "")
-
-                        if price is None:
-                            continue
-
-                        yr = int(price_date[:4]) if price_date and len(price_date) >= 4 else 2024
-                        mo = int(price_date[5:7]) if price_date and len(price_date) >= 7 else 1
-
-                        records.append({
-                            "year": yr,
-                            "month": mo,
-                            "day": 1,
-                            "value": round(float(price), 2),
-                            "source": "WFP VAM",
-                            "indicator": f"{commodity} price",
-                            "unit": unit_name,
-                            "region": market,
-                            "url": prices_url,
-                        })
-            except Exception as exc:
-                logger.warning("WFP market prices collection failed: %s", exc)
-        return records
-
-    async def _collect_wfp_direct(self, client: httpx.AsyncClient) -> list[dict[str, Any]]:
-        """Fallback: try WFP direct endpoint for Chad food prices."""
-        records: list[dict[str, Any]] = []
-        try:
-            url = "https://api.vam.wfp.org/MarketPrices/PriceMonthly"
-            res = await client.get(url, params={"iso3": self.CHAD_ISO3, "startDate": recent_window(months=24, lag_days=0)[0]})
-            res.raise_for_status()
-            data = res.json()
-            if isinstance(data, list):
-                for item in data[:200]:
-                    commodity = item.get("commodityName", "Commodity")
-                    price = item.get("commodityPrice")
-                    if price is None:
-                        continue
-                    records.append({
-                        "year": 2024,
-                        "value": round(float(price), 2),
-                        "source": "WFP VAM",
-                        "indicator": f"{commodity} price",
-                        "unit": "XAF/kg",
-                        "region": item.get("marketName", "national"),
-                        "url": url,
-                    })
-        except Exception as exc:
-            logger.warning("WFP direct endpoint failed: %s", exc)
+        Raises when the HDX catalogue or the file cannot be read, so the failure shows up in the
+        run result."""
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0), follow_redirects=True) as client:
+            reason: list[str] = []
+            package = await self.fetch_json_with_retry(
+                client, HDX_PACKAGE_URL, params={"id": HDX_PACKAGE_ID}, errors=reason)
+            if package is None:
+                raise RuntimeError(f"HDX catalogue did not answer ({reason[0] if reason else 'no detail'})")
+            csv_url = pick_csv_url(package)
+            if not csv_url:
+                raise RuntimeError("HDX: no CSV file found in the WFP Chad food prices dataset")
+            text = await self.fetch_text_with_retry(client, csv_url, throttle_seconds=0.3)
+            if not text:
+                raise RuntimeError("HDX: the WFP price file could not be downloaded")
+        records, skipped = parse_wfp_csv(text, self.WFP_HISTORY_YEARS)
+        if not records:
+            raise RuntimeError("WFP price file read but no usable retail XAF price found")
+        if skipped:
+            logger.info("WFP prices: %d row(s) skipped (duplicates, other currency, bad value).", skipped)
         return records
 
     # ─── Source 2b: FEWS NET market prices ───────────────────────────────────
@@ -320,6 +263,7 @@ class MarketsAgent(BaseAgent):
         if not val.is_integer():
             val = round(val, 2)
 
+        default_licence, default_notes = source_terms(str(record["source"]), "MarketsAgent")
         return ObservationCreate(
             sector="markets",
             indicator=str(record["indicator"]),
@@ -329,7 +273,7 @@ class MarketsAgent(BaseAgent):
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license=str(record.get("license", "CC BY 4.0"))[:50],
+            license=str(record.get("license") or default_licence)[:50],
             notes=(f"Automated harvest by MarketsAgent from {record['source']}. {record['attribution']}"
-                   if record.get("attribution") else f"Automated harvest by MarketsAgent from {record['source']}."),
+                   if record.get("attribution") else default_notes),
         )

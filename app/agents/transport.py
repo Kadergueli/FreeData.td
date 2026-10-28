@@ -7,18 +7,18 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent, recent_window, wb_years
+from app.agents.base import BaseAgent, recent_window, source_terms, wb_years
+from app.agents.osm import AERODROMES, MAIN_ROADS, collect_osm_counts
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
 
 
 class TransportAgent(BaseAgent):
-    """Collects transport, logistics & infrastructure data for Chad from 4 major open APIs:
+    """Collects transport, logistics & infrastructure data for Chad from 3 open sources:
     1. World Bank (Road network, Paved ratio, Air transport, LPI)
-    2. OpenStreetMap Overpass (Primary highway corridors & airfields in Chad)
-    3. HDX / UN OCHA (Chad logistics & road network datasets)
-    4. Open-Meteo Transport (Visibility & precipitation risk along transport corridors)
+    2. OpenStreetMap Overpass (mapped trunk/primary road segments and aerodromes, per region)
+    3. Open-Meteo Transport (Visibility & precipitation risk along transport corridors)
     """
 
     sector = "transport"
@@ -54,30 +54,28 @@ class TransportAgent(BaseAgent):
         if source == "open-street-map":
             return await self._collect_open_street_map()
 
-        if source == "hdx":
-            return await self._collect_hdx_transport()
-
         if source == "open-meteo-transport":
             return await self._collect_open_meteo_transport()
 
         if source in ("all", "auto"):
+            names = ("world-bank", "open-street-map", "open-meteo-transport")
             results = await asyncio.gather(
                 self._collect_world_bank(),
                 self._collect_open_street_map(),
-                self._collect_hdx_transport(),
                 self._collect_open_meteo_transport(),
                 return_exceptions=True,
             )
             combined: list[dict[str, Any]] = []
-            for res in results:
+            for name, res in zip(names, results):
                 if isinstance(res, list):
                     combined.extend(res)
                 elif isinstance(res, Exception):
-                    logger.error("TransportAgent source failed: %s", res)
+                    logger.error("TransportAgent source %s failed: %s", name, res)
+                    self.source_errors.append(f"{name}: {res}")
             return combined
 
         raise ValueError(
-            f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'open-street-map', 'hdx', 'open-meteo-transport', 'demo'."
+            f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'open-street-map', 'open-meteo-transport', 'demo'."
         )
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
@@ -139,75 +137,10 @@ class TransportAgent(BaseAgent):
                                 continue
         return records
 
-    # ─── Source 2: OpenStreetMap Overpass API ───────────────────────────────
+    # ─── Source 2: OpenStreetMap (Overpass) ──────────────────────────────────
     async def _collect_open_street_map(self) -> list[dict[str, Any]]:
-        """Fetch primary highway corridor segments & airfield nodes in Chad from OpenStreetMap Overpass API."""
-        records: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=30) as client:
-            url = "https://overpass-api.de/api/interpreter"
-            query = '[out:json][timeout:25];area["ISO3166-1"="TD"][admin_level=2]->.searchArea;(way["highway"="primary"](area.searchArea);node["aeroway"="aerodrome"](area.searchArea););out count;'
-            try:
-                res = await client.post(url, data={"data": query})
-                if res.status_code == 200:
-                    data = res.json()
-                    elements = data.get("elements", [])
-                    if elements and "tags" in elements[0]:
-                        total_ways = int(elements[0].get("tags", {}).get("ways", 0))
-                        total_nodes = int(elements[0].get("tags", {}).get("nodes", 0))
-
-                        if total_ways > 0:
-                            records.append({
-                                "year": 2024,
-                                "value": float(total_ways),
-                                "source": "OpenStreetMap",
-                                "indicator": "Mapped primary highway segments",
-                                "unit": "segments",
-                                "region": "national",
-                                "url": url,
-                            })
-                        if total_nodes > 0:
-                            records.append({
-                                "year": 2024,
-                                "value": float(total_nodes),
-                                "source": "OpenStreetMap",
-                                "indicator": "Mapped airfields and aerodromes",
-                                "unit": "airfields",
-                                "region": "national",
-                                "url": url,
-                            })
-            except Exception as exc:
-                logger.warning("OpenStreetMap transport collection failed: %s", exc)
-
-        return records
-
-    # ─── Source 3: HDX / UN OCHA Transport Datasets ──────────────────────────
-    async def _collect_hdx_transport(self) -> list[dict[str, Any]]:
-        """Fetch road network & logistics cluster datasets for Chad from UN OCHA HDX."""
-        records: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=30) as client:
-            url = "https://data.humdata.org/api/3/action/package_show"
-            params = {"id": "chad-road-network"}
-            try:
-                res = await client.get(url, params=params)
-                res.raise_for_status()
-                payload = res.json()
-                result = payload.get("result", {})
-                resources = result.get("resources", [])
-
-                if len(resources) > 0:
-                    records.append({
-                        "year": 2024,
-                        "value": float(len(resources)),
-                        "source": "HDX / UN OCHA",
-                        "indicator": "Road network GIS resources",
-                        "unit": "datasets",
-                        "region": "national",
-                        "url": url,
-                    })
-            except Exception as exc:
-                logger.warning("HDX transport dataset collection failed: %s", exc)
-
-        return records
+        """Mapped main-road segments and aerodromes per region (OpenStreetMap contributors)."""
+        return await collect_osm_counts([MAIN_ROADS, AERODROMES], self.source_errors)
 
     # ─── Source 4: Open-Meteo Transport Weather Risk ───────────────────────
     async def _collect_open_meteo_transport(self) -> list[dict[str, Any]]:
@@ -274,6 +207,7 @@ class TransportAgent(BaseAgent):
         if not val.is_integer():
             val = round(val, 2)
 
+        licence, notes = source_terms(str(record["source"]), "TransportAgent")
         return ObservationCreate(
             sector="transport",
             indicator=str(record["indicator"]),
@@ -283,6 +217,6 @@ class TransportAgent(BaseAgent):
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license="CC BY 4.0",
-            notes=f"Automated harvest by TransportAgent from {record['source']}.",
+            license=licence,
+            notes=notes,
         )

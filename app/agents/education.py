@@ -7,7 +7,8 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent, wb_years
+from app.agents.base import BaseAgent, source_terms, wb_years
+from app.agents.osm import SCHOOLS, collect_osm_counts
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ class EducationAgent(BaseAgent):
     1. World Bank & UNESCO UIS (Enrollment, Literacy, Completion, Gender Parity)
     2. UNESCO EdStats (Out-of-school children & Progression rates)
     3. UNICEF Data (Foundational learning & Gender Parity Index)
-    4. HDX / UNICEF (School facilities & GIS datasets)
+    4. OpenStreetMap (mapped schools per region)
     """
 
     sector = "education"
@@ -54,27 +55,29 @@ class EducationAgent(BaseAgent):
         if source == "unicef":
             return await self._collect_unicef_sdg4()
 
-        if source == "hdx":
-            return await self._collect_hdx_education()
+        if source == "open-street-map":
+            return await self._collect_open_street_map()
 
         if source in ("all", "auto"):
+            names = ("world-bank", "unesco-uis", "unicef", "open-street-map")
             results = await asyncio.gather(
                 self._collect_world_bank(),
                 self._collect_unesco_uis(),
                 self._collect_unicef_sdg4(),
-                self._collect_hdx_education(),
+                self._collect_open_street_map(),
                 return_exceptions=True,
             )
             combined: list[dict[str, Any]] = []
-            for res in results:
+            for name, res in zip(names, results):
                 if isinstance(res, list):
                     combined.extend(res)
                 elif isinstance(res, Exception):
-                    logger.error("EducationAgent source failed: %s", res)
+                    logger.error("EducationAgent source %s failed: %s", name, res)
+                    self.source_errors.append(f"{name}: {res}")
             return combined
 
         raise ValueError(
-            f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'unesco-uis', 'unicef', 'hdx', 'demo'."
+            f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'unesco-uis', 'unicef', 'open-street-map', 'demo'."
         )
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
@@ -194,31 +197,10 @@ class EducationAgent(BaseAgent):
                             continue
         return records
 
-    # ─── Source 4: HDX / UNICEF Education Datasets ─────────────────────────
-    async def _collect_hdx_education(self) -> list[dict[str, Any]]:
-        records: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=30) as client:
-            url = "https://data.humdata.org/api/3/action/package_show"
-            params = {"id": "chad-education-facilities"}
-            try:
-                res = await client.get(url, params=params)
-                if res.status_code == 200:
-                    payload = res.json()
-                    result = payload.get("result", {})
-                    resources = result.get("resources", [])
-                    if len(resources) > 0:
-                        records.append({
-                            "year": 2024,
-                            "value": float(len(resources)),
-                            "source": "HDX / UNICEF",
-                            "indicator": "School facilities GIS datasets",
-                            "unit": "datasets",
-                            "region": "national",
-                            "url": url,
-                        })
-            except Exception as exc:
-                logger.warning("HDX education collection failed: %s", exc)
-        return records
+    # ─── Source 4: OpenStreetMap (Overpass) ──────────────────────────────────
+    async def _collect_open_street_map(self) -> list[dict[str, Any]]:
+        """Mapped schools per region (OpenStreetMap contributors)."""
+        return await collect_osm_counts([SCHOOLS], self.source_errors)
 
     # ─── Normalize ───────────────────────────────────────────────────────────
     def normalize(self, record: dict[str, Any]) -> ObservationCreate | None:
@@ -235,6 +217,7 @@ class EducationAgent(BaseAgent):
         if not val.is_integer():
             val = round(val, 2)
 
+        licence, notes = source_terms(str(record["source"]), "EducationAgent")
         return ObservationCreate(
             sector="education",
             indicator=str(record["indicator"]),
@@ -244,6 +227,6 @@ class EducationAgent(BaseAgent):
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license="CC BY 4.0",
-            notes=f"Automated harvest by EducationAgent from {record['source']}.",
+            license=licence,
+            notes=notes,
         )
