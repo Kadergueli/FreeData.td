@@ -24,8 +24,16 @@ logger = logging.getLogger(__name__)
 SOURCE_TERMS: dict[str, tuple[str, str]] = {
     "OpenStreetMap": ("ODbL 1.0", "© OpenStreetMap contributors (openstreetmap.org/copyright)."),
     "IMF": ("IMF terms of use", "Source: International Monetary Fund, World Economic Outlook (DataMapper)."),
+    "OurAirports": ("Public domain", "Source: OurAirports (ourairports.com), public-domain data."),
     "WFP": ("CC BY-IGO 3.0", "Source: World Food Programme (WFP), via the Humanitarian Data Exchange."),
 }
+
+
+def source_failure_line(name: str, exc: BaseException, known: list[str]) -> str | None:
+    """"name: reason" for a source that raised, unless `known` already carries that reason (the
+    collectors that explain themselves put the same sentence in the list before raising)."""
+    reason = str(exc)
+    return None if any(reason and reason in line for line in known) else f"{name}: {reason}"
 
 
 def source_terms(source: str, agent_name: str) -> tuple[str, str]:
@@ -104,6 +112,13 @@ class BaseAgent(ABC):
         # One line per source that failed during collect(): a run can succeed overall (other
         # sources answered) while one source is down, and that must not stay invisible.
         self.source_errors: list[str] = []
+
+    def note_source_failure(self, name: str, exc: Exception) -> None:
+        """Record a failed source for the run result, unless its message was already recorded by
+        the collector itself (the same text twice only adds noise)."""
+        message = str(exc)
+        if not any(message in existing for existing in self.source_errors):
+            self.source_errors.append(f"{name}: {message}")
 
     @staticmethod
     async def fetch_json_with_retry(

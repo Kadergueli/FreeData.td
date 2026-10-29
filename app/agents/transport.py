@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from app.agents.base import BaseAgent, recent_window, source_terms, wb_years
+from app.agents.airports import AIRPORTS_URL, parse_airports
 from app.agents.osm import AERODROMES, MAIN_ROADS, collect_osm_counts
 from app.schemas import ObservationCreate
 
@@ -17,8 +18,9 @@ logger = logging.getLogger(__name__)
 class TransportAgent(BaseAgent):
     """Collects transport, logistics & infrastructure data for Chad from 3 open sources:
     1. World Bank (Road network, Paved ratio, Air transport, LPI)
-    2. OpenStreetMap Overpass (mapped trunk/primary road segments and aerodromes, per region)
+    2. OurAirports (airports and airstrips per region, public domain)
     3. Open-Meteo Transport (Visibility & precipitation risk along transport corridors)
+    (OpenStreetMap roads/aerodromes: explicit source "open-street-map" only, too slow for "all")
     """
 
     sector = "transport"
@@ -51,6 +53,9 @@ class TransportAgent(BaseAgent):
         if source == "world-bank":
             return await self._collect_world_bank()
 
+        if source == "ourairports":
+            return await self._collect_airports()
+
         if source == "open-street-map":
             return await self._collect_open_street_map()
 
@@ -58,10 +63,13 @@ class TransportAgent(BaseAgent):
             return await self._collect_open_meteo_transport()
 
         if source in ("all", "auto"):
-            names = ("world-bank", "open-street-map", "open-meteo-transport")
+            # OpenStreetMap (main roads, aerodromes) is NOT part of "all": counting them over the whole
+            # country times out on the public Overpass servers (measured: > 150 s, twice). It stays
+            # available as the explicit source "open-street-map" for a manual attempt.
+            names = ("world-bank", "ourairports", "open-meteo-transport")
             results = await asyncio.gather(
                 self._collect_world_bank(),
-                self._collect_open_street_map(),
+                self._collect_airports(),
                 self._collect_open_meteo_transport(),
                 return_exceptions=True,
             )
@@ -71,11 +79,11 @@ class TransportAgent(BaseAgent):
                     combined.extend(res)
                 elif isinstance(res, Exception):
                     logger.error("TransportAgent source %s failed: %s", name, res)
-                    self.source_errors.append(f"{name}: {res}")
+                    self.note_source_failure(name, res)
             return combined
 
         raise ValueError(
-            f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'open-street-map', 'open-meteo-transport', 'demo'."
+            f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'ourairports', 'open-street-map', 'open-meteo-transport', 'demo'."
         )
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
@@ -137,7 +145,20 @@ class TransportAgent(BaseAgent):
                                 continue
         return records
 
-    # ─── Source 2: OpenStreetMap (Overpass) ──────────────────────────────────
+    # ─── Source 2: OurAirports (public-domain CSV) ───────────────────────────
+    async def _collect_airports(self) -> list[dict[str, Any]]:
+        """Airports and airstrips per region and nationally (OurAirports, public domain). Replaces the
+        OpenStreetMap aerodrome count, which the public Overpass servers could not answer in time."""
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0), follow_redirects=True) as client:
+            text = await self.fetch_text_with_retry(client, AIRPORTS_URL, throttle_seconds=0.3)
+        if not text:
+            raise RuntimeError("OurAirports: the airports file could not be downloaded")
+        records = parse_airports(text)
+        if not records:
+            raise RuntimeError("OurAirports: file read but no airport found for Chad (columns changed?)")
+        return records
+
+    # ─── Source 3: OpenStreetMap (Overpass) ──────────────────────────────────
     async def _collect_open_street_map(self) -> list[dict[str, Any]]:
         """Mapped main-road segments and aerodromes per region (OpenStreetMap contributors)."""
         return await collect_osm_counts([MAIN_ROADS, AERODROMES], self.source_errors)

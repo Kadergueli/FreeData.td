@@ -73,7 +73,7 @@ class EducationAgent(BaseAgent):
                     combined.extend(res)
                 elif isinstance(res, Exception):
                     logger.error("EducationAgent source %s failed: %s", name, res)
-                    self.source_errors.append(f"{name}: {res}")
+                    self.note_source_failure(name, res)
             return combined
 
         raise ValueError(

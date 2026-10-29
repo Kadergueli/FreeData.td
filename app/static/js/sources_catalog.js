@@ -122,17 +122,30 @@ export const OFFICIAL_SOURCES = [
     desc_en: 'Basic education indicators, gender parity indexes, and out-of-school children statistics in Chad.'
   },
   {
+    id: 'ourairports',
+    name: 'OurAirports',
+    org_fr: 'OurAirports (David Megginson & contributeurs)',
+    org_en: 'OurAirports (David Megginson & contributors)',
+    sector_fr: 'Transport & Logistique',
+    sector_en: 'Transport & Infrastructure',
+    sectorId: 'transport',
+    license: 'Public domain',
+    url: 'https://ourairports.com/countries/TD/',
+    desc_fr: 'Aéroports et pistes d\'atterrissage du Tchad par région, dont ceux avec service régulier.',
+    desc_en: 'Airports and airstrips of Chad by region, including those with scheduled service.'
+  },
+  {
     id: 'openstreetmap',
     name: 'OpenStreetMap Network',
     org_fr: 'Fondation OpenStreetMap & Communauté Open Source',
     org_en: 'OpenStreetMap Foundation & Open Community',
-    sector_fr: 'Transport, Santé & Éducation',
-    sector_en: 'Transport, Health & Education',
-    sectorId: 'transport',
+    sector_fr: 'Santé & Éducation',
+    sector_en: 'Health & Education',
+    sectorId: 'health',
     license: 'ODbL (Open Database License)',
     url: 'https://www.openstreetmap.org/',
-    desc_fr: 'Hôpitaux, cliniques et écoles cartographiés par région ; routes principales et aérodromes au niveau national (ce qui est cartographié, pas ce qui existe).',
-    desc_en: 'Mapped hospitals, clinics and schools per region; main roads and aerodromes nationally (what contributors have mapped, not what exists).'
+    desc_fr: 'Nombre d\'hôpitaux, de cliniques et d\'écoles cartographiés par région (ce qui est cartographié, pas ce qui existe).',
+    desc_en: 'Number of hospitals, clinics and schools mapped per region (what contributors have mapped, not what exists).'
   },
   {
     id: 'world-bank-health',

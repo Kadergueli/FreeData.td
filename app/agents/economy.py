@@ -51,7 +51,7 @@ class EconomyAgent(BaseAgent):
                     combined.extend(res)
                 elif isinstance(res, Exception):
                     logger.error("EconomyAgent source %s failed: %s", name, res)
-                    self.source_errors.append(f"{name}: {res}")
+                    self.note_source_failure(name, res)
             return combined
 
         raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'imf', 'demo'.")

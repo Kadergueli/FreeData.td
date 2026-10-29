@@ -86,7 +86,20 @@ async def probe_sources() -> str:
 
     import time
 
-    for feature in (osm.SCHOOLS, osm.HOSPITALS, osm.AERODROMES, osm.MAIN_ROADS):
+    from app.agents.transport import TransportAgent
+
+    transport = TransportAgent(SimpleNamespace())
+    try:
+        rows = await transport._collect_airports()
+        national = next((r for r in rows if r["region"] == "national"), None)
+        lines.append(f"OurAirports: OK, {len(rows)} values, {len({r['region'] for r in rows}) - 1} regions"
+                     + (f", {int(national['value'])} airports and airstrips in Chad" if national else ""))
+    except Exception as exc:
+        lines.append(f"OurAirports: FAILED - {exc}")
+
+    # Schools and hospitals are collected per region; the national roads/aerodromes queries are only
+    # probed to see whether the public Overpass servers can answer them (they could not, twice).
+    for feature in (osm.SCHOOLS, osm.HOSPITALS):
         began = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(osm.REQUEST_TIMEOUT, connect=15.0)) as client:

@@ -29,7 +29,7 @@ FreeData.td est la réponse à ce problème.
 | 💰 Économie | World Bank, IMF (WEO) | ✅ En production |
 | 🏥 Santé | World Bank, OpenStreetMap (par région) | ✅ En production |
 | ⚡ Énergie | World Bank | ✅ En production |
-| 🚗 Transports | OpenStreetMap (national), Open-Meteo, World Bank | 🔒 Collecte administrateur |
+| 🚗 Transports | OurAirports, Open-Meteo, World Bank | 🔒 Collecte administrateur |
 | 📚 Éducation | UNESCO UIS, UNICEF, OpenStreetMap (par région), World Bank | 🔒 Collecte administrateur |
 | 👥 Démographie | World Bank (WDI), INSEED (population par âge, sexe et milieu) | ✅ En production |
 

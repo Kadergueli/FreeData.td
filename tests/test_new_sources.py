@@ -94,8 +94,7 @@ def test_osm_rows_carry_the_odbl_licence():
     assert obs.license == "ODbL 1.0" and "OpenStreetMap contributors" in obs.notes
 
 
-@pytest.mark.parametrize("agent_cls,method", [(TransportAgent, "_collect_open_street_map"),
-                                              (HealthAgent, "_collect_open_street_map"),
+@pytest.mark.parametrize("agent_cls,method", [(HealthAgent, "_collect_open_street_map"),
                                               (EducationAgent, "_collect_open_street_map")])
 def test_osm_failure_shows_in_the_run_errors(monkeypatch, agent_cls, method):
     agent = agent_cls(SimpleNamespace())
@@ -241,9 +240,11 @@ def test_probe_sources_reports_each_source(monkeypatch):
         return None, "HTTP 403"
     monkeypatch.setattr(EconomyAgent, "_collect_imf", none)
     monkeypatch.setattr(MarketsAgent, "_collect_wfp_prices", none)
+    monkeypatch.setattr(TransportAgent, "_collect_airports", none)
     monkeypatch.setattr(osm, "_query", fake_query)
     out = run(cli.probe_sources())
-    assert "IMF: FAILED - down" in out and "WFP (HDX): FAILED - down" in out and "HTTP 403" in out
+    assert "IMF: FAILED - down" in out and "WFP (HDX): FAILED - down" in out and "OurAirports: FAILED - down" in out
+    assert "HTTP 403" in out
 
 
 # ---------------------------------------------------------------- a collection must always end
@@ -300,3 +301,81 @@ def test_a_sector_that_never_finishes_is_stopped_by_the_harvest(monkeypatch):
     service._next_sectors = ["transport"]
     result = run(service._run_harvest_job())
     assert "stopped after" in result["sectors"]["transport"]["error"]
+
+
+def test_transport_all_does_not_wait_for_the_national_osm_queries(monkeypatch):
+    agent = TransportAgent(SimpleNamespace())
+    called = []
+
+    async def ok():
+        return []
+
+    async def osm_never():
+        called.append("osm")
+        return []
+    monkeypatch.setattr(agent, "_collect_world_bank", ok)
+    monkeypatch.setattr(agent, "_collect_airports", ok)
+    monkeypatch.setattr(agent, "_collect_open_meteo_transport", ok)
+    monkeypatch.setattr(agent, "_collect_open_street_map", osm_never)
+    run(agent.collect("all"))
+    assert called == []
+    run(agent.collect("open-street-map"))          # still possible on purpose
+    assert called == ["osm"]
+
+
+def test_a_failure_already_reported_by_the_collector_is_not_repeated(monkeypatch):
+    agent = HealthAgent(SimpleNamespace())
+
+    async def ok():
+        return []
+
+    async def boom():
+        agent.source_errors.append("OpenStreetMap: 5/23 queries did not answer")
+        raise RuntimeError("OpenStreetMap: 5/23 queries did not answer")
+    monkeypatch.setattr(agent, "_collect_world_bank", ok)
+    monkeypatch.setattr(agent, "_collect_open_street_map", boom)
+    run(agent.collect("all"))
+    assert agent.source_errors == ["OpenStreetMap: 5/23 queries did not answer"]
+
+
+# ---------------------------------------------------------------- OurAirports
+AIRPORTS_CSV = """id,ident,type,name,latitude_deg,longitude_deg,elevation_ft,continent,iso_country,iso_region,municipality,scheduled_service,gps_code
+1,FTTJ,medium_airport,N'Djamena Hassan Djamous,12.13,15.03,968,AF,TD,TD-ND,N'Djamena,yes,FTTJ
+2,FTTA,small_airport,Sarh,9.14,18.37,1198,AF,TD,TD-MC,Sarh,yes,FTTA
+3,FTTB,small_airport,Bol,13.45,14.7,900,AF,TD,TD-LC,Bol,no,
+4,FTHP,heliport,Heli,12.0,15.0,900,AF,TD,TD-ND,,no,
+5,FTXX,closed,Old strip,12.0,15.0,900,AF,TD,TD-ND,,no,
+6,DNMM,large_airport,Lagos,6.5,3.3,135,AF,NG,NG-LA,Lagos,yes,DNMM
+7,FTYY,small_airport,Unknown region,12.0,15.0,900,AF,TD,TD-ZZ,,no,
+"""
+
+
+def test_parse_airports_counts_per_region_and_nationally():
+    from app.agents.airports import parse_airports
+    rows = parse_airports(AIRPORTS_CSV)
+    by = {(r["region"], r["indicator"]): r["value"] for r in rows}
+    assert by[("N'Djamena", "Airports and airstrips (OurAirports)")] == 1.0
+    assert by[("Lac", "Airports and airstrips (OurAirports)")] == 1.0
+    assert by[("national", "Airports and airstrips (OurAirports)")] == 4.0           # heliport, closed, Nigeria left out
+    assert by[("national", "Airports with scheduled service (OurAirports)")] == 2.0
+    assert parse_airports("id,iso_country\n") == []
+
+
+def _airports_agent(monkeypatch, text):
+    agent = TransportAgent(SimpleNamespace())
+
+    async def fetch_text(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15):
+        return text
+    monkeypatch.setattr(TransportAgent, "fetch_text_with_retry", staticmethod(fetch_text))
+    return agent
+
+
+def test_airports_collection_terms_and_failures(monkeypatch):
+    agent = _airports_agent(monkeypatch, AIRPORTS_CSV)
+    rows = run(agent._collect_airports())
+    obs = agent.normalize(rows[0])
+    assert obs.sector == "transport" and obs.license == "Public domain" and "OurAirports" in obs.notes
+    with pytest.raises(RuntimeError, match="could not be downloaded"):
+        run(_airports_agent(monkeypatch, None)._collect_airports())
+    with pytest.raises(RuntimeError, match="no airport found"):
+        run(_airports_agent(monkeypatch, "id,iso_country\n1,FR\n")._collect_airports())
