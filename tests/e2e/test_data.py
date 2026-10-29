@@ -7,18 +7,18 @@ OBS_NULL = [{"id": 1, "sector": "health", "indicator": "Taux X", "value": None, 
 
 
 def _wait_list(probe):
-    probe.page.wait_for_selector("#obs-list-container .obs-card-item, #obs-list-container .card:not(#obs-loading-indicator)")
+    probe.page.wait_for_selector("#obs-list-container .obs-item, #obs-list-container .card:not(#obs-loading-indicator)")
 
 
 def test_header_shows_shown_over_real_total_and_load_more_pages_until_the_end(probe):
     probe.goto("#/data")
     _wait_list(probe)
     probe.page.wait_for_function("document.querySelector('#obs-count-header').textContent.includes('/ 60')")
-    assert probe.page.locator(".obs-card-item").count() == 15
+    assert probe.page.locator(".obs-item").count() == 15
     probe.page.click("#btn-load-more")
-    probe.page.wait_for_function("document.querySelectorAll('.obs-card-item').length === 40")
+    probe.page.wait_for_function("document.querySelectorAll('.obs-item').length === 40")
     probe.page.click("#btn-load-more")
-    probe.page.wait_for_function("document.querySelectorAll('.obs-card-item').length === 60")
+    probe.page.wait_for_function("document.querySelectorAll('.obs-item').length === 60")
     assert not probe.page.is_visible("#btn-load-more")      # nothing left → button gone
 
 
@@ -27,7 +27,7 @@ def test_search_is_server_side_and_finds_rows_not_on_screen(probe):
     _wait_list(probe)
     probe.api_calls.clear()
     probe.page.fill("#search-obs", "Mayo-Kebbi Ouest")
-    probe.page.wait_for_function("[...document.querySelectorAll('.obs-card-item')].every(c => c.textContent.includes('Mayo-Kebbi Ouest')) && document.querySelectorAll('.obs-card-item').length > 0")
+    probe.page.wait_for_function("[...document.querySelectorAll('.obs-item')].every(c => c.textContent.includes('Mayo-Kebbi Ouest')) && document.querySelectorAll('.obs-item').length > 0")
     assert any("q=Mayo-Kebbi+Ouest" in u for u in probe.api_calls), probe.api_calls
 
 
@@ -62,11 +62,10 @@ def test_search_box_is_not_prefilled_from_stale_state(probe):
 def test_missing_value_is_a_dash_not_zero(probe):
     probe.page.route("**/api/v1/observations*", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(OBS_NULL)))
     probe.goto("#/data")
-    probe.page.wait_for_selector(".obs-card-item")
-    card = probe.page.inner_text(".obs-card-item")
+    probe.page.wait_for_selector(".obs-item")
+    card = probe.page.inner_text(".obs-item")
     assert "—" in card
     assert "\n0 " not in card and not card.strip().startswith("0")
-    assert "TCD" in card
 
 
 def test_slow_old_response_cannot_overwrite_newer_filter(probe):
@@ -81,9 +80,9 @@ def test_slow_old_response_cannot_overwrite_newer_filter(probe):
     probe.page.goto(f"{probe.base}/#/data")
     probe.page.wait_for_selector(".filter-sector-btn")
     probe.page.click('.filter-sector-btn[data-sector="health"]')      # fast request, resolves first
-    probe.page.wait_for_function("[...document.querySelectorAll('.obs-card-item')].length > 0")
+    probe.page.wait_for_function("[...document.querySelectorAll('.obs-item')].length > 0")
     probe.page.wait_for_timeout(2200)                                  # the slow "all sectors" reply arrives late
-    sectors = probe.page.eval_on_selector_all(".obs-card-item", "els => els.map(e => e.textContent)")
+    sectors = probe.page.eval_on_selector_all(".obs-item", "els => els.map(e => e.textContent)")
     assert sectors and all("SANTÉ" in t.upper() or "HEALTH" in t.upper() for t in sectors)
 
 
@@ -92,7 +91,7 @@ def test_no_collection_control_on_any_sector_page(probe):
     probe.page.on("request", lambda r: posts.append(r.url) if "/api/v1/collection/" in r.url else None)
     for sector in ("health", "environment", "transport"):
         probe.goto(f"#/data?sector={sector}")
-        probe.page.wait_for_selector("#obs-list-container .card, #obs-list-container .obs-card-item")
+        probe.page.wait_for_selector("#obs-list-container .card, #obs-list-container .obs-item")
         assert probe.page.locator("#btn-data-harvest, #btn-empty-harvest").count() == 0
     assert posts == []
 

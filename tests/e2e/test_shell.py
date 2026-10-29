@@ -58,7 +58,7 @@ def test_language_toggle_rerenders_without_changing_url(probe):
 def test_missing_chart_library_never_blanks_the_app(probe_no_chart_cdn):
     p = probe_no_chart_cdn
     p.goto("#/data")
-    p.page.wait_for_selector("#obs-list-container .obs-card-item")
+    p.page.wait_for_selector("#obs-list-container .obs-item")
     # The page works, the chart area explains itself.
     assert p.page.locator("#desktop-nav a.nav-tab").count() == 7
     p.page.wait_for_selector("#chart-section-card .chart-empty")

@@ -40,7 +40,8 @@ let chartIndicator = '';
 let currentObsData = [];
 let totalKnown = null;
 let sortAsc = false;
-let isGridView = false;
+let sortKey = 'date';
+let isGridView = false;   // false = table (default, like statistical portals), true = cards
 let _reqId = 0;
 
 function formatObsValue(val) {
@@ -66,7 +67,7 @@ function renderObservationCard(o) {
   const countryCode = escapeHtml(o.country_code || '');
 
   return `
-    <div class="card obs-card-item" style="padding:16px;">
+    <div class="card obs-item" style="padding:16px;">
       <div class="flex justify-between items-start mb-2">
         <span class="badge ${badgeClass}">${badgeText}</span>
         <span class="mono-xs text-muted">${sector}</span>
@@ -79,6 +80,58 @@ function renderObservationCard(o) {
         <span class="mono-xs text-muted">${countryCode}</span>
       </div>
     </div>`;
+}
+
+
+const COLUMNS = [
+  { key: 'indicator', label: 'data.col_indicator', cls: '' },
+  { key: 'region', label: 'data.col_region', cls: 'dt-col-region' },
+  { key: 'date', label: 'data.col_period', cls: '' },
+  { key: 'value', label: 'data.col_value', cls: 'dt-num' },
+  { key: 'source', label: 'data.col_source', cls: 'dt-col-source' },
+];
+
+function sortValue(o, key) {
+  switch (key) {
+    case 'value': { const n = Number(o.value); return o.value === null || o.value === undefined || isNaN(n) ? null : n; }
+    case 'indicator': return String(o.indicator || '').toLowerCase();
+    case 'region': return String(o.region || '').toLowerCase();
+    case 'source': return String(o.source || '').toLowerCase();
+    default: return new Date(o.reference_date || o.collected_at || 0).getTime() || 0;
+  }
+}
+
+function compareRows(a, b) {
+  const va = sortValue(a, sortKey), vb = sortValue(b, sortKey);
+  if (va === null && vb === null) return 0;
+  if (va === null) return 1;                    // missing values always last
+  if (vb === null) return -1;
+  const r = va < vb ? -1 : va > vb ? 1 : 0;
+  return sortAsc ? r : -r;
+}
+
+function renderObservationsTable(rows) {
+  const head = COLUMNS.map(c => {
+    const active = c.key === sortKey;
+    const arrow = active ? (sortAsc ? ' ▲' : ' ▼') : '';
+    return `<th scope="col" class="${c.cls}" aria-sort="${active ? (sortAsc ? 'ascending' : 'descending') : 'none'}">
+      <button type="button" class="dt-sort" data-sort-key="${c.key}">${escapeHtml(t(c.label))}${arrow}</button></th>`;
+  }).join('');
+  const body = rows.map(o => {
+    const unit = o.unit ? ` <span class="dt-unit">${escapeHtml(o.unit)}</span>` : '';
+    const date = formatDate(o.reference_date || o.collected_at, getLang()) || '—';
+    return `<tr class="obs-item">
+      <td><div class="dt-ind">${escapeHtml(o.indicator || '—')}</div>
+          <div class="dt-sub">${escapeHtml(t(`sectors.names.${o.sector}`) === `sectors.names.${o.sector}` ? (o.sector || '') : t(`sectors.names.${o.sector}`))}<span class="dt-mobile-only"> · ${escapeHtml(o.region || '—')} · ${escapeHtml(o.source || '')}</span></div></td>
+      <td class="dt-col-region">${escapeHtml(o.region || '—')}</td>
+      <td class="dt-nowrap">${escapeHtml(date)}</td>
+      <td class="dt-num">${formatObsValue(o.value)}${unit}</td>
+      <td class="dt-col-source">${escapeHtml(o.source || '—')}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="data-table-wrap"><table class="data-table">
+    <caption class="sr-only">${escapeHtml(t('data.title'))}</caption>
+    <thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 /** Pick the (indicator, region) series to chart: the chosen indicator, in the region that
@@ -119,7 +172,7 @@ export const DataView = {
           <input class="input-search" type="search" placeholder="${t('data.search')}" id="search-obs" value="" aria-label="${t('data.search')}" maxlength="100">
         </div>
         <button class="btn btn-ghost" id="btn-grid-toggle" style="padding:0 16px;" title="${t('data.layout_toggle')}" aria-label="${t('data.layout_toggle')}" aria-pressed="${isGridView}">
-          <i data-lucide="${isGridView ? 'list' : 'layout-grid'}" style="width:16px;height:16px;"></i>
+          <i data-lucide="${isGridView ? 'table' : 'layout-grid'}" style="width:16px;height:16px;"></i>
         </button>
       </div>
 
@@ -140,7 +193,7 @@ export const DataView = {
         </button>
       </div>
 
-      <div id="obs-list-container" class="${isGridView ? 'grid-2 mb-4' : 'flex flex-col gap-3 mb-4'}">
+      <div id="obs-list-container" class="${isGridView ? 'grid-2 mb-4' : 'mb-4'}">
         <div class="card" style="padding:24px;text-align:center;" id="obs-loading-indicator">
           <p class="mono-sm text-muted">${t('data.loading_db')}</p>
         </div>
@@ -201,17 +254,27 @@ export const DataView = {
     document.getElementById('btn-grid-toggle')?.addEventListener('click', (e) => {
       isGridView = !isGridView;
       const container = document.getElementById('obs-list-container');
-      if (container) container.className = isGridView ? 'grid-2 mb-4' : 'flex flex-col gap-3 mb-4';
+      if (container) container.className = isGridView ? 'grid-2 mb-4' : 'mb-4';
+      DataView.renderObsList();
       const btn = e.currentTarget;
       btn.setAttribute('aria-pressed', String(isGridView));
-      btn.innerHTML = `<i data-lucide="${isGridView ? 'list' : 'layout-grid'}" style="width:16px;height:16px;"></i>`;
+      btn.innerHTML = `<i data-lucide="${isGridView ? 'table' : 'layout-grid'}" style="width:16px;height:16px;"></i>`;
       if (window.lucide) window.lucide.createIcons();
     });
 
     document.getElementById('btn-sort-toggle')?.addEventListener('click', (e) => {
+      sortKey = 'date';
       sortAsc = !sortAsc;
       e.currentTarget.innerHTML = `<i data-lucide="arrow-up-down" style="width:12px;height:12px;"></i> ${t('data.sort_label')} ${sortAsc ? '▲' : '▼'}`;
       if (window.lucide) window.lucide.createIcons();
+      DataView.renderObsList();
+    });
+
+    document.getElementById('obs-list-container')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-sort-key]');
+      if (!b) return;
+      const key = b.getAttribute('data-sort-key');
+      if (key === sortKey) sortAsc = !sortAsc; else { sortKey = key; sortAsc = key === 'value' ? false : (key === 'date' ? false : true); }
       DataView.renderObsList();
     });
 
@@ -278,11 +341,7 @@ export const DataView = {
     const header = document.getElementById('obs-count-header');
     if (!container) return;
 
-    const sorted = [...currentObsData].sort((a, b) => {
-      const da = new Date(a.reference_date || a.collected_at || 0).getTime() || 0;
-      const db = new Date(b.reference_date || b.collected_at || 0).getTime() || 0;
-      return sortAsc ? da - db : db - da;
-    });
+    const sorted = [...currentObsData].sort(compareRows);
 
     if (header) {
       let total = null;
@@ -305,7 +364,7 @@ export const DataView = {
       return;
     }
 
-    container.innerHTML = sorted.map(renderObservationCard).join('');
+    container.innerHTML = isGridView ? sorted.map(renderObservationCard).join('') : renderObservationsTable(sorted);
     if (window.lucide) window.lucide.createIcons();
   },
 };
