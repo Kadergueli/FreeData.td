@@ -199,6 +199,9 @@ class AutonomousHarvesterScheduler:
                 logger.error("Error harvesting %s: %s", sec_name, exc)
                 agent_results[sec_name] = {"error": str(exc)}
 
+        # Housekeeping: the audit trail grows with every stored row; keep only the recent part.
+        await asyncio.to_thread(self.repository.purge_old_logs)
+
         self.last_result = {
             "timestamp": self.last_run.isoformat(),
             "total_stored": total_stored,

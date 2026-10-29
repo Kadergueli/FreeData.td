@@ -26,20 +26,31 @@ def _seed(repo):
 
 
 @pytest.mark.parametrize("typed,expected", [
-    ("Guera", {"Guera", "Guéra", "Mongo (Guéra)"}),
-    ("Guéra", {"Guera", "Guéra", "Mongo (Guéra)"}),
-    ("GUERA", {"Guera", "Guéra", "Mongo (Guéra)"}),
-    ("Ouaddai", {"Ouaddai", "Abéché (Ouaddaï)"}),
-    ("Ouaddaï", {"Ouaddai", "Abéché (Ouaddaï)"}),
-    ("Tandjile", {"Tandjile", "Laï (Tandjilé)"}),
-    ("Tandjilé", {"Tandjile", "Laï (Tandjilé)"}),
-    ("N'Djamena", {"N'Djamena", "N’Djamena (N’Djamena)"}),
+    ("Guera", {"Guera", "Mongo (Guera)"}),
+    ("Guéra", {"Guera", "Mongo (Guera)"}),
+    ("GUERA", {"Guera", "Mongo (Guera)"}),
+    ("Ouaddai", {"Ouaddai", "Abeche (Ouaddai)"}),
+    ("Ouaddaï", {"Ouaddai", "Abeche (Ouaddai)"}),
+    ("Tandjile", {"Tandjile", "Lai (Tandjile)"}),
+    ("Tandjilé", {"Tandjile", "Lai (Tandjile)"}),
+    ("N'Djamena", {"N'Djamena", "N'Djamena (N'Djamena)"}),
     ("Lac", {"Lac", "Bol (Lac)"}),
 ])
 def test_region_filter_ignores_accents_case_and_apostrophes(tmp_path: Path, typed, expected):
     repo = ObservationRepository(database_path=tmp_path / "t.db")
     _seed(repo)
     assert {r["region"] for r in repo.list_observations(region=typed, limit=100)} == expected
+
+
+def test_rows_stored_before_the_unification_are_still_found(tmp_path: Path):
+    """Rows written with accents by older versions stay readable until the maintenance SQL runs."""
+    repo = ObservationRepository(database_path=tmp_path / "t.db")
+    _seed(repo)
+    with repo._connection() as connection:
+        connection.execute("UPDATE observations SET region = 'Mongo (Guéra)' WHERE region = 'Mongo (Guera)'")
+        connection.execute("UPDATE observations SET region = 'Abéché (Ouaddaï)' WHERE region = 'Abeche (Ouaddai)'")
+    assert {r["region"] for r in repo.list_observations(region="Guera", limit=100)} == {"Guera", "Mongo (Guéra)"}
+    assert {r["region"] for r in repo.list_observations(region="Ouaddaï", limit=100)} == {"Ouaddai", "Abéché (Ouaddaï)"}
 
 
 def test_wildcards_typed_by_the_user_do_not_match_everything(tmp_path: Path):

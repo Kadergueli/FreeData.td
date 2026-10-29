@@ -76,7 +76,8 @@ async function loadRegions() {
   if (!container) return;
 
   const official = new Set(CHAD_REGIONS.map(r => r.toLowerCase()));
-  const extra = dbRegions.filter(r => !official.has(String(r).toLowerCase()));
+  // 'Place (Province)' labels (markets, cities) are found by their province: the 23 buttons are enough.
+  const extra = dbRegions.filter(r => !official.has(String(r).toLowerCase()) && !String(r).includes('('));
 
   [...CHAD_REGIONS, ...extra].forEach(region => {
     const btn = document.createElement('button');

@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.regions import canonical_region
+
 
 class ObservationCreate(BaseModel):
     sector: Literal["agriculture", "markets", "transport", "education", "environment", "economy", "health", "energy", "demography"]
@@ -28,6 +30,12 @@ class ObservationCreate(BaseModel):
         if v != v or v in (float("inf"), float("-inf")):  # v != v is the classic NaN check
             raise ValueError("value must be a finite number (NaN/Infinity are not allowed)")
         return v
+
+    @field_validator("region")
+    @classmethod
+    def region_has_one_spelling(cls, v: str) -> str:
+        # The region is part of a row's unique key: "Guéra" and "Guera" used to be two series.
+        return canonical_region(v)
 
     @field_validator("source_url")
     @classmethod

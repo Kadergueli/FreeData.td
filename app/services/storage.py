@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -633,6 +634,28 @@ class ObservationRepository:
                 o["value"] = None
 
         return deduped
+
+    LOG_KEEP_DAYS = 30
+
+    def purge_old_logs(self, days: int | None = None) -> bool:
+        """Delete audit-trail lines (table_logs) older than `days` days. The table receives one line
+        per stored observation (about 15 000 a day during a full harvest) and nothing ever removed
+        them; only the newest few are shown in the app. Best effort: returns False on any failure,
+        which must never stop a harvest."""
+        if not self._supabase:
+            return True                      # the local SQLite store keeps no audit trail
+        days = self.LOG_KEEP_DAYS if days is None else max(1, int(days))
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
+        try:
+            _with_retry(
+                lambda: self._supabase.table("table_logs").delete().lt("timestamp", cutoff).execute(),
+                attempts=2,
+                label="table_logs purge",
+            )
+            return True
+        except Exception as exc:
+            logger.warning("table_logs purge failed (non-fatal): %s", exc)
+            return False
 
     def count_observations(self, sector: str | None = None) -> int:
         """Cheap live count used to detect whether a sector has new data since a study

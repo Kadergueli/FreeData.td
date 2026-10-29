@@ -100,7 +100,7 @@ def test_normalized_price_carries_licence_and_attribution():
     obs = MarketsAgent(SimpleNamespace()).normalize(parse_record(ROW))
     assert obs.source == "FEWS NET" and obs.license == fews_prices.LICENSE
     assert "FEWS NET" in obs.notes and "attribution" in obs.notes.lower()
-    assert obs.region == "Ouaddaï" and str(obs.reference_date) == "2026-09-30"
+    assert obs.region == "Ouaddai" and str(obs.reference_date) == "2026-09-30"
 
 
 def test_the_empty_metadata_collector_is_gone():
