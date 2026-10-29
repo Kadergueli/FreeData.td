@@ -379,3 +379,16 @@ def test_airports_collection_terms_and_failures(monkeypatch):
         run(_airports_agent(monkeypatch, None)._collect_airports())
     with pytest.raises(RuntimeError, match="no airport found"):
         run(_airports_agent(monkeypatch, "id,iso_country\n1,FR\n")._collect_airports())
+
+
+def test_osm_regions_are_visited_in_shuffled_order(monkeypatch):
+    seen = []
+
+    async def fake(client, query):
+        seen.append(query.split('"ISO3166-2"="')[1].split('"')[0])
+        return _counts(2), ""
+    monkeypatch.setattr(osm, "_query", fake)
+    monkeypatch.setattr(osm.random, "shuffle", lambda items: items.reverse())
+    run(osm.collect_osm_counts([osm.SCHOOLS], [], pause=0))
+    assert sorted(seen) == sorted(osm.REGIONS)
+    assert seen != list(osm.REGIONS)                       # not the fixed dictionary order

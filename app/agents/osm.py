@@ -9,6 +9,7 @@ Data: © OpenStreetMap contributors, ODbL 1.0."""
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -76,7 +77,7 @@ def parse_counts(payload: Any, expected: int) -> list[int] | None:
 
 
 REQUEST_TIMEOUT = 150.0      # seconds, per request (the query itself asks Overpass for at most 120 s)
-DEADLINE_SECONDS = 600.0     # the whole collection stops here, whatever happened
+DEADLINE_SECONDS = 900.0     # the whole collection stops here, whatever happened
 CONCURRENCY = 2              # the public Overpass servers give 2 slots per address
 MAX_FIRST_FAILURES = 4       # this many failures before ANY success: the source is not answering, stop
 
@@ -115,7 +116,11 @@ async def collect_osm_counts(features: list[OsmFeature], errors: list[str], paus
 
     totals: dict[str, int] = {}
     jobs = [("TD", "national", f) for f in features if f.national]
-    jobs += [(iso, region, f) for iso, region in REGIONS.items() for f in features if not f.national]
+    regional = [(iso, region, f) for iso, region in REGIONS.items() for f in features if not f.national]
+    # Random order: when the public servers are too slow to finish every region, the next run
+    # starts elsewhere, so the regions missed this time are the ones likely collected next time.
+    random.shuffle(regional)
+    jobs += regional
 
     async def one(client: httpx.AsyncClient, iso: str, region: str, feature: OsmFeature) -> None:
         async with gate:
