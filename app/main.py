@@ -127,9 +127,11 @@ app.include_router(admin_router)
 STATIC_DIR = Path(__file__).parent / "static"
 DASHBOARD = STATIC_DIR / "index.html"
 
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(NoCacheJSMiddleware)
+# The last middleware added is the outermost: SecurityHeaders wraps the rate limiter so that
+# even a 429 carries the CSP and the other security headers.
 app.add_middleware(ReadRateLimitMiddleware)
+app.add_middleware(NoCacheJSMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 # Compress JSON / JS / CSS (182 KB of static assets shrink to ~50 KB).
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -303,7 +305,8 @@ def export_parquet(sector: str | None = Query(default=None, max_length=40), regi
     try:
         content = observations_to_parquet(rows)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.warning("parquet export unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Parquet export is temporarily unavailable. Use CSV or JSON.") from exc
     name_parts = _safe_filename_part(sector)
     if region:
         name_parts += f"-{_safe_filename_part(region)}"
@@ -433,7 +436,8 @@ async def generate_study(sector: str | None = Query(default=None, max_length=40)
         result = await AnalysisAgent(repository).study(sector)
         return result.model_dump(mode="json")
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.warning("study generation unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Study generation is temporarily unavailable.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -459,7 +463,8 @@ def cross_sector_insights() -> dict:
     if cached is not None:
         return cached
     try:
-        observations = repository.list_observations(sector=None, limit=2000)
+        # A plain "newest 2000" was filled by the biggest sector; sample each sector equally.
+        observations = [o for sec in SECTOR_IDS for o in repository.list_observations(sector=sec, limit=250)]
         result = {
             "freshness": compute_freshness_scores(observations),
             "correlations": compute_cross_sector_correlations(observations),
