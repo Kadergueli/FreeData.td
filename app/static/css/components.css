@@ -807,3 +807,12 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
 
 .sector-item-card { transition: transform 0.15s, border-color 0.15s; }
 .sector-item-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+/* Key figures stay on ONE row on phones (three tall stacked cards wasted a whole screen) */
+.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+@media (max-width: 767px) {
+  .stat-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .stat-row .stat-card { padding: 12px 10px; text-align: center; }
+  .stat-row .stat-value { font-size: 18px; }
+  .stat-row .stat-label { font-size: 9px; letter-spacing: 0.04em; line-height: 1.3; }
+}

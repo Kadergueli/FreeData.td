@@ -82,18 +82,18 @@ export const SectorsView = {
         <input class="input-search" type="text" placeholder="${t('sectors.search')}" id="search-sectors" aria-label="${t('sectors.search')}">
       </div>
 
-      <div class="grid-3 mb-6">
-        <div class="card" style="text-align:center;padding:16px;">
-          <div class="stat-label" style="font-size:10px;margin-bottom:8px;">${t('sectors.total_sources')}</div>
-          <div class="stat-value text-cyan" style="font-size:24px;" id="stat-sources">${OFFICIAL_SOURCES.length}</div>
+      <div class="stat-row mb-6">
+        <div class="stat-card" style="text-align:center;">
+          <div class="stat-label">${t('sectors.total_sources')}</div>
+          <div class="stat-value text-cyan" id="stat-sources">${OFFICIAL_SOURCES.length}</div>
         </div>
-        <div class="card" style="text-align:center;padding:16px;">
-          <div class="stat-label" style="font-size:10px;margin-bottom:8px;">${t('sectors.val_score')}</div>
-          <div class="stat-value text-green" style="font-size:24px;" id="stat-val-score"><span class="skeleton"></span></div>
+        <div class="stat-card" style="text-align:center;">
+          <div class="stat-label">${t('sectors.val_score')}</div>
+          <div class="stat-value text-green" id="stat-val-score"><span class="skeleton"></span></div>
         </div>
-        <div class="card" style="text-align:center;padding:16px;">
-          <div class="stat-label" style="font-size:10px;margin-bottom:8px;">${t('sectors.regions_covered')}</div>
-          <div class="stat-value" style="font-size:24px;color:var(--text);" id="stat-regions"><span class="skeleton"></span></div>
+        <div class="stat-card" style="text-align:center;">
+          <div class="stat-label">${t('sectors.regions_covered')}</div>
+          <div class="stat-value" style="color:var(--text);" id="stat-regions"><span class="skeleton"></span></div>
         </div>
       </div>
 

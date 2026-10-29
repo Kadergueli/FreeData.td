@@ -58,14 +58,27 @@ export const HomeView = {
         </div>
       </div>
 
-      <!-- Sources strip: transparently lists WHERE data is aggregated from (not partners) -->
-      <div class="sources-strip">
-        <span class="sources-strip__label">${t('home.sources_strip_label')}</span>
-        ${OFFICIAL_SOURCES.slice(0, 8).map(s => `<span class="sources-strip__chip">${escapeHtml(s.name)}</span>`).join('')}
+      <!-- Sources (accordion — closed by default so it costs no space on phones) -->
+      <div class="card card--transparent mb-6 accordion-section" data-accordion="sources">
+        <button type="button" class="accordion-trigger" data-accordion-trigger="sources" aria-expanded="false" aria-controls="acc-panel-sources">
+          <div class="flex items-center gap-2">
+            <i data-lucide="database" style="width:16px;height:16px;" class="text-cyan"></i>
+            <div>
+              <div class="accordion-title">${t('home.sources_strip_title')}</div>
+              <div class="accordion-teaser">${t('home.sources_strip_teaser').replace('{n}', String(OFFICIAL_SOURCES.length))}</div>
+            </div>
+          </div>
+          <i data-lucide="chevron-down" style="width:18px;height:18px;" class="accordion-chevron"></i>
+        </button>
+        <div class="accordion-panel" id="acc-panel-sources" role="region"><div><div class="accordion-panel-inner">
+          <div class="flex gap-2 flex-wrap">
+            ${OFFICIAL_SOURCES.map(s => `<span class="sources-strip__chip">${escapeHtml(s.name)}</span>`).join('')}
+          </div>
+        </div></div></div>
       </div>
 
       <!-- Quick Stats -->
-      <div class="grid-3 mb-6">
+      <div class="stat-row mb-6">
         <div class="stat-card">
           <div class="stat-value text-accent" id="stat-obs-count"><span class="skeleton"></span></div>
           <div class="stat-label">${t('home.stat_obs')}</div>
