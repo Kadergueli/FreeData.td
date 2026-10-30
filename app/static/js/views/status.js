@@ -95,7 +95,7 @@ function renderFreshness(sources) {
   const badge = { ok: 'badge--valid', late: '', stale: '' };
   box.innerHTML = `
     <p class="body-text mb-3" style="font-size:12px;">${t('status.fresh_intro')}</p>
-    <div class="flex flex-col gap-2">${sources.map(s => `
+    <div class="flex flex-col gap-2 fresh-list" style="max-height:320px;overflow-y:auto;padding-right:2px;">${sources.map(s => `
       <div class="flex justify-between items-center gap-3 status-row" data-source-status="${escapeHtml(s.status)}"
            style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;">
         <div style="min-width:0;flex:1;">
