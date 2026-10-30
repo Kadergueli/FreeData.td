@@ -843,3 +843,14 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
 }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+.dt-toggle { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; width: 100%; background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.dt-toggle:hover .dt-ind { color: var(--accent); }
+.dt-chev { color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
+.data-table tr.is-open { background: rgba(37, 99, 235, 0.05) !important; }
+.data-table .dt-detail td { background: var(--surface); padding: 12px 14px 14px; }
+.dt-d-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 16px; margin: 0 0 12px; }
+.dt-d-item dt { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 2px; }
+.dt-d-item dd { margin: 0; font-size: 13px; word-break: break-word; }
+.dt-d-wide { grid-column: 1 / -1; }
+.dt-d-actions { display: flex; gap: 8px; flex-wrap: wrap; }

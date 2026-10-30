@@ -10,7 +10,8 @@
 
 import { fetchObservations, fetchStats } from '../api_client.js';
 import { initChartMais } from '../charts.js';
-import { formatDate } from '../ui.js';
+import { formatDate, showToast } from '../ui.js';
+import { getSourceByQuery } from '../sources_catalog.js';
 import { t, getLang } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
 
@@ -41,6 +42,7 @@ let currentObsData = [];
 let totalKnown = null;
 let sortAsc = false;
 let sortKey = 'date';
+let expanded = new Set();   // rows whose detail panel is open
 let isGridView = false;   // false = table (default, like statistical portals), true = cards
 let _reqId = 0;
 
@@ -110,6 +112,37 @@ function compareRows(a, b) {
   return sortAsc ? r : -r;
 }
 
+
+function rowKey(o) {
+  return [o.sector, o.indicator, o.region, o.reference_date, o.source].map(x => String(x ?? '')).join('|');
+}
+
+function citationText(o) {
+  const date = formatDate(o.reference_date || o.collected_at, getLang()) || '';
+  const lic = o.license ? ` (${o.license})` : '';
+  return `${o.indicator || ''}, ${o.region || ''}, ${date}. ${o.source || ''}. FreeData.td${lic}. ${location.origin}/#/data`;
+}
+
+function renderDetail(o) {
+  const cat = getSourceByQuery(o.source || '');
+  const link = o.source_url || cat.url;
+  const safeLink = /^https?:\/\//i.test(link || '') ? link : '';
+  const collected = o.collected_at ? (formatDate(o.collected_at, getLang()) || '') : '';
+  const notes = o.notes ? `<div class="dt-d-item dt-d-wide"><dt>${escapeHtml(t('data.detail_notes'))}</dt><dd>${escapeHtml(o.notes)}</dd></div>` : '';
+  const exportHref = `/api/v1/export/csv?sector=${encodeURIComponent(o.sector || '')}`;
+  return `<tr class="dt-detail"><td colspan="5"><dl class="dt-d-grid">
+      <div class="dt-d-item"><dt>${escapeHtml(t('data.col_source'))}</dt><dd>${safeLink ? `<a href="${escapeHtml(safeLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(o.source || cat.name)}</a>` : escapeHtml(o.source || '—')}</dd></div>
+      <div class="dt-d-item"><dt>${escapeHtml(t('data.detail_license'))}</dt><dd>${escapeHtml(o.license || cat.license || '—')}</dd></div>
+      <div class="dt-d-item"><dt>${escapeHtml(t('data.col_region'))}</dt><dd>${escapeHtml(o.region || '—')}</dd></div>
+      <div class="dt-d-item"><dt>${escapeHtml(t('data.detail_collected'))}</dt><dd>${escapeHtml(collected || '—')}</dd></div>
+      ${notes}
+    </dl>
+    <div class="dt-d-actions">
+      <button type="button" class="btn btn-ghost mono-xs" data-cite="${escapeHtml(rowKey(o))}">${escapeHtml(t('data.detail_cite'))}</button>
+      <a class="btn btn-ghost mono-xs" href="${exportHref}" download>${escapeHtml(t('data.detail_download'))}</a>
+    </div></td></tr>`;
+}
+
 function renderObservationsTable(rows) {
   const head = COLUMNS.map(c => {
     const active = c.key === sortKey;
@@ -120,14 +153,16 @@ function renderObservationsTable(rows) {
   const body = rows.map(o => {
     const unit = o.unit ? ` <span class="dt-unit">${escapeHtml(o.unit)}</span>` : '';
     const date = formatDate(o.reference_date || o.collected_at, getLang()) || '—';
-    return `<tr class="obs-item">
-      <td><div class="dt-ind">${escapeHtml(o.indicator || '—')}</div>
+    const key = rowKey(o);
+    const open = expanded.has(key);
+    return `<tr class="obs-item${open ? ' is-open' : ''}">
+      <td><button type="button" class="dt-toggle" data-row="${escapeHtml(key)}" aria-expanded="${open}" aria-label="${escapeHtml(t('data.detail_toggle'))}"><span class="dt-ind">${escapeHtml(o.indicator || '—')}</span><span class="dt-chev" aria-hidden="true">${open ? '▾' : '▸'}</span></button>
           <div class="dt-sub">${escapeHtml(t(`sectors.names.${o.sector}`) === `sectors.names.${o.sector}` ? (o.sector || '') : t(`sectors.names.${o.sector}`))}<span class="dt-mobile-only"> · ${escapeHtml(o.region || '—')} · ${escapeHtml(o.source || '')}</span></div></td>
       <td class="dt-col-region">${escapeHtml(o.region || '—')}</td>
       <td class="dt-nowrap">${escapeHtml(date)}</td>
       <td class="dt-num">${formatObsValue(o.value)}${unit}</td>
       <td class="dt-col-source">${escapeHtml(o.source || '—')}</td>
-    </tr>`;
+    </tr>${open ? renderDetail(o) : ''}`;
   }).join('');
   return `<div class="data-table-wrap"><table class="data-table">
     <caption class="sr-only">${escapeHtml(t('data.title'))}</caption>
@@ -159,6 +194,7 @@ export const DataView = {
     searchQuery = '';
     chartIndicator = '';
     currentObsData = [];
+    expanded = new Set();
     totalKnown = null;
     _reqId += 1; // invalidate anything still in flight from a previous visit
 
@@ -271,6 +307,23 @@ export const DataView = {
     });
 
     document.getElementById('obs-list-container')?.addEventListener('click', (e) => {
+      const tog = e.target.closest('[data-row]');
+      if (tog) {
+        const k = tog.getAttribute('data-row');
+        if (expanded.has(k)) expanded.delete(k); else expanded.add(k);
+        DataView.renderObsList();
+        return;
+      }
+      const cite = e.target.closest('[data-cite]');
+      if (cite) {
+        const row = currentObsData.find(o => rowKey(o) === cite.getAttribute('data-cite'));
+        if (row && navigator.clipboard) {
+          navigator.clipboard.writeText(citationText(row)).then(
+            () => showToast(t('data.detail_cited'), 'success'),
+            () => showToast(t('data.detail_cite_failed'), 'error'));
+        }
+        return;
+      }
       const b = e.target.closest('[data-sort-key]');
       if (!b) return;
       const key = b.getAttribute('data-sort-key');

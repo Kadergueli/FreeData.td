@@ -137,3 +137,17 @@ def test_controls_expose_state_to_assistive_tech(probe):
     assert probe.page.evaluate("document.querySelector('#btn-sort-toggle').tagName") == "BUTTON"
     probe.page.click("#btn-grid-toggle")
     assert probe.page.get_attribute("#btn-grid-toggle", "aria-pressed") == "true"
+
+
+def test_row_opens_a_detail_panel_with_source_license_and_download(probe):
+    probe.goto("#/data")
+    probe.page.wait_for_selector(".obs-item .dt-toggle")
+    assert probe.page.locator(".dt-detail").count() == 0
+    probe.page.click(".obs-item .dt-toggle >> nth=0")
+    probe.page.wait_for_selector(".dt-detail")
+    assert probe.page.get_attribute(".obs-item .dt-toggle >> nth=0", "aria-expanded") == "true"
+    text = probe.page.inner_text(".dt-detail")
+    assert "CC-BY 4.0" in text
+    assert probe.page.locator(".dt-detail a[download]").get_attribute("href").startswith("/api/v1/export/csv?sector=")
+    probe.page.click(".obs-item .dt-toggle >> nth=0")
+    assert probe.page.locator(".dt-detail").count() == 0
