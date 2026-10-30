@@ -854,3 +854,14 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
 .dt-d-item dd { margin: 0; font-size: 13px; word-break: break-word; }
 .dt-d-wide { grid-column: 1 / -1; }
 .dt-d-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Sources directory: folded cards ── */
+.source-item { padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.source-summary { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; }
+.source-summary::-webkit-details-marker { display: none; }
+.source-name { font-family: var(--font-sans); font-size: 15px; font-weight: 700; color: var(--text); margin: 0; }
+.source-org { margin: 2px 0 0; }
+.source-chev { color: var(--text-muted); transition: transform .2s; flex-shrink: 0; margin-top: 2px; }
+.source-item[open] .source-chev { transform: rotate(180deg); }
+.source-item[open] .source-summary { border-bottom: 1px solid var(--border); }
+.source-body { padding: 14px 16px 16px; }

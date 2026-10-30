@@ -22,3 +22,17 @@ def test_search_filters_and_shows_no_match_message(probe):
     probe.page.fill("#search-sources-input", "")
     assert probe.page.locator(".source-directory-item:visible").count() == total
     assert not probe.page.is_visible("#sources-no-match")
+
+
+def test_cards_are_folded_and_sector_filter_narrows_the_list(probe):
+    probe.goto("#/sources")
+    probe.page.wait_for_selector(".source-directory-item")
+    assert probe.page.locator(".source-directory-item[open]").count() == 0
+    total = probe.page.locator(".source-directory-item").count()
+    probe.page.click("#sources-sector-filter [data-filter=transport]")
+    shown = probe.page.locator(".source-directory-item:visible").count()
+    assert 0 < shown < total
+    probe.page.click(".source-directory-item:visible summary >> nth=0")
+    assert probe.page.locator(".source-directory-item[open] a[target=_blank]").count() == 1
+    probe.page.click("#sources-sector-filter [data-filter=all]")
+    assert probe.page.locator(".source-directory-item:visible").count() == total
