@@ -148,6 +148,11 @@ export async function initChartDensity(density = null) {
   const labels = density && typeof density === 'object' ? Object.keys(density) : [];
   const totals = labels.map(k => Number((typeof density[k] === 'object' ? density[k].total : density[k]) || 0));
 
+  // Region names never fit under 23 vertical bars on a phone (they overlapped): draw
+  // horizontal bars and give the chart a height proportional to the number of regions.
+  const box = document.getElementById('chart-density');
+  if (box && box.parentElement && labels.length) box.parentElement.style.height = `${Math.max(150, labels.length * 26 + 30)}px`;
+
   await draw('density', 'chart-density', labels.length > 0, () => ({
     type: 'bar',
     data: {
@@ -157,16 +162,17 @@ export async function initChartDensity(density = null) {
         data: totals,
         backgroundColor: '#2563eb',
         barPercentage: 0.8,
-        categoryPercentage: 0.6,
+        categoryPercentage: 0.8,
       }],
     },
     options: {
+      indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { grid: { display: false }, ticks: { maxRotation: 60, minRotation: 0, autoSkip: false } },
-        y: { grid: { color: '#f1f3f5' }, beginAtZero: true, ticks: { precision: 0 } },
+        y: { grid: { display: false }, ticks: { autoSkip: false, font: { size: 11 } } },
+        x: { grid: { color: '#f1f3f5' }, beginAtZero: true, ticks: { precision: 0 } },
       },
     },
   }));

@@ -865,3 +865,21 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
 .source-item[open] .source-chev { transform: rotate(180deg); }
 .source-item[open] .source-summary { border-bottom: 1px solid var(--border); }
 .source-body { padding: 14px 16px 16px; }
+
+/* ── Phone layout fixes: nothing may overlap ── */
+.page-head { flex-wrap: wrap; gap: 8px 16px; }
+.page-head > div:first-child { min-width: 0; flex: 1 1 240px; }
+@media (max-width: 640px) {
+  .status-row { flex-wrap: wrap; align-items: flex-start !important; }
+  .status-row > div:first-child { flex: 1 1 100% !important; }
+  .status-row .status-log-payload { white-space: normal !important; word-break: break-word; }
+  .status-log-main { flex-wrap: wrap; }
+
+  /* Correlation table → one small card per pair instead of a 7-column table cut off on the right */
+  .ds-table, .ds-table tbody { display: block; width: 100%; }
+  .ds-table thead { display: none; }
+  .ds-table .ds-corr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+  .ds-table .ds-corr-row td { display: block; padding: 0 !important; font-size: 11px !important; }
+  .ds-table .ds-corr-row .ds-interp { flex: 1 1 100%; max-width: none !important; margin-top: 2px; }
+}
+@media (max-width: 640px) { #audit-logs-list { min-height: 0 !important; } }

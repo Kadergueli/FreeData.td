@@ -332,7 +332,7 @@ async function loadCrossSectorInsights(showUpdatedBadge = false) {
     const strengthLabel = t(ss.key);
 
     return `
-      <tr>
+      <tr class="ds-corr-row">
         <td class="mono-xs fw-600" style="padding:8px 10px;text-transform:uppercase;white-space:nowrap;">${escapeHtml(secAName)}</td>
         <td class="mono-xs" style="padding:8px 4px;color:var(--text-muted);">→</td>
         <td class="mono-xs fw-600" style="padding:8px 10px;text-transform:uppercase;white-space:nowrap;">${escapeHtml(secBName)}</td>
@@ -415,7 +415,7 @@ export const InsightsView = {
     activeInsightSector = 'all'; // the first tab is drawn active on every visit
 
     return `
-      <div class="flex justify-between items-start mb-6">
+      <div class="flex justify-between items-start mb-6 page-head">
         <div>
           <div class="mono-xs text-cyan mb-1 flex items-center gap-1">
             <i data-lucide="terminal" style="width:14px;height:14px;"></i> ${t('insights.agent_log')}
@@ -450,13 +450,13 @@ export const InsightsView = {
 
       <!-- Reports Library Collapsible Card Container -->
       <div class="card mb-6" style="border-color:var(--border-strong);overflow:hidden;" id="reports-library-card">
-        <div class="flex justify-between items-center" style="padding:14px 16px;background:var(--bg-alt);cursor:pointer;user-select:none;" id="toggle-reports-library">
-          <h4 class="uppercase mono-sm flex items-center gap-2" style="margin:0;">
+        <div class="flex justify-between items-center gap-3" style="padding:14px 16px;background:var(--bg-alt);cursor:pointer;user-select:none;" id="toggle-reports-library">
+          <h4 class="uppercase mono-sm flex items-center gap-2" style="margin:0;min-width:0;flex-wrap:wrap;">
             <i data-lucide="library" style="width:16px;height:16px;" class="text-cyan"></i>
             ${t('insights.library_title')}
             <span class="badge badge--valid mono-xs" id="reports-library-count-badge" style="margin-left:6px;font-weight:600;">0</span>
           </h4>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2" style="flex-shrink:0;white-space:nowrap;">
             <span class="mono-xs text-muted" id="reports-library-toggle-hint">${t('common.open')}</span>
             <i data-lucide="chevron-down" id="reports-library-chevron" style="width:16px;height:16px;transition:transform .2s;"></i>
           </div>

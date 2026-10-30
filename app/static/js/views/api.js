@@ -163,7 +163,7 @@ export const ApiView = {
     const examples = exampleBlock();
 
     return `
-      <div class="flex justify-between items-start mb-6">
+      <div class="flex justify-between items-start mb-6 page-head">
         <div>
           <div class="mono-xs text-accent fw-700 mb-1 flex items-center gap-1">
             <i data-lucide="terminal" style="width:14px;height:14px;"></i> ${t('api.dev_label')}

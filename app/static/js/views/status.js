@@ -96,7 +96,7 @@ function renderFreshness(sources) {
   box.innerHTML = `
     <p class="body-text mb-3" style="font-size:12px;">${t('status.fresh_intro')}</p>
     <div class="flex flex-col gap-2">${sources.map(s => `
-      <div class="flex justify-between items-center gap-3" data-source-status="${escapeHtml(s.status)}"
+      <div class="flex justify-between items-center gap-3 status-row" data-source-status="${escapeHtml(s.status)}"
            style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;">
         <div style="min-width:0;flex:1;">
           <span class="mono-xs fw-700">${escapeHtml(s.source)}</span>
@@ -110,7 +110,7 @@ function renderFreshness(sources) {
 export const StatusView = {
   render() {
     return `
-      <div class="flex justify-between items-start mb-6">
+      <div class="flex justify-between items-start mb-6 page-head">
         <div>
           <div class="mono-xs text-muted fw-700 mb-1 flex items-center gap-1">
             <i data-lucide="activity" style="width:14px;height:14px;"></i> ${t('status.surveillance')}
@@ -217,13 +217,13 @@ export const StatusView = {
     if (logs) {
       if (audit && Array.isArray(audit.logs) && audit.logs.length > 0) {
         logs.innerHTML = audit.logs.map(log => `
-          <div class="flex justify-between items-center gap-3" style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;margin-bottom:4px;">
-            <div class="flex items-center gap-2" style="min-width:0;flex:1;">
+          <div class="flex justify-between items-center gap-3 status-row" style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg);border-radius:4px;margin-bottom:4px;">
+            <div class="flex items-center gap-2 status-log-main" style="min-width:0;flex:1;">
               <span class="badge" style="background:#eff6ff;color:#1e40af;border-color:#bfdbfe;font-size:11px;padding:2px 8px;flex-shrink:0;">
                 <i data-lucide="shield-check" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;"></i> ${escapeHtml(formatAuditAgent(log.agent))}
               </span>
               <span class="mono-xs fw-600 text-muted" style="flex-shrink:0;">${escapeHtml(formatAuditOp(log.type_operation))}</span>
-              <span class="mono-xs" style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${formatAuditPayload(log.valeur_apres || '')}</span>
+              <span class="mono-xs status-log-payload" style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${formatAuditPayload(log.valeur_apres || '')}</span>
             </div>
             <span class="mono-xs text-muted" style="font-size:11px;flex-shrink:0;">${escapeHtml(formatDateTime(log.timestamp))}</span>
           </div>`).join('');
