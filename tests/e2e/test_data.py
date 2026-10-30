@@ -151,3 +151,30 @@ def test_row_opens_a_detail_panel_with_source_license_and_download(probe):
     assert probe.page.locator(".dt-detail a[download]").get_attribute("href").startswith("/api/v1/export/csv?sector=")
     probe.page.click(".obs-item .dt-toggle >> nth=0")
     assert probe.page.locator(".dt-detail").count() == 0
+
+
+def _series(n, start=2015):
+    return [{"id": i, "sector": "economy", "indicator": "GDP", "value": 100 + i, "unit": "USD",
+             "reference_date": f"{start + i}-01-01", "country_code": "TCD", "region": "national",
+             "source": "WB", "license": "CC-BY 4.0", "notes": "", "collected_at": "2026-01-01", "status": "validated"}
+            for i in range(n)]
+
+
+def test_chart_uses_full_history_and_range_buttons_narrow_it(probe):
+    probe.page.route("**/api/v1/observations*", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps(_series(9))))
+    probe.goto("#/data")
+    probe.page.wait_for_selector("#chart-range:visible")
+    last = "window.__charts[window.__charts.length - 1].data.labels.length"
+    probe.page.wait_for_function(f"window.__charts && window.__charts.length && {last} === 9")
+    probe.page.click("#chart-range [data-range='5']")
+    probe.page.wait_for_function(f"{last} === 5")
+
+
+def test_single_period_shows_a_message_instead_of_a_lonely_dot(probe):
+    probe.page.route("**/api/v1/observations*", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps(_series(1))))
+    probe.goto("#/data")
+    probe.page.wait_for_selector(".chart-empty")
+    assert "2015" in probe.page.inner_text(".chart-empty")
+    assert not probe.page.is_visible("#chart-range")

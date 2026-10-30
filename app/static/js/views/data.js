@@ -9,7 +9,7 @@
  */
 
 import { fetchObservations, fetchStats } from '../api_client.js';
-import { initChartMais } from '../charts.js';
+import { initChartMais, showChartMessage } from '../charts.js';
 import { formatDate, showToast } from '../ui.js';
 import { getSourceByQuery } from '../sources_catalog.js';
 import { t, getLang } from '../i18n.js';
@@ -38,6 +38,9 @@ let activeSector = 'tous';
 let currentLimit = PAGE_SIZE;
 let searchQuery = '';
 let chartIndicator = '';
+let chartRange = 'all';            // 'all' | '10' | '5' (years)
+let seriesCache = new Map();      // full history per indicator|region, fetched on demand
+let _chartReq = 0;
 let currentObsData = [];
 let totalKnown = null;
 let sortAsc = false;
@@ -193,6 +196,8 @@ export const DataView = {
     currentLimit = PAGE_SIZE;
     searchQuery = '';
     chartIndicator = '';
+    chartRange = 'all';
+    seriesCache = new Map();
     currentObsData = [];
     expanded = new Set();
     totalKnown = null;
@@ -242,7 +247,10 @@ export const DataView = {
           </h4>
           <select id="chart-indicator-select" class="input-search" style="width:auto;max-width:100%;padding:6px 10px;font-size:12px;" aria-label="${t('data.chart_indicator')}"></select>
         </div>
-        <p class="mono-xs text-muted mb-4" id="chart-caption"></p>
+        <p class="mono-xs text-muted mb-2" id="chart-caption"></p>
+        <div class="flex gap-2 mb-3" id="chart-range" style="display:none;" role="group" aria-label="${t('data.range_label')}">
+          ${['all', '10', '5'].map(r => `<button type="button" class="btn ${r === chartRange ? 'btn-cyan' : 'btn-ghost'} mono-xs" data-range="${r}" aria-pressed="${r === chartRange}" style="padding:4px 10px;">${r === 'all' ? t('data.range_all') : t('data.range_years').replace('{n}', r)}</button>`).join('')}
+        </div>
         <div class="chart-container" style="height:160px;">
           <canvas id="chart-mais"></canvas>
         </div>
@@ -337,6 +345,18 @@ export const DataView = {
       await DataView.loadDynamicData({ keepScroll: true });
     });
 
+    document.getElementById('chart-range')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-range]');
+      if (!b) return;
+      chartRange = b.getAttribute('data-range');
+      document.querySelectorAll('#chart-range [data-range]').forEach(x => {
+        const on = x === b;
+        x.classList.toggle('btn-cyan', on); x.classList.toggle('btn-ghost', !on);
+        x.setAttribute('aria-pressed', String(on));
+      });
+      DataView.renderChart();
+    });
+
     document.getElementById('chart-indicator-select')?.addEventListener('change', (e) => {
       chartIndicator = e.target.value;
       DataView.renderChart();
@@ -386,7 +406,45 @@ export const DataView = {
         ? [s.indicator, s.region, s.unit].filter(Boolean).join(' · ')
         : '';
     }
-    initChartMais(s.rows);
+    DataView.drawSeries(s);
+  },
+
+  /** The 15 rows on screen are only a page: fetch the indicator's full history for the chart. */
+  async drawSeries(s) {
+    const myReq = ++_chartReq;
+    if (!s.indicator) { initChartMais([]); DataView.showRange(0); return; }
+    const key = `${activeSector}|${s.indicator}|${s.region}`;
+    let rows = seriesCache.get(key);
+    if (!rows) {
+      const fetched = await fetchObservations(activeSector, 300, { q: s.indicator });
+      if (myReq !== _chartReq) return;
+      rows = (Array.isArray(fetched) ? fetched : []).filter(r =>
+        r.indicator === s.indicator && (r.region || '') === s.region && r.value !== null && r.value !== undefined && !isNaN(Number(r.value)));
+      if (rows.length < s.rows.length) rows = s.rows;     // never show less than what is on screen
+      seriesCache.set(key, rows);
+    }
+    // one point per date (several sources can report the same year)
+    const byDate = new Map();
+    rows.forEach(r => byDate.set(String(r.reference_date || r.collected_at || '').slice(0, 10), r));
+    let pts = [...byDate.values()].sort((a, b) => String(a.reference_date || '').localeCompare(String(b.reference_date || '')));
+    DataView.showRange(pts.length);
+    if (chartRange !== 'all' && pts.length) {
+      const last = Number(String(pts[pts.length - 1].reference_date || '').slice(0, 4));
+      if (last) pts = pts.filter(r => Number(String(r.reference_date || '').slice(0, 4)) > last - Number(chartRange));
+    }
+    if (pts.length < 2) {
+      const only = pts[0];
+      showChartMessage('chart-mais', only
+        ? t('data.chart_single').replace('{v}', formatObsValue(only.value)).replace('{u}', s.unit || '').replace('{d}', String(only.reference_date || '').slice(0, 10))
+        : t('common.no_chart_data'));
+      return;
+    }
+    initChartMais(pts);
+  },
+
+  showRange(n) {
+    const box = document.getElementById('chart-range');
+    if (box) box.style.display = n >= 6 ? '' : 'none';
   },
 
   renderObsList() {

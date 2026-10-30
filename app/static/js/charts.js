@@ -101,6 +101,13 @@ async function draw(key, canvasId, hasData, build) {
   chartInstances[key] = new Chart(canvas, build());
 }
 
+/** Replace a chart by an explanatory message (never an invented or lonely-dot chart). */
+export function showChartMessage(canvasId, text, key = 'mais') {
+  destroyIfExists(key);
+  const canvas = document.getElementById(canvasId);
+  if (canvas) showMessage(canvas, text);
+}
+
 /* ── Indicator trend (line) ── expects rows already filtered to ONE indicator. */
 export async function initChartMais(rows = null) {
   const data = Array.isArray(rows) ? rows.filter(r => r && r.value !== null && r.value !== undefined && !isNaN(Number(r.value))) : [];
