@@ -175,9 +175,9 @@ export const HomeView = {
             </div>
             <p class="mono-sm text-muted flex items-center gap-1" id="latest-location"><i data-lucide="map-pin" style="width:14px;height:14px;"></i> ${t('home.loading_db')}</p>
             <p class="mono-sm text-muted mb-4 flex items-center gap-1" id="latest-date"><i data-lucide="calendar" style="width:14px;height:14px;"></i> --/--/----</p>
-            <div class="separator flex justify-between items-end">
+            <div class="separator" style="display:flex;flex-direction:column;gap:6px;">
+              <div class="mono-2xl fw-700 text-accent" id="latest-value" style="word-break:break-word;">-- <span class="mono-lg" id="latest-unit"></span></div>
               <p class="mono-xs text-muted uppercase" id="latest-source">${t('common.source')}: —</p>
-              <div class="mono-2xl fw-700 text-accent" id="latest-value">-- <span class="mono-lg" id="latest-unit"></span></div>
             </div>
           </div>
         </div>
@@ -259,7 +259,7 @@ export const HomeView = {
       const valueText = latest.value === null || latest.value === undefined || isNaN(num)
         ? '—'
         : num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-      set('latest-value', `${valueText} <span class="mono-lg">${escapeHtml(latest.unit || '')}</span>`);
+      set('latest-value', `${valueText} <span class="mono-lg" style="display:inline;">${escapeHtml(latest.unit || '')}</span>`);
       if (window.lucide) window.lucide.createIcons();
     } else {
       const card = document.getElementById('latest-obs-card');
