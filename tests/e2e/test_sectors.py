@@ -11,8 +11,10 @@ def test_cards_show_exact_counts_from_stats(probe):
     probe.page.wait_for_function("!document.querySelector('#sectors-list .skeleton')")
     for sec in ("agriculture", "health", "energy", "markets"):
         assert "15" in _card(probe, sec).inner_text(), sec        # seed: 15 rows per sector
-    assert "0 " in _card(probe, "transport").inner_text()
-    assert _card(probe, "transport").locator(".badge").inner_text().strip() != _card(probe, "health").locator(".badge").inner_text().strip()
+    # a sector without rows is not a full card: it is listed under "coming soon"
+    assert probe.page.locator("#sectors-list [data-sector=transport]").count() == 0
+    assert probe.page.locator("#sectors-soon-list [data-sector=transport]").count() == 1
+    assert probe.page.is_visible("#sectors-soon")
     assert "25%" in _card(probe, "agriculture").inner_text()       # 15 of 60
 
 

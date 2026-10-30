@@ -94,6 +94,8 @@ const TRANSLATIONS = {
 
     // ── Sectors ──
     sectors: {
+      soon_title:    'Bientôt disponible',
+      soon_hint:     'Aucune donnée publiée pour ces secteurs pour le moment ; la collecte les alimentera.',
       title:         'EXPLORATEUR D\'INFRASTRUCTURE',
       search:        'RECHERCHER UN SECTEUR OU UNE SOURCE…',
       total_sources: 'TOTAL SOURCES',
@@ -596,6 +598,8 @@ const TRANSLATIONS = {
       no_obs:        'No data in database. Click "COLLECT LIVE DATA" to populate.',
     },
     sectors: {
+      soon_title:    'Coming soon',
+      soon_hint:     'No data published for these sectors yet; collection will fill them.',
       title:         'INFRASTRUCTURE EXPLORER',
       search:        'SEARCH BY SECTOR OR SOURCE…',
       total_sources: 'TOTAL SOURCES',

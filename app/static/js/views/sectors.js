@@ -105,6 +105,11 @@ export const SectorsView = {
       <div class="flex flex-col gap-3" id="sectors-list">
         ${known.map(s => renderSectorCard(s, null, 0)).join('')}
       </div>
+      <div id="sectors-soon" style="display:none;margin-top:28px;">
+        <h4 class="uppercase mb-2" style="font-size:14px;">${t('sectors.soon_title')}</h4>
+        <p class="mono-xs text-muted mb-3">${t('sectors.soon_hint')}</p>
+        <div class="flex gap-2 flex-wrap" id="sectors-soon-list"></div>
+      </div>
       <p class="mono-sm text-muted" id="sectors-no-match" style="display:none;" role="status">${t('sectors.no_match')}</p>
     `;
   },
@@ -116,11 +121,16 @@ export const SectorsView = {
       input.addEventListener('input', (e) => {
         const q = e.target.value.toLowerCase().trim();
         let visible = 0;
-        document.querySelectorAll('#sectors-list > .card').forEach(card => {
+        document.querySelectorAll('#sectors-list > .card, #sectors-soon-list > a').forEach(card => {
           const match = card.textContent.toLowerCase().includes(q);
           card.style.display = match ? '' : 'none';
           if (match) visible += 1;
         });
+        const soon = document.getElementById('sectors-soon');
+        if (soon) {
+          const anySoon = [...document.querySelectorAll('#sectors-soon-list > a')].some(a => a.style.display !== 'none');
+          soon.style.display = anySoon ? '' : 'none';
+        }
         const none = document.getElementById('sectors-no-match');
         if (none) none.style.display = visible === 0 ? '' : 'none';
       });
@@ -134,14 +144,25 @@ export const SectorsView = {
     if (!container) return; // user already left the page
 
     const total = stats ? Number(stats.total || 0) : 0;
-    container.innerHTML = getKnownSectors().map(s => {
+    const rows = getKnownSectors().map(s => {
       // stats missing → unknown; sector absent from stats → either 0 rows or a failed count
       // (the API omits failed sectors) — we only claim "no data" when the total itself is known to be positive.
       const count = stats && stats.sectors
         ? (s.id in stats.sectors ? Number(stats.sectors[s.id]) : (total === 0 ? 0 : undefined))
         : undefined;
-      return renderSectorCard(s, count, total);
-    }).join('');
+      return { s, count };
+    });
+    // Sectors that really have no rows yet are listed compactly below instead of as full cards.
+    const empty = rows.filter(r => r.count === 0 && total > 0);
+    const filled = rows.filter(r => !(r.count === 0 && total > 0));
+    container.innerHTML = filled.map(r => renderSectorCard(r.s, r.count, total)).join('');
+    const soonWrap = document.getElementById('sectors-soon');
+    const soonList = document.getElementById('sectors-soon-list');
+    if (soonWrap && soonList) {
+      soonList.innerHTML = empty.map(r => `<a class="btn btn-ghost mono-sm" data-sector="${escapeHtml(r.s.id)}" href="#/data?sector=${encodeURIComponent(r.s.id)}" style="gap:6px;text-decoration:none;">
+        <i data-lucide="${r.s.icon}" style="width:14px;height:14px;"></i> ${escapeHtml(r.s.name)}</a>`).join('');
+      soonWrap.style.display = empty.length ? '' : 'none';
+    }
     if (window.lucide) window.lucide.createIcons();
 
     const q = input ? input.value : '';
