@@ -45,7 +45,7 @@ To ensure compliance with external public API terms of service and avoid IP bans
 ### 2.3 User-Agent Identification
 All HTTP headers explicitly declare the platform identity and contact:
 ```http
-User-Agent: FreeData.td Open Data Engine/1.0 (+https://freedatatd.onrender.com)
+User-Agent: FreeData.td Open Data Engine/1.0 (+https://freedata-td.onrender.com)
 ```
 
 ---
