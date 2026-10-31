@@ -114,6 +114,10 @@ def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collectio
             items = [i for i in qdata if want == "all" or i["status"] == want]
             counts = {st: len([i for i in qdata if i["status"] == st]) for st in ("pending", "approved", "corrected", "rejected")}
             route.fulfill(json={"items": items, "counts": counts})
+        elif path.startswith("/assistant/ask"):
+            bodies.append(route.request.post_data_json)
+            route.fulfill(json={"text": "Le mil à Abéché : 425 XAF/kg\n<img src=x onerror=alert(1)>", "intent": "price",
+                                "lens": "markets", "refused": False, "data": {}, "sources": ["WFP"]})
         elif path.startswith("/audit-log"):
             route.fulfill(json={"entries": [{"created_at": "2026-10-23T09:00:00", "admin_email": "me@x.org", "action": "login", "target": None, "detail": {}},
                                             {"created_at": "2026-10-23T09:05:00", "admin_email": "<img src=x onerror=alert(1)>", "action": "weird.action", "target": "<b>t</b>", "detail": {}}]})
@@ -208,6 +212,24 @@ def test_audit_journal_escapes_hostile_values(probe):
     assert probe.page.locator("#admin-audit-table img").count() == 0    # not interpreted as HTML
     assert "<img src=x" in probe.page.inner_text("#admin-audit-table")
     assert probe.page.locator("#admin-audit-table tbody tr").count() == 2
+    assert probe.page_errors == []
+
+
+def test_assistant_tab_asks_shows_the_answer_and_escapes_html(probe):
+    calls = _mock(probe.page)
+    _login(probe)
+    probe.page.wait_for_selector(".admin-tab")
+    probe.page.click('.admin-tab[data-tab="assistant"]')
+    probe.page.wait_for_selector("#assistant-form")
+    probe.page.fill("#assistant-q", "Prix du mil à Abéché")
+    probe.page.click("#assistant-send")
+    probe.page.wait_for_selector(".assistant-turn")
+    txt = probe.page.inner_text("#assistant-log")
+    assert "425 XAF/kg" in txt and "price" in txt and "WFP" in txt
+    assert probe.page.locator("#assistant-log img").count() == 0
+    assert calls.bodies[-1] == {"question": "Prix du mil à Abéché"}
+    probe.page.click(".assistant-chip >> nth=1")                       # example chips ask directly
+    probe.page.wait_for_function("document.querySelectorAll('.assistant-turn').length === 2")
     assert probe.page_errors == []
 
 

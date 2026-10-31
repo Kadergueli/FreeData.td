@@ -88,7 +88,7 @@ function renderLogin(message = '') {
 /* ── Dashboard shell ─────────────────────────────────────────────────────── */
 
 function renderDashboard() {
-  const tabs = [['overview', 'admin.tab_overview'], ['collections', 'admin.tab_collections'], ['quality', 'admin.tab_quality'], ['data', 'admin.tab_data'], ['reports', 'admin.tab_reports'], ['team', 'admin.tab_team'], ['audit', 'admin.tab_audit']];
+  const tabs = [['overview', 'admin.tab_overview'], ['collections', 'admin.tab_collections'], ['quality', 'admin.tab_quality'], ['data', 'admin.tab_data'], ['reports', 'admin.tab_reports'], ['team', 'admin.tab_team'], ['assistant', 'admin.tab_assistant'], ['audit', 'admin.tab_audit']];
   root().innerHTML = `
     <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
       <div>
@@ -127,7 +127,7 @@ function renderPanel() {
   const panel = document.getElementById('admin-panel');
   if (!panel) return;
   panel.innerHTML = `<p class="mono-sm text-muted"><span class="skeleton" style="width:240px;"></span></p>`;
-  ({ audit: loadAudit, collections: loadCollections, quality: loadQuality, data: loadData, reports: loadReports, team: loadTeam }[_tab] || loadOverview)(panel).catch(handlePanelError);
+  ({ assistant: loadAssistant, audit: loadAudit, collections: loadCollections, quality: loadQuality, data: loadData, reports: loadReports, team: loadTeam }[_tab] || loadOverview)(panel).catch(handlePanelError);
 }
 
 function handlePanelError(err) {
@@ -579,6 +579,54 @@ async function loadAudit(panel) {
           <td class="mono-xs text-muted" style="padding:8px 10px;">${escapeHtml(e.target || '')}</td></tr>`;
       }).join('')}</tbody></table></div>` : `<p class="mono-sm text-muted">${t('admin.no_entries')}</p>`}
   </div>`;
+}
+
+/* ── Assistant (marchés + météo) ─────────────────────────────────────────── */
+
+const ASSISTANT_EXAMPLES = ['Prix du mil à Abéché', 'Le riz est moins cher à Abéché ou à Dembé ?', 'Évolution du prix du sucre à Abéché', 'Température à N\'Djamena'];
+let _assistantHistory = [];
+
+async function loadAssistant(panel) {
+  panel.innerHTML = `<div class="card" style="padding:16px;">
+    <h4 class="mono-sm uppercase mb-3">${t('admin.assistant_title')}</h4>
+    <p class="mono-xs text-muted mb-3">${t('admin.assistant_desc')}</p>
+    <form id="assistant-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+      <input id="assistant-q" type="text" maxlength="300" autocomplete="off" placeholder="${escapeHtml(t('admin.assistant_placeholder'))}" aria-label="${escapeHtml(t('admin.assistant_placeholder'))}" style="flex:1;min-width:200px;padding:8px 10px;">
+      <button class="btn" id="assistant-send" type="submit">${t('admin.assistant_ask')}</button>
+    </form>
+    <div id="assistant-examples" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      ${ASSISTANT_EXAMPLES.map(x => `<button type="button" class="btn btn-ghost assistant-chip" data-q="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join('')}
+    </div>
+    <div id="assistant-log" aria-live="polite"></div>
+  </div>`;
+  const log = panel.querySelector('#assistant-log');
+  const input = panel.querySelector('#assistant-q');
+  const renderLog = () => {
+    log.innerHTML = _assistantHistory.map(h => `<div class="assistant-turn" style="border-top:1px solid var(--border,#ddd);padding:10px 0;">
+      <p class="mono-xs text-muted" style="margin:0 0 4px;">${escapeHtml(h.q)}</p>
+      <p class="mono-sm" style="margin:0 0 4px;white-space:pre-line;">${escapeHtml(h.text)}</p>
+      <p class="mono-xs text-muted" style="margin:0;">${escapeHtml(h.intent)}${h.lens ? ' · ' + escapeHtml(h.lens) : ''}${h.sources && h.sources.length ? ' · ' + h.sources.map(escapeHtml).join(', ') : ''}</p>
+    </div>`).join('');
+  };
+  const ask = async (q) => {
+    q = (q || '').trim();
+    if (!q) return;
+    const btn = panel.querySelector('#assistant-send');
+    btn.disabled = true;
+    try {
+      const r = await adminFetch('/assistant/ask', { method: 'POST', body: { question: q } });
+      _assistantHistory.unshift({ q, text: r.text, intent: r.intent, lens: r.lens, sources: r.sources });
+      _assistantHistory = _assistantHistory.slice(0, 20);
+      input.value = '';
+    } catch (e) {
+      _assistantHistory.unshift({ q, text: t('admin.assistant_error'), intent: 'error' });
+    }
+    btn.disabled = false;
+    renderLog();
+  };
+  panel.querySelector('#assistant-form').addEventListener('submit', ev => { ev.preventDefault(); ask(input.value); });
+  panel.querySelectorAll('.assistant-chip').forEach(b => b.addEventListener('click', () => ask(b.dataset.q)));
+  renderLog();
 }
 
 /* ── View ────────────────────────────────────────────────────────────────── */

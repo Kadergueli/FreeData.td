@@ -520,6 +520,24 @@ async def reports_delete(rid: int, body: DataDeleteBody, admin: AdminUser = Depe
     return {"status": "deleted", "id": rid}
 
 
+# ── Assistant (test console) ─────────────────────────────────────────────────
+
+class AssistantBody(BaseModel):
+    question: str = Field(max_length=2000)   # guardrails answer "too long" above 300 characters
+
+
+@router.post("/assistant/ask")
+async def assistant_ask(body: AssistantBody, admin: AdminUser = Depends(require_admin)) -> dict:
+    """Ask the data assistant (markets prices + weather) — the console used to try it before any
+    public channel such as WhatsApp. Answers come from the published data only; no external call."""
+    from app.assistant import Assistant
+    from app.main import repository
+    if not rate_limiter.allow(f"assistant:{admin.email}", 120):
+        raise HTTPException(status_code=429, detail="Too many questions. Try again later.")
+    answer = await asyncio.to_thread(Assistant(repository).answer, body.question)
+    return answer.to_dict()
+
+
 # ── Team (owner only) ────────────────────────────────────────────────────────
 
 class AdminEmailBody(BaseModel):
