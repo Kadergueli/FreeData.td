@@ -147,6 +147,18 @@ def window_sum(series: list[Measure], days: int) -> tuple[float, int] | None:
     return (sum(vals), len(vals)) if vals else None
 
 
+CITY_DISPLAY = {"abeche": "Abéché", "ndjamena": "N'Djamena", "lai": "Laï", "bardai": "Bardaï", "goz beida": "Goz Beïda",
+                "faya largeau": "Faya-Largeau", "faya": "Faya-Largeau", "am djarass": "Am-Djarass", "amdjarass": "Am-Djarass",
+                "moundou": "Moundou", "sarh": "Sarh", "bongor": "Bongor", "doba": "Doba", "mongo": "Mongo", "am timan": "Am Timan"}
+
+
+def city_label(word: str, province: str) -> str:
+    """Nom à afficher pour le lieu cité : « abeche » -> « Abéché » ; une province citée garde son nom."""
+    if word.lower() == province.lower():
+        return province_label(province)
+    return CITY_DISPLAY.get(normalize(word).replace("-", " "), word.title())
+
+
 def province_label(province: str) -> str:
     return DISPLAY_PROVINCE.get(province, province)
 
@@ -154,8 +166,13 @@ def province_label(province: str) -> str:
 def _stale(d: str, today: date) -> str:
     dd = parse_date(d)
     if dd and (today - dd).days > 14:
-        return f" ⚠️ Cette mesure a {(today - dd).days} jours."
+        return f" Attention, cette mesure date d'il y a {(today - dd).days} jours : ma source météo a du retard."
     return ""
+
+
+def _place(label: str, province: str) -> str:
+    prov = province_label(province)
+    return label if label.lower() == prov.lower() else f"{label} ({prov})"
 
 
 def describe_temperature(repo, province: str, label: str, today: date, window: int) -> tuple[str, dict] | None:
@@ -166,15 +183,14 @@ def describe_temperature(repo, province: str, label: str, today: date, window: i
     latest = mean[0]
     same_day = lambda s: next((m for m in s if m.date == latest.date), None)   # noqa: E731
     lo, hi = same_day(tmin), same_day(tmax)
-    parts = [f"Température à {label} (province : {province_label(province)}), {fmt_day(latest.date)} : "
-             f"{fmt_number(latest.value)} °C en moyenne"]
+    text = f"Le {fmt_day(latest.date)} à {_place(label, province)}, il a fait {fmt_number(latest.value)} °C en moyenne"
     if lo and hi:
-        parts.append(f" (minimum {fmt_number(lo.value)} °C, maximum {fmt_number(hi.value)} °C)")
+        text += f" (de {fmt_number(lo.value)} °C la nuit à {fmt_number(hi.value)} °C en journée)"
+    text += "."
     avg = window_average(mean, window)
-    text = "".join(parts) + "."
     if avg is not None and len(mean) > 1:
-        text += f" Moyenne des {window} derniers jours : {fmt_number(avg)} °C."
-    text += f" Source : {latest.source}.{_stale(latest.date, today)}"
+        text += f" Sur les {window} derniers jours, la moyenne est de {fmt_number(avg)} °C."
+    text += f" (Source : {latest.source}.){_stale(latest.date, today)}"
     return text, {"date": latest.date, "mean": latest.value, "min": lo.value if lo else None,
                   "max": hi.value if hi else None, "window_days": window, "window_mean": avg}
 
@@ -185,10 +201,14 @@ def describe_rain(repo, province: str, label: str, today: date, window: int) -> 
         return None
     latest = rain[0]
     total = window_sum(rain, window)
-    text = (f"Pluie à {label} (province : {province_label(province)}), {fmt_day(latest.date)} : "
-            f"{fmt_number(latest.value)} mm.")
+    where = _place(label, province)
+    if latest.value == 0:
+        text = f"Il n'a pas plu à {where} le {fmt_day(latest.date)}."
+    else:
+        text = f"Il est tombé {fmt_number(latest.value)} mm de pluie à {where} le {fmt_day(latest.date)}."
     if total and total[1] > 1:
-        text += f" Cumul sur les {window} derniers jours : {fmt_number(total[0])} mm."
-    text += f" Source : {latest.source}.{_stale(latest.date, today)}"
+        text += (f" Sur les {window} derniers jours, il n'a pas plu du tout." if total[0] == 0
+                 else f" Sur les {window} derniers jours, il en est tombé {fmt_number(total[0])} mm en tout.")
+    text += f" (Source : {latest.source}.){_stale(latest.date, today)}"
     return text, {"date": latest.date, "mm": latest.value, "window_days": window,
                   "window_total": total[0] if total else None}

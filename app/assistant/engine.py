@@ -25,9 +25,10 @@ CHEAPEST_WORDS = ("moins cher", "meilleur marche", "pas cher", "plus bas", "le m
 PRICEY_WORDS = ("plus cher", "le plus cher")
 COMPARE_WORDS = ("compare", "comparer", "comparaison", "entre", "ou", "versus", "vs", "moins cher")
 
-HELP_TEXT = ("Je donne des chiffres sur le Tchad : les prix des marchés (mil, riz, sucre, huile…) et la météo "
-             "(températures et pluie). Exemples : « Prix du mil à Abéché », « Le riz est moins cher à Abéché ou à Dembé ? », "
-             "« Évolution du prix du sucre à N'Djamena », « Température à Moundou ».")
+HELP_TEXT = ("Je peux vous donner les prix des marchés au Tchad (mil, riz, sucre, huile…) et la météo récente "
+             "(températures et pluie), toujours avec la date et la source. Vous pouvez demander par exemple : "
+             "« Prix du mil à Abéché », « Le riz est moins cher à Abéché ou à Dembé ? », "
+             "« Où le sucre est-il le moins cher ? » ou « Quelle température à Moundou ? ».")
 
 
 @dataclass
@@ -85,22 +86,22 @@ class Assistant:
             except Exception as exc:
                 logger.warning("assistant: data unavailable (attempt %d): %r", attempt, exc)
                 if attempt == 2:        # la base est vraiment indisponible : on ne devine rien
-                    return Answer("Je n'arrive pas à lire les données pour le moment. Réessayez dans quelques minutes.",
+                    return Answer("Désolé, je n'arrive pas à lire les données pour le moment. Pouvez-vous réessayer dans quelques minutes ?",
                                   "unavailable", lens)
 
         if result is None:
             if verdict.sensitive:
-                return Answer("Je ne traite pas ce sujet. Je donne uniquement des chiffres sur les prix des marchés "
-                              "et la météo au Tchad, avec leur source.", "refused_sensitive", None, True)
+                return Answer("Désolé, je ne traite pas ce sujet : je m'en tiens aux chiffres, "
+                              "les prix des marchés et la météo au Tchad, avec leur source. Une question là-dessus ?", "refused_sensitive", None, True)
             if guardrails.is_greeting(norm):
-                return Answer("Bonjour ! " + HELP_TEXT, "help")
+                return Answer("Bonjour ! 👋 " + HELP_TEXT, "help")
             return Answer(HELP_TEXT, "help")
 
         if verdict.sensitive:        # question de données avec un sujet délicat autour : les chiffres, sans commentaire
-            result.text += " Je ne peux pas dire pourquoi les chiffres évoluent : je donne seulement les données."
+            result.text += "\nJe ne peux pas dire pourquoi les chiffres évoluent : je donne seulement les données."
         if fixes and result.intent not in ("help",):
-            shown = ", ".join(f"« {a} » → « {b} »" for a, b in fixes[:3])
-            result.text += f"\nℹ️ J'ai corrigé : {shown}."
+            shown = " et ".join(f"« {a} » comme « {b} »" for a, b in fixes[:3])
+            result.text += f"\n(J'ai lu {shown}.)"
             result.data["corrected"] = [list(f) for f in fixes[:3]]
         return result
 
@@ -108,15 +109,15 @@ class Assistant:
     @staticmethod
     def _refusal(verdict: guardrails.Verdict) -> Answer | None:
         if verdict.kind == "empty":
-            return Answer("Posez-moi une question, par exemple : « Prix du mil à Abéché ».", "empty", None, True)
+            return Answer("Je vous écoute ! Posez-moi une question, par exemple : « Prix du mil à Abéché ».", "empty", None, True)
         if verdict.kind == "too_long":
-            return Answer(f"Votre message est trop long. Posez une question courte (moins de {guardrails.MAX_QUESTION_CHARS} caractères).",
+            return Answer(f"Votre message est un peu long pour moi. Pouvez-vous le résumer en une question courte (moins de {guardrails.MAX_QUESTION_CHARS} caractères) ?",
                           "too_long", None, True)
         if verdict.kind == "distress":
-            return Answer("Je suis désolé que vous traversiez cela. Je ne suis qu'un outil de données : parlez-en à une personne de confiance "
-                          "ou contactez les services d'urgence ou de santé de votre localité.", "refused_distress", None, True)
+            return Answer("Je suis vraiment désolé que vous traversiez cela. Je ne suis qu'un outil de données et je ne peux pas vous aider comme il le faudrait : "
+                          "parlez-en dès maintenant à une personne de confiance, ou contactez les services de santé ou d'urgence de votre localité.", "refused_distress", None, True)
         if verdict.kind in ("abuse", "injection"):
-            return Answer("Je préfère rester courtois. Posez-moi une question sur les prix des marchés ou la météo au Tchad.",
+            return Answer("Restons courtois, s'il vous plaît 🙂 Je suis là pour les prix des marchés et la météo au Tchad : que voulez-vous savoir ?",
                           "refused_abuse" if verdict.kind == "abuse" else "refused_injection", None, True)
         return None
 
@@ -197,15 +198,14 @@ class Assistant:
         stripped = self._strip_spans(norm, [s for _, s in hits])
         products = markets.find_products(stripped)
         found = [m for m, _ in hits]
-        examples = ", ".join(markets.pretty(m.name) for m in directory.markets if not m.generic)[:200]
+        examples = ", ".join(markets.spoken(m.name) for m in directory.markets if not m.generic)[:200]
         short = len(norm.split()) <= 7
         followup: list[str] = []
 
         if not products and self._ctx.get("product") and found:      # « et à Dembé ? »
             products, followup = [self._ctx["product"]], ["product"]
         if not products:
-            return Answer("Quel produit ? Par exemple : mil, riz, sorgho, sucre, huile, oignon, niébé, sel, farine, "
-                          "bœuf.", "ask_product", "markets", data={"markets": [m.name for m in found]})
+            return Answer("De quel produit parlez-vous ? Par exemple le mil, le riz, le sorgho, le sucre, l'huile, l'oignon, le niébé, le sel ou la farine.", "ask_product", "markets", data={"markets": [m.name for m in found]})
         product = products[0]
 
         if not found and _any(norm, CHEAPEST_WORDS) and len(products) == 1:
@@ -215,7 +215,7 @@ class Assistant:
             if m:
                 found, followup = [m], followup + ["market"]
         if not found:
-            return Answer(f"Dans quel marché voulez-vous le prix {markets.de_product(product)} ? Marchés disponibles : {examples}.",
+            return Answer(f"Pour quel marché voulez-vous le prix {markets.de_product(product)} ? J'ai par exemple : {examples}.",
                           "ask_market", "markets", data={"product": product})
 
         trend = _any(norm, TREND_WORDS)
@@ -229,24 +229,28 @@ class Assistant:
         return answer
 
     def _several(self, products: list[str], market: markets.Market) -> Answer:
-        lines, data, sources = [], [], set()
+        parts, data, sources, missing = [], [], set(), []
         for product in products:
             last = markets.latest_price(self.repo, product, market.name)
-            label = markets.DISPLAY_PRODUCT.get(product, product).capitalize()
+            name = markets.DISPLAY_PRODUCT.get(product, product)
             if last is None:
-                lines.append(f"• {label} : pas de prix à {markets.pretty(market.name)}.")
+                missing.append(name)
                 continue
-            lines.append(f"• {label} : {fmt_number(last.value, 0 if last.value >= 100 else 1)} {markets.fmt_unit(last.unit)} "
-                         f"({markets.fmt_month(last.date)})")
+            parts.append(f"{name} : {markets.money(last.value, last.unit)}")
             data.append({"product": product, "value": last.value, "unit": last.unit, "date": last.date})
             sources.add(last.source)
+        where = markets.spoken(market.name)
         if not data:
-            return Answer(f"Je n'ai pas de prix pour ces produits à {markets.pretty(market.name)}.", "no_data", "markets",
+            return Answer(f"Je n'ai pas encore de prix pour ces produits à {where} dans ma base.", "no_data", "markets",
                           data={"market": market.name})
         newest = max(d["date"] for d in data)
-        src = ", ".join(sorted(markets.SOURCE_LABEL.get(x, x) for x in sources))
-        text = f"Prix à {markets.pretty(market.name)} :\n" + "\n".join(lines) + f"\nSource : {src}."
-        text += markets._freshness(newest, self.today).replace("Ce prix date", "Ces prix datent", 1)
+        src = " et ".join(sorted(markets.src_name(x) for x in sources))
+        text = (f"Voici les derniers prix à {where} (relevé de {markets.fmt_month(newest)}, source {src}) :\n"
+                + "\n".join(f"• {x}" for x in parts))
+        if missing:
+            text += f"\nJe n'ai pas de prix pour {', '.join(missing)} à {where}."
+        text += ("\n" + markets._freshness(newest, self.today).strip().replace("ce relevé a", "ces relevés ont", 1)
+                 if markets._freshness(newest, self.today) else "")
         return Answer(text, "prices", "markets", data={"market": market.name, "product": products[0], "items": data},
                       sources=sorted(sources))
 
@@ -254,23 +258,26 @@ class Assistant:
         ranked = markets.ranking(self.repo, product)
         label = markets.DISPLAY_PRODUCT.get(product, product)
         if len(ranked) < 2:
-            return Answer(f"Je n'ai pas assez de marchés avec un prix {markets.de_product(product)} récent pour les classer. "
-                          "Dites-moi un marché précis.", "no_data", "markets", data={"product": product})
+            return Answer(f"Je n'ai pas assez de marchés avec un prix récent {markets.de_product(product)} pour les classer. "
+                          "Dites-moi plutôt un marché précis.", "no_data", "markets", data={"product": product})
         if expensive:
             ranked = ranked[::-1]
         top = ranked[:3]
-        fmt = lambda p: f"{fmt_number(p.value, 0 if p.value >= 100 else 1)} {markets.fmt_unit(p.unit)}"   # noqa: E731
-        lines = [f"• {markets.pretty(p.market)} : {fmt(p)} ({markets.fmt_month(p.date)})" for p in top]
-        head = f"{label.capitalize()} : marchés {'les plus chers' if expensive else 'les moins chers'} ({len(ranked)} comparés) :"
-        text = head + "\n" + "\n".join(lines) + f"\nSource : {markets.SOURCE_LABEL.get(top[0].source, top[0].source)}." + markets._freshness(top[0].date, self.today)
+        first = top[0]
+        others = "".join(f", puis {markets.spoken(p.market)} ({fmt_number(p.value, 0 if p.value >= 100 else 1)})"
+                         for i, p in enumerate(top[1:]))
+        kind = "le plus cher" if expensive else "le moins cher"
+        text = (f"Pour {label}, c'est à {markets.spoken(first.market)} que c'est {kind} : {markets.money(first.value, first.unit)}"
+                f"{others}. J'ai comparé {len(ranked)} marchés (relevé de {markets.fmt_month(first.date)}, source "
+                f"{markets.src_name(first.source)}).{markets._freshness(first.date, self.today)}")
         return Answer(text, "ranking", "markets", data={"product": product, "ranking": [{"market": p.market, "value": p.value, "date": p.date} for p in top]},
-                      sources=[top[0].source])
+                      sources=[first.source])
 
     def _single(self, product: str, market: markets.Market, trend: bool) -> Answer:
         label = markets.DISPLAY_PRODUCT.get(product, product)
         history = markets.price_history(self.repo, product, market.name)
         if not history:
-            return Answer(f"Je n'ai pas de prix {markets.de_product(product)} à {markets.pretty(market.name)}.", "no_data", "markets",
+            return Answer(f"Je n'ai pas encore de prix {markets.de_product(product)} à {markets.spoken(market.name)} dans ma base.", "no_data", "markets",
                           data={"product": product, "market": market.name})
         latest = history[0]
         data = {"product": product, "market": market.name, "value": latest.value, "unit": latest.unit,
@@ -279,14 +286,19 @@ class Assistant:
             change = markets.price_change(history)
             if change:
                 old, new, pct = change
-                sign = "+" if pct > 0 else ""
-                text = (f"{label.capitalize()} à {markets.pretty(market.name)} : {fmt_number(old.value, 0 if old.value >= 100 else 1)} "
-                        f"({markets.fmt_month(old.date)}) → {fmt_number(new.value, 0 if new.value >= 100 else 1)} "
-                        f"{markets.fmt_unit(new.unit)} ({markets.fmt_month(new.date)}), soit {sign}{fmt_number(pct)} %. "
-                        f"Source {markets.SOURCE_LABEL.get(new.source, new.source)}.{markets._freshness(new.date, self.today)}")
+                word = "plus" if pct > 0 else "moins"
+                move = "est passé" if pct != 0 else "est resté"
+                span = (f"de {markets.money(old.value, old.unit)} en {markets.fmt_month(old.date)} à "
+                        f"{markets.money(new.value, new.unit)} en {markets.fmt_month(new.date)}")
+                if pct == 0:
+                    text = f"À {markets.spoken(market.name)}, {label} n'a pas bougé : {markets.money(new.value, new.unit)} en {markets.fmt_month(new.date)} comme en {markets.fmt_month(old.date)}."
+                else:
+                    text = (f"À {markets.spoken(market.name)}, {label} {move} {span}, soit {fmt_number(abs(pct))} % de {word}. "
+                            f"(Source : {markets.src_name(new.source)}.)")
+                text += markets._freshness(new.date, self.today)
                 data.update({"previous_value": old.value, "previous_date": old.date, "change_pct": pct})
                 return Answer(text, "trend", "markets", data=data, sources=[new.source])
-            text = markets.describe_price(latest, self.today) + " Je n'ai pas assez d'historique pour calculer une évolution."
+            text = markets.describe_price(latest, self.today) + " Je n'ai pas assez de relevés plus anciens pour dire comment il évolue."
             return Answer(text, "trend", "markets", data=data, sources=[latest.source])
         return Answer(markets.describe_price(latest, self.today), "price", "markets", data=data, sources=[latest.source])
 
@@ -294,23 +306,27 @@ class Assistant:
         label = markets.DISPLAY_PRODUCT.get(product, product)
         comp = markets.compare_markets(self.repo, product, a.name, b.name)
         if comp is None:
-            missing = [markets.pretty(m.name) for m in (a, b) if markets.latest_price(self.repo, product, m.name) is None]
-            return Answer(f"Je ne peux pas comparer : pas de prix {markets.de_product(product)} à {' ni à '.join(missing)}.", "no_data", "markets",
+            missing = [markets.spoken(m.name) for m in (a, b) if markets.latest_price(self.repo, product, m.name) is None]
+            return Answer(f"Je ne peux pas comparer : je n'ai pas encore de prix {markets.de_product(product)} à {' ni à '.join(missing)}.", "no_data", "markets",
                           data={"product": product, "markets": [a.name, b.name]})
-        fmt = lambda p: f"{fmt_number(p.value, 0 if p.value >= 100 else 1)} {markets.fmt_unit(p.unit)}"   # noqa: E731
-        lines = [f"{label.capitalize()} :",
-                 f"• {markets.pretty(comp.a.market)} : {fmt(comp.a)} ({markets.fmt_month(comp.a.date)})",
-                 f"• {markets.pretty(comp.b.market)} : {fmt(comp.b)} ({markets.fmt_month(comp.b.date)})"]
+        pa, pb = markets.spoken(comp.a.market), markets.spoken(comp.b.market)
         if comp.cheaper is None:
-            lines.append("Les deux prix sont identiques.")
+            text = (f"{label.capitalize()} coûte pareil à {pa} et à {pb} : {markets.money(comp.a.value, comp.a.unit)} "
+                    f"(relevé de {markets.fmt_month(comp.a.date)}, source {markets.src_name(comp.a.source)}).")
         else:
-            lines.append(f"Moins cher à {markets.pretty(comp.cheaper)} (écart de {fmt_number(comp.gap_pct)} %).")
-        if not comp.same_period:
-            lines.append("⚠️ Les deux prix ne datent pas du même mois : la comparaison est indicative.")
-        lines.append(f"Source {markets.SOURCE_LABEL.get(comp.a.source, comp.a.source)}.")
+            cheap, dear = (comp.a, comp.b) if comp.cheaper == comp.a.market else (comp.b, comp.a)
+            text = (f"{label.capitalize()} est moins cher à {markets.spoken(cheap.market)} : {markets.money(cheap.value, cheap.unit)}, "
+                    f"contre {fmt_number(dear.value, 0 if dear.value >= 100 else 1)} à {markets.spoken(dear.market)}, "
+                    f"soit environ {fmt_number(comp.gap_pct)} % d'écart.")
+            if comp.same_period:
+                text += f" (Relevés de {markets.fmt_month(comp.a.date)}, source {markets.src_name(comp.a.source)}.)"
+            else:
+                text += (f" Attention, ces prix ne datent pas du même mois ({markets.spoken(comp.a.market)} : {markets.fmt_month(comp.a.date)}, "
+                         f"{markets.spoken(comp.b.market)} : {markets.fmt_month(comp.b.date)}), la comparaison est donc indicative.")
+        text += markets._freshness(max(comp.a.date, comp.b.date), self.today).replace("ce relevé a", "ces relevés ont", 1)
         data = {"product": product, "a": comp.a.__dict__, "b": comp.b.__dict__, "cheaper": comp.cheaper,
                 "gap_pct": comp.gap_pct, "same_period": comp.same_period}
-        return Answer("\n".join(lines), "compare", "markets", data=data, sources=[comp.a.source, comp.b.source])
+        return Answer(text, "compare", "markets", data=data, sources=[comp.a.source, comp.b.source])
 
     # ── lens météo ───────────────────────────────────────────────────────
     def _weather(self, norm: str) -> Answer | None:
@@ -321,10 +337,10 @@ class Assistant:
         if place is None and self._ctx.get("province") and (len(norm.split()) <= 7):     # « et la pluie ? »
             place = (self._ctx["province"], self._ctx["province"])
         if place is None:
-            return Answer("Pour quelle province ou quelle ville ? Par exemple : N'Djamena, Abéché, Moundou, Sarh, Lac, Tibesti.",
+            return Answer("Pour quelle ville ou quelle province ? Par exemple N'Djamena, Abéché, Moundou, Sarh, le Lac ou le Tibesti.",
                           "ask_place", "weather")
         province, word = place
-        label = word.title() if word.lower() != province.lower() else weather.province_label(province)
+        label = weather.city_label(word, province)
         forecast = weather.wants_forecast(norm)
         window = 30 if weather.wants_month(norm) else 7
         want_temp, want_rain = weather.wants(norm)
@@ -341,7 +357,7 @@ class Assistant:
             if r:
                 parts.append(r[0]); data["rain"] = r[1]; sources.append("Open-Meteo")
         if not parts:
-            return Answer(f"Je n'ai pas de mesure météo pour {label}.", "no_data", "weather", data=data)
+            return Answer(f"Je n'ai pas encore de mesure météo pour {label} dans ma base.", "no_data", "weather", data=data)
         if forecast:
-            parts.insert(0, "Je n'ai pas de prévisions, seulement les dernières mesures :")
-        return Answer("\n".join(parts), "weather", "weather", data=data, sources=sorted(set(sources)))
+            parts.insert(0, "Je n'ai pas de prévisions pour demain, mais voici les dernières mesures. 🌤️")
+        return Answer("\n\n".join(parts), "weather", "weather", data=data, sources=sorted(set(sources)))

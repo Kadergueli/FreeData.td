@@ -86,6 +86,15 @@ def pretty(name: str) -> str:
     return out
 
 
+def spoken(name: str) -> str:
+    """Nom de lieu court pour une phrase : « Abéché » (la province n'apporte rien), mais « Dembé (N'Djamena) »."""
+    full = pretty(name)
+    m = re.match(r"^(.+?) \(([^()]+)\)$", full)
+    if m and m.group(2) != "N'Djamena" and not m.group(1).endswith(")"):
+        return m.group(1)
+    return full
+
+
 def de_product(product: str) -> str:
     """'le riz' -> 'du riz', 'la farine' -> 'de la farine', "l'huile" -> "de l'huile", 'les pâtes' -> 'des pâtes'."""
     label = DISPLAY_PRODUCT.get(product, product)
@@ -288,14 +297,29 @@ def price_change(history: list[PriceResult], months: int = 3) -> tuple[PriceResu
 
 
 # ── phrases ─────────────────────────────────────────────────────────────
+def money(value: float, unit: str) -> str:
+    """« 204 XAF le kilo », « 1 500 XAF le litre », « 150 000 XAF par tête »."""
+    number = fmt_number(value, 0 if value >= 100 else 1)
+    currency, _, per = (unit or "").partition("/")
+    spoken = {"KG": "le kilo", "L": "le litre", "HEAD": "par tête", "TETE": "par tête"}.get(per.upper())
+    if currency and spoken:
+        return f"{number} {currency} {spoken}"
+    return f"{number} {fmt_unit(unit)}".strip()
+
+
 def _freshness(price_date: str, today: date) -> str:
     d = parse_date(price_date)
     if d and (today - d).days > 60:
-        return f" ⚠️ Ce prix date de plus de {((today - d).days // 30)} mois : les données de marché sont publiées avec retard."
+        return (f" Attention, ce relevé a plus de {(today - d).days // 30} mois : le PAM publie ses prix avec du retard, "
+                "le prix d'aujourd'hui peut être différent.")
     return ""
 
 
+def src_name(source: str) -> str:
+    return SOURCE_LABEL.get(source, source)
+
+
 def describe_price(p: PriceResult, today: date) -> str:
-    src = SOURCE_LABEL.get(p.source, p.source)
-    return (f"{DISPLAY_PRODUCT.get(p.product, p.product).capitalize()} à {pretty(p.market)} : "
-            f"{fmt_number(p.value, 0 if p.value >= 100 else 1)} {fmt_unit(p.unit)} ({fmt_month(p.date)}, source {src}).{_freshness(p.date, today)}")
+    product = DISPLAY_PRODUCT.get(p.product, p.product)
+    return (f"À {spoken(p.market)}, {product} se vend {money(p.value, p.unit)} "
+            f"(dernier relevé : {fmt_month(p.date)}, source {src_name(p.source)}).{_freshness(p.date, today)}")

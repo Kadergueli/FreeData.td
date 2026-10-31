@@ -115,7 +115,7 @@ def test_product_inside_a_market_name_is_not_taken_for_the_product():
 def test_price_answer_has_value_unit_month_and_source():
     a = ask([price(ABECHE, "Millet", 400, "2026-05-01"), price(ABECHE, "Millet", 425, "2026-06-01")], "Prix du mil à Abéché")
     assert a.intent == "price" and a.lens == "markets" and not a.refused
-    assert "425 XAF/kg" in a.text and "juin 2026" in a.text and "PAM" in a.text and "Abéché" in a.text
+    assert "425 XAF le kilo" in a.text and "juin 2026" in a.text and "PAM" in a.text and a.text.startswith("À Abéché, le mil se vend")
     assert a.data["value"] == 425 and a.sources == ["WFP"]
 
 
@@ -123,20 +123,20 @@ def test_price_warns_when_data_is_old():
     a = ask([price(ABECHE, "Millet", 425, "2026-06-01")], "prix du mil à Abéché")
     assert "plus de 5 mois" in a.text
     fresh = Assistant(FakeRepo([price(ABECHE, "Millet", 425, "2026-10-01")]), today=TODAY).answer("prix du mil à Abéché")
-    assert "⚠️" not in fresh.text
+    assert "Attention" not in fresh.text
 
 
 def test_compare_two_markets():
     rows = [price(ABECHE, "Rice (imported)", 700, "2026-06-01"), price(DEMBE, "Rice (imported)", 800, "2026-06-01")]
     a = ask(rows, "Le riz est moins cher à Abéché ou à Dembé ?")
     assert a.intent == "compare"
-    assert "Moins cher à Abéché" in a.text and "14,3 %" in a.text and "⚠️" not in a.text
+    assert "moins cher à Abéché : 700 XAF le kilo, contre 800 à Dembé" in a.text and "14,3 %" in a.text and "pas du même mois" not in a.text
     assert a.data["cheaper"] == ABECHE and a.data["same_period"] is True
 
 
 def test_compare_flags_different_periods_and_missing_data():
     rows = [price(ABECHE, "Millet", 400, "2026-06-01"), price(DEMBE, "Millet", 500, "2026-05-01")]
-    assert "pas du même mois" in ask(rows, "mil abéché ou dembé").text
+    assert "pas du même mois" in ask(rows, "mil abéché ou dembé").text and "indicative" in ask(rows, "mil abéché ou dembé").text
     a = ask([price(ABECHE, "Millet", 400, "2026-06-01")], "mil abéché ou dembé")
     assert a.intent == "no_data" and "Dembé" in a.text
 
@@ -144,7 +144,7 @@ def test_compare_flags_different_periods_and_missing_data():
 def test_equal_prices_have_no_cheaper_market():
     rows = [price(ABECHE, "Millet", 400, "2026-06-01"), price(DEMBE, "Millet", 400, "2026-06-01")]
     a = ask(rows, "mil abéché ou dembé")
-    assert "identiques" in a.text and a.data["cheaper"] is None
+    assert "pareil" in a.text and a.data["cheaper"] is None
 
 
 def test_trend_uses_a_price_about_three_months_earlier():
@@ -152,12 +152,12 @@ def test_trend_uses_a_price_about_three_months_earlier():
             [(500, "2026-03-01"), (520, "2026-04-01"), (540, "2026-05-01"), (550, "2026-06-01")]]
     a = ask(rows, "Évolution du prix du sucre à Abéché")
     assert a.intent == "trend" and a.data["change_pct"] == 10.0 and a.data["previous_date"] == "2026-03-01"
-    assert "+10 %" in a.text
+    assert "est passé de 500 XAF le kilo en mars 2026 à 550 XAF le kilo en juin 2026, soit 10 % de plus" in a.text
 
 
 def test_trend_with_a_single_period_says_so():
     a = ask([price(ABECHE, "Sugar", 550, "2026-06-01")], "le prix du sucre a augmenté à Abéché ?")
-    assert a.intent == "trend" and "pas assez d'historique" in a.text
+    assert a.intent == "trend" and "pas assez de relevés plus anciens" in a.text
 
 
 def test_missing_pieces_are_asked_for_not_guessed():
@@ -168,7 +168,7 @@ def test_missing_pieces_are_asked_for_not_guessed():
 
 def test_no_data_is_said_plainly():
     a = ask([], "prix du mil à Abéché")
-    assert a.intent == "no_data" and "pas de prix du mil" in a.text
+    assert a.intent == "no_data" and "pas encore de prix du mil" in a.text
 
 
 def test_products_with_parentheses_are_looked_up_with_the_first_word_only():
@@ -201,20 +201,20 @@ def week(province="Ouaddai", base=30.0):
 def test_temperature_answer_with_city_name():
     a = ask(week(), "Quelle est la température à Abéché ?")
     assert a.intent == "weather" and a.lens == "weather" and a.data["province"] == "Ouaddai"
-    assert "24 octobre 2026" in a.text and "30 °C" in a.text and "minimum 22 °C" in a.text and "maximum 38 °C" in a.text
+    assert "Le 24 octobre 2026 à Abéché" in a.text and "30 °C en moyenne" in a.text and "de 22 °C la nuit à 38 °C en journée" in a.text
     assert "7 derniers jours" in a.text and "Open-Meteo" in a.text and "rain" not in a.data
 
 
 def test_rain_answer_and_general_weather_gives_both():
     a = ask(week(), "Est-ce qu'il pleut à Abéché ?")
-    assert "Pluie" in a.text and "mm" in a.text and "temperature" not in a.data and a.data["rain"]["window_total"] == 6.0
+    assert "de pluie" in a.text and "mm" in a.text and "temperature" not in a.data and a.data["rain"]["window_total"] == 6.0
     both = ask(week(), "météo à Abéché")
-    assert "Température" in both.text and "Pluie" in both.text
+    assert "°C" in both.text and "de pluie" in both.text
 
 
 def test_forecast_requests_are_answered_honestly():
     a = ask(week(), "Il va faire chaud demain à Abéché ?")
-    assert a.text.startswith("Je n'ai pas de prévisions") and "Température" in a.text
+    assert a.text.startswith("Je n'ai pas de prévisions") and "°C" in a.text
 
 
 def test_month_window_and_province_names():
@@ -237,7 +237,7 @@ def test_weather_asks_for_the_place_and_handles_missing_data_and_staleness():
     assert ask([], "quelle température fait-il ?").intent == "ask_place"
     assert ask([], "température à Abéché").intent == "no_data"
     old = ask([wx("Abeche (Ouaddai)", "mean", 30, "2026-09-01")], "température à Abéché")
-    assert "⚠️" in old.text and "60 jours" in old.text
+    assert "Attention" in old.text and "60 jours" in old.text
 
 
 # ── garde-fous ──────────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ def test_greeting_check_and_verdict_kinds():
 # ── robustesse ──────────────────────────────────────────────────────────
 def test_database_down_gives_an_honest_message_not_a_crash():
     a = Assistant(FakeRepo(fail=True), today=TODAY).answer("prix du mil à Abéché")
-    assert a.intent == "unavailable" and "Réessayez" in a.text
+    assert a.intent == "unavailable" and "réessayer" in a.text
 
 
 def test_one_transient_database_error_is_retried():
@@ -352,7 +352,7 @@ def real_repo(tmp_path):
 def test_with_the_real_repository_prices_parentheses_and_weather(real_repo):
     asst = Assistant(real_repo, today=TODAY)
     a = asst.answer("prix de l'huile d'arachide à Abéché")
-    assert a.intent == "price" and a.data["value"] == 1540 and "XAF/L" in a.text
+    assert a.intent == "price" and a.data["value"] == 1540 and "XAF le litre" in a.text
     assert asst.answer("évolution du prix de l'huile à Abéché").intent == "trend"
     assert asst.answer("mil à Dembé").data["value"] == 400
     t = asst.answer("température à Abéché")
@@ -409,14 +409,14 @@ def test_small_typos_are_understood_and_shown(q, intent):
     if "sucr" in q:
         assert a.intent == "ask_product"           # 4 lettres : trop court pour deviner, on demande plutôt
         return
-    assert a.intent == intent and "J'ai corrigé" in a.text and a.data["corrected"]
+    assert a.intent == intent and "J'ai lu" in a.text and a.data["corrected"]
 
 
 @pytest.mark.parametrize("q", ["la famille mange du pain", "maison jardin voiture", "qui a gagné le match de football",
                                "quelle est la capitale de la France", "comment ça va aujourd'hui", "livraison camion bateau avion"])
 def test_ordinary_words_are_never_rewritten(q):
     a = ask([], q)
-    assert a.intent == "help" and "corrigé" not in a.text
+    assert a.intent == "help" and "J'ai lu" not in a.text
 
 
 def test_follow_up_questions_reuse_the_previous_topic():
