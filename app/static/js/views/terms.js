@@ -26,7 +26,7 @@ export const TermsView = {
         </div>
 
         <!-- Document Body / Legal Sections -->
-        <div class="flex flex-col gap-6" style="color: var(--text);">
+        <div class="flex flex-col" style="color: var(--text);gap:28px;">
           
           <!-- Section 1 -->
           <section>
@@ -47,12 +47,12 @@ export const TermsView = {
               ${t('terms.sec2_text')}
             </p>
             
-            <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px;">
+            <div style="background: var(--surface); border: 1px solid var(--border-strong); border-radius: 4px; padding: 12px 16px;">
               <div class="mono-xs text-muted fw-700 mb-1 uppercase" style="letter-spacing: 0.05em;">
                 ${t('terms.sec2_example_label')}
               </div>
               <div class="flex justify-between items-center flex-wrap gap-2">
-                <code class="mono-sm text-cyan" style="word-break: break-all;" id="citation-code">${citationCode}</code>
+                <code class="mono-sm text-cyan" style="overflow-wrap:anywhere;" id="citation-code">${citationCode}</code>
                 <button class="btn btn-ghost mono-xs flex items-center gap-1" id="copy-citation-btn" style="padding: 4px 10px; border: 1px solid var(--border);">
                   <i data-lucide="copy" style="width:12px;height:12px;"></i> <span id="copy-citation-txt">${t('api.copy')}</span>
                 </button>
