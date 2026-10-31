@@ -63,17 +63,19 @@ class Assistant:
 
         norm = normalize(question)
         lens = self._route(norm)
-        try:
-            if lens == "markets":
-                result = self._markets(norm)
-            elif lens == "weather":
-                result = self._weather(norm)
-            else:
-                result = None
-        except Exception as exc:        # la base est indisponible : on ne devine rien
-            logger.warning("assistant: data unavailable: %s", exc)
-            return Answer("Je n'arrive pas à lire les données pour le moment. Réessayez dans quelques minutes.",
-                          "unavailable", lens)
+        result = None
+        for attempt in (1, 2):          # une coupure réseau passagère vers la base ne doit pas faire échouer la question
+            try:
+                if lens == "markets":
+                    result = self._markets(norm)
+                elif lens == "weather":
+                    result = self._weather(norm)
+                break
+            except Exception as exc:
+                logger.warning("assistant: data unavailable (attempt %d): %r", attempt, exc)
+                if attempt == 2:        # la base est vraiment indisponible : on ne devine rien
+                    return Answer("Je n'arrive pas à lire les données pour le moment. Réessayez dans quelques minutes.",
+                                  "unavailable", lens)
 
         if result is None:
             if verdict.sensitive:

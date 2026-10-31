@@ -19,7 +19,7 @@ ABECHE, DEMBE, ADRE = "Abeche (Ouaddai)", "Dembe (N'Djamena)", "Adre (Ouaddai)"
 
 
 class FakeRepo:
-    """Même signature que ObservationRepository (plus récent d'abord, filtre région exact)."""
+    """Même signature que ObservationRepository (plus récent d'abord, filtre région « contient » comme le LIKE réel)."""
 
     def __init__(self, rows=(), regions=None, fail=False):
         self.rows, self.regions, self.fail, self.calls = list(rows), regions or {}, fail, []
@@ -29,7 +29,7 @@ class FakeRepo:
             raise RuntimeError("database down")
         self.calls.append({"sector": sector, "region": region, "q": q})
         out = [r for r in self.rows if (sector is None or r["sector"] == sector)
-               and (region is None or r["region"].lower() == region.lower())]
+               and (region is None or region.lower() in r["region"].lower())]
         return sorted(out, key=lambda r: r["reference_date"], reverse=True)[:limit]
 
     def get_stats(self):
@@ -177,7 +177,12 @@ def test_rows_without_numeric_value_or_other_region_are_ignored():
 
 
 # ── météo ───────────────────────────────────────────────────────────────
+PROD_REGION = {"Ouaddai": "Abeche (Ouaddai)", "Mayo-Kebbi Est": "Bongor (Mayo-Kebbi Est)", "N'Djamena": "N'Djamena (N'Djamena)",
+               "Logone Occidental": "Moundou (Logone Occidental)"}
+
+
 def week(province="Ouaddai", base=30.0):
+    province = PROD_REGION.get(province, province)     # la base stocke « Ville (Province) »
     rows = []
     for i in range(10):
         d = f"2026-10-{24 - i:02d}"
@@ -212,10 +217,19 @@ def test_month_window_and_province_names():
     assert weather.find_province(normalize("à Moundou"))[0] == "Logone Occidental"
 
 
+def test_weather_works_with_plain_province_names_and_the_capital():
+    plain = [dict(r, region="Ouaddai") for r in week()]
+    assert ask(plain, "température à Abéché").intent == "weather"
+    a = ask(week("N'Djamena"), "Température à N'Djamena")
+    assert a.intent == "weather" and a.data["province"] == "N'Djamena"
+    assert weather.region_province("Abeche (Ouaddai)") == "Ouaddai" and weather.region_province("Ouaddai") == "Ouaddai"
+    assert weather.region_province("n'importe quoi") is None
+
+
 def test_weather_asks_for_the_place_and_handles_missing_data_and_staleness():
     assert ask([], "quelle température fait-il ?").intent == "ask_place"
     assert ask([], "température à Abéché").intent == "no_data"
-    old = ask([wx("Ouaddai", "mean", 30, "2026-09-01")], "température à Abéché")
+    old = ask([wx("Abeche (Ouaddai)", "mean", 30, "2026-09-01")], "température à Abéché")
     assert "⚠️" in old.text and "60 jours" in old.text
 
 
@@ -272,6 +286,17 @@ def test_database_down_gives_an_honest_message_not_a_crash():
     assert a.intent == "unavailable" and "Réessayez" in a.text
 
 
+def test_one_transient_database_error_is_retried():
+    class Flaky(FakeRepo):
+        def list_observations(self, *a, **k):
+            if not getattr(self, "failed", False):
+                self.failed = True
+                raise RuntimeError("connection reset")
+            return super().list_observations(*a, **k)
+    a = Assistant(Flaky([price(ABECHE, "Millet", 425, "2026-06-01")]), today=TODAY).answer("prix du mil à Abéché")
+    assert a.intent == "price" and "425" in a.text
+
+
 def test_every_number_in_a_price_answer_comes_from_the_data():
     a = ask([price(ABECHE, "Millet", 431, "2026-06-01")], "prix du mil à Abéché")
     assert "431" in a.text and a.data["value"] == 431.0
@@ -291,7 +316,7 @@ def real_repo(tmp_path):
     obs += [ObservationCreate(sector="markets", indicator="Millet retail price (WFP)", value=400, unit="XAF/KG",
                               reference_date="2026-05-01", region="Dembe (N'Djamena)", source="WFP", notes="t")]
     obs += [ObservationCreate(sector="environment", indicator="Daily mean temperature", value=31.2, unit="°C",
-                              reference_date="2026-10-24", region="Ouaddai", source="Open-Meteo Archive", notes="t")]
+                              reference_date="2026-10-24", region="Abeche (Ouaddai)", source="Open-Meteo Archive", notes="t")]
     repo.upsert_many(obs)
     return repo
 
@@ -304,6 +329,7 @@ def test_with_the_real_repository_prices_parentheses_and_weather(real_repo):
     assert asst.answer("mil à Dembé").data["value"] == 400
     t = asst.answer("température à Abéché")
     assert t.intent == "weather" and "31,2 °C" in t.text
+    assert asst.answer("température à N'Djamena").intent == "no_data"      # pas de mesure stockée pour cette province ici
 
 
 # ── route admin ─────────────────────────────────────────────────────────

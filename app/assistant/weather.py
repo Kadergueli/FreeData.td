@@ -5,6 +5,7 @@ quand on lui demande « demain » ou « cette semaine ».
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -91,11 +92,18 @@ class Measure:
     source: str
 
 
+def region_province(region: str) -> str | None:
+    """Province of a stored region: 'Abeche (Ouaddai)' -> 'Ouaddai', 'Ouaddai' -> 'Ouaddai'."""
+    text = region or ""
+    m = re.match(r"^.*\(([^()]*)\)\s*$", text)
+    return canonical_province(m.group(1)) if m and canonical_province(m.group(1)) else canonical_province(text)
+
+
 def _series(repo, province: str, indicator: str, limit: int = 40) -> list[Measure]:
     rows = repo.list_observations(sector="environment", region=province, limit=limit, q=indicator)
     out: dict[str, Measure] = {}
     for r in rows:
-        if r.get("indicator") != indicator or canonical_province(r.get("region") or "") != province:
+        if r.get("indicator") != indicator or region_province(r.get("region") or "") != province:
             continue
         try:
             value = float(r["value"])
