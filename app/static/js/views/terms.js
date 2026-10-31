@@ -5,8 +5,8 @@ export const TermsView = {
   render() {
     const lang = getLang();
     const citationCode = lang === 'en'
-      ? 'Source: [Primary Agency, e.g. INSEED / World Bank] via FreeData.td (https://freedata.td), CC BY 4.0 License.'
-      : 'Source : [Organisme Primaire, ex: INSEED / Banque Mondiale] via FreeData.td (https://freedata.td), Licence CC BY 4.0.';
+      ? 'Source: [Primary Agency, e.g. INSEED / World Bank] via FreeData.td (https://freedatatd.onrender.com), CC BY 4.0 License.'
+      : 'Source : [Organisme Primaire, ex: INSEED / Banque Mondiale] via FreeData.td (https://freedatatd.onrender.com), Licence CC BY 4.0.';
 
     return `
       <!-- Professional Document Container -->

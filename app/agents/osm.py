@@ -88,7 +88,7 @@ async def _query(client: httpx.AsyncClient, query: str) -> tuple[Any, str]:
     for url in OVERPASS_URLS:
         try:
             response = await client.post(url, data={"data": query},
-                                         headers={"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata.td)"})
+                                         headers={"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedatatd.onrender.com)"})
             if response.status_code == 200:
                 return response.json(), ""
             reason = f"HTTP {response.status_code}"

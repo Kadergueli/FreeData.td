@@ -133,7 +133,7 @@ class BaseAgent(ABC):
         """GET a JSON document, retrying transient failures. Returns None when it still fails;
         the reason of the last failure (HTTP status, timeout...) is appended to `errors` so the
         caller can report WHY, not just that it failed."""
-        req_headers = {"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata.td)"}
+        req_headers = {"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedatatd.onrender.com)"}
         if headers:
             req_headers.update(headers)
 
@@ -183,7 +183,7 @@ class BaseAgent(ABC):
         max_retries: int = 3,
         throttle_seconds: float = 0.15,
     ) -> str | None:
-        req_headers = {"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata.td)"}
+        req_headers = {"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedatatd.onrender.com)"}
         if headers:
             req_headers.update(headers)
 
