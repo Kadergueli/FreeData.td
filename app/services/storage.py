@@ -751,6 +751,10 @@ class ObservationRepository:
             "status": row.get("statut_qualite", "validated"),
         }
 
+    def region_names(self) -> list[str]:
+        """Names of the regions present in the data. One cached call (5 min), unlike get_stats()."""
+        return list(self._region_counts().keys())
+
     def _region_counts(self) -> dict[str, int]:
         """Observation count per region actually present in the data (cached)."""
         cached = _cache_get("region_counts", 300.0)

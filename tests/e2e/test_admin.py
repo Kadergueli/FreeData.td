@@ -227,9 +227,10 @@ def test_assistant_tab_asks_shows_the_answer_and_escapes_html(probe):
     txt = probe.page.inner_text("#assistant-log")
     assert "425 XAF/kg" in txt and "price" in txt and "WFP" in txt
     assert probe.page.locator("#assistant-log img").count() == 0
-    assert calls.bodies[-1] == {"question": "Prix du mil à Abéché"}
-    probe.page.click(".assistant-chip >> nth=1")                       # example chips ask directly
+    assert calls.bodies[-1] == {"question": "Prix du mil à Abéché", "context": None}   # première question : pas de contexte
+    probe.page.click(".assistant-chip >> nth=1")                       # « Et à Dembé ? » : reprend le sujet précédent
     probe.page.wait_for_function("document.querySelectorAll('.assistant-turn').length === 2")
+    assert calls.bodies[-1]["question"] == "Et à Dembé ?" and calls.bodies[-1]["context"]["lens"] == "markets"
     assert probe.page_errors == []
 
 

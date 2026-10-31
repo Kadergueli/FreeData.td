@@ -27,7 +27,7 @@ CITY_TO_PROVINCE = {
 
 # Questions : mots qui annoncent la météo.
 TEMPERATURE_WORDS = ("temperature", "temperatures", "chaud", "chaude", "chaleur", "froid", "frais", "degre", "degres")
-RAIN_WORDS = ("pluie", "pluies", "pleut", "pluvieux", "pluviometrie", "precipitation", "precipitations", "averse", "averses", "arrose")
+RAIN_WORDS = ("pluie", "pluies", "pleut", "pleuvoir", "pleuvra", "pluvieux", "pluviometrie", "precipitation", "precipitations", "averse", "averses", "arrose")
 GENERAL_WORDS = ("meteo", "temps qu'il fait", "quel temps", "climat", "il fait")
 FORECAST_WORDS = ("demain", "apres demain", "previsions", "prevision", "prevoir", "va faire", "va pleuvoir",
                   "prochain", "prochaine", "prochains", "prochaines", "week end", "weekend")
@@ -48,6 +48,13 @@ def _province_aliases() -> dict[str, str]:
 
 
 _ALIASES = _province_aliases()
+
+
+PROVINCE_NAMES = frozenset(PROVINCES)
+
+
+def all_aliases() -> list[str]:
+    return list(_ALIASES.keys())
 
 
 def find_province(norm_text: str) -> tuple[str, str] | None:
@@ -100,7 +107,8 @@ def region_province(region: str) -> str | None:
 
 
 def _series(repo, province: str, indicator: str, limit: int = 40) -> list[Measure]:
-    rows = repo.list_observations(sector="environment", region=province, limit=limit, q=indicator)
+    # une seule requête « Daily » (température moyenne/min/max + pluie) partagée via le cache du dépôt
+    rows = repo.list_observations(sector="environment", region=province, limit=limit * 5, q="Daily")
     out: dict[str, Measure] = {}
     for r in rows:
         if r.get("indicator") != indicator or region_province(r.get("region") or "") != province:

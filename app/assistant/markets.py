@@ -171,6 +171,24 @@ def find_product(norm_text: str) -> str | None:
     return best[2] if best else None
 
 
+def find_products(norm_text: str, limit: int = 4) -> list[str]:
+    """Tous les produits cités, dans l'ordre de la phrase ; un alias contenu dans un alias plus long est ignoré
+    (« riz » dans « riz local »)."""
+    hits: list[tuple[int, int, str]] = []        # (début, fin, produit)
+    for product, aliases in PRODUCT_ALIASES.items():
+        for alias in aliases:
+            span = find_alias(norm_text, alias)
+            if span:
+                hits.append((span[0], span[1], product))
+    hits.sort(key=lambda h: -(h[1] - h[0]))       # les plus longs d'abord
+    kept: list[tuple[int, int, str]] = []
+    for start, end, product in hits:
+        if any(start < k_end and k_start < end for k_start, k_end, _ in kept) or any(product == k[2] for k in kept):
+            continue
+        kept.append((start, end, product))
+    return [h[2] for h in sorted(kept)[:limit]]
+
+
 # ── données ─────────────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class PriceResult:
@@ -211,6 +229,29 @@ def price_history(repo, product: str, market: str) -> list[PriceResult]:
         d = str(r.get("reference_date"))[:10]
         out.setdefault(d, PriceResult(market, product, value, r.get("unit") or "", d, r.get("source") or ""))
     return sorted(out.values(), key=lambda p: p.date, reverse=True)
+
+
+def ranking(repo, product: str, max_gap_days: int = 45) -> list[PriceResult]:
+    """Dernier prix de chaque marché, du moins cher au plus cher, en ne gardant que les marchés dont le relevé
+    est du même ordre de date que le plus récent (sinon on compare des mois différents)."""
+    rows = repo.list_observations(sector="markets", region=None, limit=600, q=product.split(" ")[0])
+    wanted = _indicator(product)
+    latest: dict[str, PriceResult] = {}
+    for r in rows:                                # plus récent d'abord
+        region = r.get("region")
+        if r.get("indicator") != wanted or not region or region in latest:
+            continue
+        try:
+            value = float(r["value"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        latest[region] = PriceResult(region, product, value, r.get("unit") or "", str(r.get("reference_date"))[:10],
+                                     r.get("source") or "")
+    if not latest:
+        return []
+    newest = max(parse_date(p.date) for p in latest.values())
+    fresh = [p for p in latest.values() if (newest - parse_date(p.date)).days <= max_gap_days]
+    return sorted(fresh, key=lambda p: p.value)
 
 
 def latest_price(repo, product: str, market: str) -> PriceResult | None:

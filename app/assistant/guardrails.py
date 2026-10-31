@@ -16,7 +16,7 @@ _ABUSE = (
     "con", "conne", "connard", "connasse", "salope", "pute", "putain", "merde", "encule", "enculer",
     "idiot", "idiote", "imbecile", "debile", "stupide", "abruti", "cretin", "batard", "ordure",
     "fils de pute", "ta gueule", "ferme ta gueule", "va te faire", "nique", "niquer",
-    "fuck", "fucking", "shit", "bitch", "asshole", "stupid", "idiot", "kalb", "hmar", "ibn el kalb",
+    "nul", "nulle", "minable", "ridicule", "fuck", "fucking", "shit", "bitch", "asshole", "stupid", "idiot", "kalb", "hmar", "ibn el kalb",
 )
 
 # Sujets sur lesquels l'assistant n'a rien à dire : pas de données, risque de polémique.
@@ -26,7 +26,7 @@ _SENSITIVE = (
     "guerre", "religion", "musulman", "musulmans", "chretien", "chretiens", "islam", "christianisme",
     "ethnie", "ethnies", "tribu", "tribus", "sara", "arabe", "arabes", "gorane", "toubou",
     "homosexuel", "homosexuels", "lgbt", "sexe", "porno", "pornographie",
-    "arme", "armes", "bombe", "drogue", "tuer", "assassiner",
+    "gouverner", "dirigeant", "dictateur", "dictature", "arme", "armes", "bombe", "drogue", "tuer", "assassiner",
 )
 
 # Détresse : on répond avec bienveillance, pas avec des données.

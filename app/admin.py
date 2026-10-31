@@ -524,6 +524,7 @@ async def reports_delete(rid: int, body: DataDeleteBody, admin: AdminUser = Depe
 
 class AssistantBody(BaseModel):
     question: str = Field(max_length=2000)   # guardrails answer "too long" above 300 characters
+    context: dict | None = None              # topic of the previous answer; re-validated server side
 
 
 @router.post("/assistant/ask")
@@ -534,7 +535,7 @@ async def assistant_ask(body: AssistantBody, admin: AdminUser = Depends(require_
     from app.main import repository
     if not rate_limiter.allow(f"assistant:{admin.email}", 120):
         raise HTTPException(status_code=429, detail="Too many questions. Try again later.")
-    answer = await asyncio.to_thread(Assistant(repository).answer, body.question)
+    answer = await asyncio.to_thread(Assistant(repository).answer, body.question, body.context)
     return answer.to_dict()
 
 

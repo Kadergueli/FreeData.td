@@ -583,8 +583,16 @@ async function loadAudit(panel) {
 
 /* ── Assistant (marchés + météo) ─────────────────────────────────────────── */
 
-const ASSISTANT_EXAMPLES = ['Prix du mil à Abéché', 'Le riz est moins cher à Abéché ou à Dembé ?', 'Évolution du prix du sucre à Abéché', 'Température à N\'Djamena'];
+const ASSISTANT_EXAMPLES = ['Prix du mil à Abéché', 'Et à Dembé ?', 'Où le riz est-il le moins cher ?', 'Mil et sorgho à Abéché', 'Température à N\'Djamena'];
 let _assistantHistory = [];
+
+// De quoi parlait la dernière réponse utile : permet « et à Dembé ? » (le serveur revalide tout).
+function assistantContext() {
+  const last = _assistantHistory.find(h => h.lens && h.data);
+  if (!last) return null;
+  const d = last.data;
+  return { lens: last.lens, product: d.product, market: d.market || (Array.isArray(d.markets) ? d.markets[0] : undefined), province: d.province };
+}
 
 async function loadAssistant(panel) {
   panel.innerHTML = `<div class="card" style="padding:16px;">
@@ -614,8 +622,8 @@ async function loadAssistant(panel) {
     const btn = panel.querySelector('#assistant-send');
     btn.disabled = true;
     try {
-      const r = await adminFetch('/assistant/ask', { method: 'POST', body: { question: q } });
-      _assistantHistory.unshift({ q, text: r.text, intent: r.intent, lens: r.lens, sources: r.sources });
+      const r = await adminFetch('/assistant/ask', { method: 'POST', body: { question: q, context: assistantContext() } });
+      _assistantHistory.unshift({ q, text: r.text, intent: r.intent, lens: r.lens, sources: r.sources, data: r.data || {} });
       _assistantHistory = _assistantHistory.slice(0, 20);
       input.value = '';
     } catch (e) {
