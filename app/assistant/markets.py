@@ -224,9 +224,9 @@ def _indicator(product: str) -> str:
 
 def price_history(repo, product: str, market: str) -> list[PriceResult]:
     """Prix connus (un par date, les plus récents d'abord)."""
-    # Le paramètre q de la base supprime les parenthèses : on n'envoie que le premier mot.
-    rows = repo.list_observations(sector="markets", region=market, limit=400, q=product.split(" ")[0])
     wanted = _indicator(product)
+    # Filtre EXACT sur l'indicateur : une recherche par mot (« Rice ») trouverait aussi « ... retail p-rice » de tous les produits.
+    rows = repo.list_observations(sector="markets", region=market, limit=120, indicator=wanted)
     out: dict[str, PriceResult] = {}
     for r in rows:
         if r.get("indicator") != wanted or r.get("region") != market:
@@ -243,8 +243,8 @@ def price_history(repo, product: str, market: str) -> list[PriceResult]:
 def ranking(repo, product: str, max_gap_days: int = 45) -> list[PriceResult]:
     """Dernier prix de chaque marché, du moins cher au plus cher, en ne gardant que les marchés dont le relevé
     est du même ordre de date que le plus récent (sinon on compare des mois différents)."""
-    rows = repo.list_observations(sector="markets", region=None, limit=600, q=product.split(" ")[0])
     wanted = _indicator(product)
+    rows = repo.list_observations(sector="markets", region=None, limit=600, indicator=wanted)
     latest: dict[str, PriceResult] = {}
     for r in rows:                                # plus récent d'abord
         region = r.get("region")

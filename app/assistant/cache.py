@@ -37,9 +37,10 @@ class CachedRepo:
             _store[full] = (now, value)
         return value
 
-    def list_observations(self, sector=None, region=None, limit=100, q=None):
-        return self._cached(("obs", sector, region, limit, q),
-                            lambda: self._repo.list_observations(sector=sector, region=region, limit=limit, q=q))
+    def list_observations(self, sector=None, region=None, limit=100, q=None, indicator=None):
+        extra = {"indicator": indicator} if indicator else {}          # exact indicator filter (see the storage layer)
+        return self._cached(("obs", sector, region, limit, q, indicator),
+                            lambda: self._repo.list_observations(sector=sector, region=region, limit=limit, q=q, **extra))
 
     def region_names(self):
         if hasattr(self._repo, "region_names"):

@@ -543,7 +543,10 @@ class ObservationRepository:
 
         return len(rows)
 
-    def list_observations(self, sector: str | None = None, region: str | None = None, limit: int = 100, q: str | None = None) -> list[dict[str, Any]]:
+    def list_observations(self, sector: str | None = None, region: str | None = None, limit: int = 100, q: str | None = None,
+                          indicator: str | None = None) -> list[dict[str, Any]]:
+        """`indicator` is an EXACT match on the indicator name (unlike `q`, a case-insensitive substring search over
+        several columns: "Rice" also matches every "... retail price" row)."""
         raw_obs: list[dict[str, Any]] = []
         # Over-fetch only a modest margin for the dedup pass below (it used to be
         # limit * 4: a 5000-row export pulled 20000 full rows into memory).
@@ -563,6 +566,8 @@ class ObservationRepository:
                     query = query.eq("secteur", sector)
                 if region:
                     query = query.ilike("region", _region_like_pattern(region))
+                if indicator:
+                    query = query.eq("indicateur", indicator)
                 if q:
                     # PostgREST uses '*' as the ilike wildcard inside or=(); _clean_search_term()
                     # already removed every filter-syntax character (',' '(' ')' '*' ...).
@@ -588,6 +593,9 @@ class ObservationRepository:
                 if region:
                     conditions.append("region LIKE ? COLLATE NOCASE")
                     parameters.append(_region_like_pattern(region))
+                if indicator:
+                    conditions.append("indicator = ?")
+                    parameters.append(indicator)
                 if q:
                     like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
                     conditions.append(

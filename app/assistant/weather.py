@@ -108,7 +108,7 @@ def region_province(region: str) -> str | None:
 
 def _series(repo, province: str, indicator: str, limit: int = 40) -> list[Measure]:
     # une seule requête « Daily » (température moyenne/min/max + pluie) partagée via le cache du dépôt
-    rows = repo.list_observations(sector="environment", region=province, limit=limit * 5, q="Daily")
+    rows = repo.list_observations(sector="environment", region=province, limit=limit * 5, q="Daily")   # tri/filtre exact ensuite
     out: dict[str, Measure] = {}
     for r in rows:
         if r.get("indicator") != indicator or region_province(r.get("region") or "") != province:

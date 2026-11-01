@@ -31,11 +31,11 @@ class FakeRepo:
     def __init__(self, rows=(), regions=None, fail=False):
         self.rows, self.regions, self.fail, self.calls = list(rows), regions or {}, fail, []
 
-    def list_observations(self, sector=None, region=None, limit=100, q=None):
+    def list_observations(self, sector=None, region=None, limit=100, q=None, indicator=None):
         if self.fail:
             raise RuntimeError("database down")
-        self.calls.append({"sector": sector, "region": region, "q": q})
-        out = [r for r in self.rows if (sector is None or r["sector"] == sector)
+        self.calls.append({"sector": sector, "region": region, "q": q, "indicator": indicator})
+        out = [r for r in self.rows if (sector is None or r["sector"] == sector) and (indicator is None or r["indicator"] == indicator)
                and (region is None or region.lower() in r["region"].lower())]
         return sorted(out, key=lambda r: r["reference_date"], reverse=True)[:limit]
 
@@ -174,7 +174,8 @@ def test_no_data_is_said_plainly():
 def test_products_with_parentheses_are_looked_up_with_the_first_word_only():
     repo = FakeRepo([price(ABECHE, "Oil (groundnut)", 1500, "2026-06-01", "XAF/L")])
     p = markets.latest_price(repo, "Oil (groundnut)", ABECHE)
-    assert p and p.value == 1500 and repo.calls[0]["q"] == "Oil" and repo.calls[0]["sector"] == "markets"
+    assert p and p.value == 1500 and repo.calls[0]["indicator"] == "Oil (groundnut) retail price (WFP)"
+    assert repo.calls[0]["sector"] == "markets"
 
 
 def test_rows_without_numeric_value_or_other_region_are_ignored():
@@ -581,3 +582,38 @@ def test_old_entries_are_purged(real_repo):
         c.execute("INSERT INTO assistant_log (created_at, question, intent) VALUES (?,?,?)", (old, "ancienne", "help"))
     log.purge()
     assert [r["question"] for r in log.recent(10)] == ["récente"]
+
+
+# ── volumes réalistes : « Rice » est aussi contenu dans « p-rice » (régression constatée en production) ──
+@pytest.fixture
+def crowded_repo(tmp_path):
+    """30 produits × 40 marchés à la même date : le riz représente une toute petite part des lignes."""
+    repo = ObservationRepository(tmp_path / "crowded.db")
+    products = ["Rice (imported)", "Rice (local)"] + [f"Product{i}" for i in range(28)]
+    markets_ = [f"Town{i} (Ouaddai)" for i in range(38)] + [ABECHE, DEMBE]
+    obs = [ObservationCreate(sector="markets", indicator=f"{p} retail price (WFP)", value=300 + n + 10 * i, unit="XAF/KG",
+                             reference_date=d, region=m, source="WFP", notes="t")
+           for i, p in enumerate(products) for n, m in enumerate(markets_) for d in ("2026-05-01", "2026-06-01")]
+    repo.upsert_many(obs)
+    return repo
+
+
+def test_ranking_finds_rice_even_when_every_product_matches_the_search_word(crowded_repo):
+    a = Assistant(crowded_repo, today=TODAY).answer("Où le riz est-il le moins cher ?")
+    assert a.intent == "ranking" and len(a.data["ranking"]) == 3
+    assert a.data["ranking"][0]["value"] == 300 and a.data["ranking"][0]["market"] == "Town0 (Ouaddai)"
+
+
+def test_price_and_trend_for_rice_are_found_in_a_crowded_market(crowded_repo):
+    asst = Assistant(crowded_repo, today=TODAY)
+    p = asst.answer("prix du riz à Abéché")
+    assert p.intent == "price" and p.data["product"] == "Rice (imported)" and p.data["value"] == 338
+    assert asst.answer("évolution du riz à Abéché").intent == "trend"
+
+
+def test_storage_indicator_filter_is_exact_not_a_substring(crowded_repo):
+    exact = crowded_repo.list_observations(sector="markets", limit=500, indicator="Rice (imported) retail price (WFP)")
+    assert exact and {o["indicator"] for o in exact} == {"Rice (imported) retail price (WFP)"}
+    loose = crowded_repo.list_observations(sector="markets", limit=500, q="Rice")     # l'ancien comportement : tout « price »
+    assert len({o["indicator"] for o in loose}) > 2
+    assert crowded_repo.list_observations(sector="markets", limit=5, indicator="Rice") == []
