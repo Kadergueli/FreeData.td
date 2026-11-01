@@ -16,7 +16,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -43,6 +43,7 @@ LIMIT_REACHED = ("Vous avez atteint la limite de questions pour aujourd'hui ({n}
                  "vous pourrez de nouveau me demander les prix des marchés et la météo.")
 
 _lock = threading.Lock()
+_last_event: dict[str, Any] = {}       # what Meta's last call to us led to (memory only; shown in the admin)
 _contexts: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
 _seen: "OrderedDict[str, float]" = OrderedDict()
 
@@ -51,8 +52,21 @@ def enabled() -> bool:
     return bool(settings.whatsapp_app_secret and settings.whatsapp_access_token and settings.whatsapp_phone_number_id)
 
 
+def record_event(kind: str) -> None:
+    """kind: verified | verify_failed | messages | no_message | bad_signature | not_configured | bad_payload."""
+    with _lock:
+        _last_event.update(kind=kind, at=datetime.now(UTC).isoformat())
+    (logger.info if kind in ("verified", "messages", "no_message") else logger.warning)("whatsapp webhook: %s", kind)
+
+
+def last_event() -> dict[str, Any] | None:
+    with _lock:
+        return dict(_last_event) if _last_event else None
+
+
 def clear_state() -> None:
     with _lock:
+        _last_event.clear()
         _contexts.clear()
         _seen.clear()
 
@@ -208,24 +222,31 @@ def verify(mode: str = Query(default="", alias="hub.mode"), token: str = Query(d
            challenge: str = Query(default="", alias="hub.challenge")) -> PlainTextResponse:
     expected = settings.whatsapp_verify_token
     if mode == "subscribe" and expected and hmac.compare_digest(token.encode(), expected.encode()):
+        record_event("verified")
         return PlainTextResponse(challenge)
+    record_event("verify_failed")
     raise HTTPException(status_code=403, detail="Verification failed.")
 
 
 @router.post("/webhook")
 async def receive(request: Request, background: BackgroundTasks) -> dict:
     if not enabled():
+        record_event("not_configured")
         raise HTTPException(status_code=503, detail="WhatsApp is not configured.")
     body = await request.body()
     if len(body) > 200_000:
         raise HTTPException(status_code=413, detail="Payload too large.")
     if not verify_signature(body, request.headers.get("x-hub-signature-256"), settings.whatsapp_app_secret):
+        record_event("bad_signature")      # almost always: WHATSAPP_APP_SECRET differs from the app's secret
         raise HTTPException(status_code=403, detail="Invalid signature.")
     try:
         payload = await request.json()
     except ValueError:
+        record_event("bad_payload")
         return {"status": "ignored"}
-    for msg in extract_messages(payload)[:10]:
+    incoming = extract_messages(payload)[:10]
+    record_event("messages" if incoming else "no_message")
+    for msg in incoming:
         if not rate_limiter.allow(f"wa-burst:{phone_ref(msg['from'])}", 20, window=timedelta(minutes=1)):
             continue                                                  # flood protection (20 / minute / number)
         if _first_time(msg["id"]):

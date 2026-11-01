@@ -650,6 +650,12 @@ async function loadAssistant(panel) {
   loadAssistantSummary(panel.querySelector('#assistant-summary'));
 }
 
+function waEventLine(ev) {
+  if (!ev) return escapeHtml(t('admin.assistant_wa_never'));
+  const label = t(`admin.assistant_wa_ev_${ev.kind}`);
+  return `${escapeHtml(t('admin.assistant_wa_last'))} ${escapeHtml(fmtDateTime(ev.at))} : ${escapeHtml(label.startsWith('admin.') ? ev.kind : label)}`;
+}
+
 async function loadAssistantSummary(box) {
   if (!box) return;
   let s;
@@ -657,6 +663,7 @@ async function loadAssistantSummary(box) {
   const pct = v => (v === null || v === undefined ? '–' : `${v} %`);
   box.innerHTML = `<h4 class="mono-sm uppercase mb-3">${t('admin.assistant_sum_title')}</h4>
     <p class="mono-xs text-muted" id="assistant-wa-status">${t(s.whatsapp_configured ? 'admin.assistant_wa_on' : 'admin.assistant_wa_off')}${s.by_channel && s.by_channel.whatsapp ? ' · ' + s.by_channel.whatsapp + ' ' + 'questions' : ''}</p>
+    <p class="mono-xs text-muted" id="assistant-wa-event">${waEventLine(s.whatsapp_last_event)}</p>
     ${s.total ? `<p class="mono-sm" id="assistant-sum-line">${escapeHtml(t('admin.assistant_sum_line').replace('{total}', s.total).replace('{pct}', pct(s.answered_pct)).replace('{refused}', s.refused).replace('{ms}', s.median_ms ?? '–'))}
       ${s.helpful + s.not_helpful ? ` · 👍 ${s.helpful} · 👎 ${s.not_helpful}` : ''}</p>
       <h5 class="mono-xs uppercase text-muted" style="margin:12px 0 6px;">${t('admin.assistant_sum_improve')}</h5>

@@ -570,6 +570,7 @@ async def assistant_summary(admin: AdminUser = Depends(require_admin)) -> dict:
     await asyncio.to_thread(log.purge)
     summary = await asyncio.to_thread(log.summary)
     summary["whatsapp_configured"] = whatsapp.enabled()
+    summary["whatsapp_last_event"] = whatsapp.last_event()
     return summary
 
 

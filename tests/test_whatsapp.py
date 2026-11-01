@@ -253,3 +253,37 @@ def test_admin_summary_reports_the_channel_status_and_counts(env, monkeypatch):
     assert s["whatsapp_configured"] is True and s["by_channel"] == {"whatsapp": 1}
     monkeypatch.setattr(settings, "whatsapp_access_token", None)
     assert client.get("/api/v1/admin/assistant/summary", headers=h).json()["whatsapp_configured"] is False
+
+
+def test_last_meta_call_is_remembered_for_the_admin_diagnosis(env, monkeypatch):
+    client, _, _ = env
+    assert wa.last_event() is None
+    client.get(URL, params={"hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "1"})
+    assert wa.last_event()["kind"] == "verify_failed"
+    client.get(URL, params={"hub.mode": "subscribe", "hub.verify_token": "verify-me", "hub.challenge": "1"})
+    assert wa.last_event()["kind"] == "verified"
+    post(client, _msg("aide", "d1"), secret="wrong-secret")
+    assert wa.last_event()["kind"] == "bad_signature"
+    post(client, {"entry": [{"changes": [{"value": {"statuses": []}}]}]})
+    assert wa.last_event()["kind"] == "no_message"
+    post(client, _msg("aide", "d2"))
+    assert wa.last_event()["kind"] == "messages" and wa.last_event()["at"]
+    post(client, b"garbage")
+    assert wa.last_event()["kind"] == "bad_payload"
+    monkeypatch.setattr(settings, "whatsapp_access_token", None)
+    post(client, _msg("aide", "d3"))
+    assert wa.last_event()["kind"] == "not_configured"
+
+
+def test_admin_summary_carries_the_last_event(env, monkeypatch):
+    from app import admin as admin_mod
+    client, _, _ = env
+    monkeypatch.setattr(settings, "supabase_url", "https://example.supabase.co")
+    monkeypatch.setattr(settings, "supabase_anon_key", "anon-key")
+    monkeypatch.setattr(settings, "admin_emails", "owner@example.org")
+    monkeypatch.setattr(admin_mod, "verify_access_token", lambda t: "owner@example.org" if t == "tok-owner" else None)
+    h = {"Authorization": "Bearer tok-owner"}
+    assert client.get("/api/v1/admin/assistant/summary", headers=h).json()["whatsapp_last_event"] is None
+    client.get(URL, params={"hub.mode": "subscribe", "hub.verify_token": "verify-me", "hub.challenge": "1"})
+    ev = client.get("/api/v1/admin/assistant/summary", headers=h).json()["whatsapp_last_event"]
+    assert ev["kind"] == "verified"
