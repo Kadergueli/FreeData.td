@@ -606,15 +606,26 @@ async function loadAssistant(panel) {
       ${ASSISTANT_EXAMPLES.map(x => `<button type="button" class="btn btn-ghost assistant-chip" data-q="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join('')}
     </div>
     <div id="assistant-log" aria-live="polite"></div>
-  </div>`;
+  </div>
+  <div class="card" style="padding:16px;margin-top:16px;" id="assistant-summary"></div>`;
   const log = panel.querySelector('#assistant-log');
   const input = panel.querySelector('#assistant-q');
   const renderLog = () => {
-    log.innerHTML = _assistantHistory.map(h => `<div class="assistant-turn" style="border-top:1px solid var(--border,#ddd);padding:10px 0;">
+    log.innerHTML = _assistantHistory.map((h, i) => `<div class="assistant-turn" style="border-top:1px solid var(--border,#ddd);padding:10px 0;">
       <p class="mono-xs text-muted" style="margin:0 0 4px;">${escapeHtml(h.q)}</p>
       <p class="mono-sm" style="margin:0 0 4px;white-space:pre-line;">${escapeHtml(h.text)}</p>
       <p class="mono-xs text-muted" style="margin:0;">${escapeHtml(h.intent)}${h.lens ? ' · ' + escapeHtml(h.lens) : ''}${h.sources && h.sources.length ? ' · ' + h.sources.map(escapeHtml).join(', ') : ''}</p>
+      ${h.logId ? `<p style="margin:6px 0 0;" class="mono-xs">${t('admin.assistant_helpful_q')}
+        <button type="button" class="btn btn-ghost assistant-vote" data-i="${i}" data-v="1" aria-pressed="${h.vote === 1}" aria-label="${escapeHtml(t('admin.assistant_yes'))}">👍</button>
+        <button type="button" class="btn btn-ghost assistant-vote" data-i="${i}" data-v="-1" aria-pressed="${h.vote === -1}" aria-label="${escapeHtml(t('admin.assistant_no'))}">👎</button></p>` : ''}
     </div>`).join('');
+    log.querySelectorAll('.assistant-vote').forEach(b => b.addEventListener('click', async () => {
+      const h = _assistantHistory[Number(b.dataset.i)];
+      const v = Number(b.dataset.v);
+      try { await adminFetch('/assistant/feedback', { method: 'POST', body: { log_id: h.logId, value: v } }); h.vote = v; } catch (e) { /* ignore */ }
+      renderLog();
+      loadAssistantSummary(panel.querySelector('#assistant-summary'));
+    }));
   };
   const ask = async (q) => {
     q = (q || '').trim();
@@ -623,7 +634,7 @@ async function loadAssistant(panel) {
     btn.disabled = true;
     try {
       const r = await adminFetch('/assistant/ask', { method: 'POST', body: { question: q, context: assistantContext() } });
-      _assistantHistory.unshift({ q, text: r.text, intent: r.intent, lens: r.lens, sources: r.sources, data: r.data || {} });
+      _assistantHistory.unshift({ q, text: r.text, intent: r.intent, lens: r.lens, sources: r.sources, data: r.data || {}, logId: r.log_id, vote: 0 });
       _assistantHistory = _assistantHistory.slice(0, 20);
       input.value = '';
     } catch (e) {
@@ -631,10 +642,27 @@ async function loadAssistant(panel) {
     }
     btn.disabled = false;
     renderLog();
+    loadAssistantSummary(panel.querySelector('#assistant-summary'));
   };
   panel.querySelector('#assistant-form').addEventListener('submit', ev => { ev.preventDefault(); ask(input.value); });
   panel.querySelectorAll('.assistant-chip').forEach(b => b.addEventListener('click', () => ask(b.dataset.q)));
   renderLog();
+  loadAssistantSummary(panel.querySelector('#assistant-summary'));
+}
+
+async function loadAssistantSummary(box) {
+  if (!box) return;
+  let s;
+  try { s = await adminFetch('/assistant/summary'); } catch (e) { box.innerHTML = ''; return; }
+  const pct = v => (v === null || v === undefined ? '–' : `${v} %`);
+  box.innerHTML = `<h4 class="mono-sm uppercase mb-3">${t('admin.assistant_sum_title')}</h4>
+    ${s.total ? `<p class="mono-sm" id="assistant-sum-line">${escapeHtml(t('admin.assistant_sum_line').replace('{total}', s.total).replace('{pct}', pct(s.answered_pct)).replace('{refused}', s.refused).replace('{ms}', s.median_ms ?? '–'))}
+      ${s.helpful + s.not_helpful ? ` · 👍 ${s.helpful} · 👎 ${s.not_helpful}` : ''}</p>
+      <h5 class="mono-xs uppercase text-muted" style="margin:12px 0 6px;">${t('admin.assistant_sum_improve')}</h5>
+      ${s.to_improve.length ? `<ul class="mono-xs" id="assistant-improve" style="margin:0;padding-left:18px;">${s.to_improve.map(x =>
+        `<li>« ${escapeHtml(x.question)} » <span class="text-muted">(${escapeHtml(x.intent)}${x.count > 1 ? ' ×' + x.count : ''})</span></li>`).join('')}</ul>`
+        : `<p class="mono-xs text-muted">${t('admin.assistant_sum_none')}</p>`}`
+      : `<p class="mono-xs text-muted">${t('admin.assistant_sum_empty')}</p>`}`;
 }
 
 /* ── View ────────────────────────────────────────────────────────────────── */

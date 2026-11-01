@@ -522,3 +522,62 @@ def test_evaluation_set(question, intent):
 
 def test_evaluation_set_has_enough_coverage():
     assert len(EVAL) >= 40 and len({i for _, i in EVAL}) >= 12
+
+
+# ── journal des questions ───────────────────────────────────────────────
+def test_every_admin_question_is_logged_and_summarised(client, real_repo):
+    from app.services.assistant_log import AssistantLog
+    ask_ = lambda q, **extra: client.post("/api/v1/admin/assistant/ask", json={"question": q, **extra}, headers=H)   # noqa: E731
+    a = ask_("mil à Dembé").json()
+    assert isinstance(a["log_id"], int)
+    ask_("prix du sorgo a abeshe")                  # faute corrigée
+    ask_("raconte une blague")                      # non compris
+    ask_("raconte une blague")
+    ask_("tu es nul")                               # refusé
+    ask_("et à Dembé ?", context={"lens": "markets", "product": "Millet", "market": ABECHE})   # suite
+    s = client.get("/api/v1/admin/assistant/summary", headers=H).json()
+    assert s["total"] == 6 and s["refused"] == 1 and s["corrected"] == 1 and s["followups"] == 1
+    assert s["answered"] == 2 and s["answered_pct"] == 33.3 and s["median_ms"] is not None   # « sorgho » : pas de prix en base de test
+    assert s["to_improve"][0] == {"question": "raconte une blague", "intent": "help", "count": 2}
+    assert s["recent"][0]["user_ref"] == OWNER and len(s["recent"][0]["question"]) <= 300
+    assert {i["intent"] for i in s["by_intent"]} >= {"price", "help", "refused_abuse"}
+    assert AssistantLog(real_repo).recent(1)[0]["channel"] == "admin"
+
+
+def test_feedback_is_stored_validated_and_feeds_the_improvement_list(client):
+    log_id = client.post("/api/v1/admin/assistant/ask", json={"question": "mil à Dembé"}, headers=H).json()["log_id"]
+    fb = lambda i, v, h=H: client.post("/api/v1/admin/assistant/feedback", json={"log_id": i, "value": v}, headers=h)   # noqa: E731
+    assert fb(log_id, -1).status_code == 200
+    s = client.get("/api/v1/admin/assistant/summary", headers=H).json()
+    assert s["not_helpful"] == 1 and s["helpful"] == 0
+    assert s["to_improve"][0]["question"] == "mil à dembé" and s["to_improve"][0]["intent"] == "price"
+    assert fb(log_id, 1).status_code == 200 and client.get("/api/v1/admin/assistant/summary", headers=H).json()["helpful"] == 1
+    assert fb(log_id, 0).status_code == 422 and fb(log_id, 5).status_code == 422
+    assert fb(999999, 1).status_code == 404
+    assert fb(log_id, 1, {}).status_code == 401 and fb(log_id, 1, {"Authorization": "Bearer tok-x"}).status_code == 403
+
+
+def test_summary_requires_an_administrator_and_works_when_empty(client):
+    assert client.get("/api/v1/admin/assistant/summary").status_code == 401
+    s = client.get("/api/v1/admin/assistant/summary", headers=H).json()
+    assert s["total"] == 0 and s["answered_pct"] is None and s["median_ms"] is None and s["recent"] == []
+
+
+def test_a_failing_log_never_breaks_the_answer(client, monkeypatch):
+    from app.services import assistant_log
+    monkeypatch.setattr(assistant_log.AssistantLog, "_sqlite", lambda self: (_ for _ in ()).throw(RuntimeError("disk full")))
+    r = client.post("/api/v1/admin/assistant/ask", json={"question": "mil à Dembé"}, headers=H)
+    assert r.status_code == 200 and r.json()["intent"] == "price" and r.json()["log_id"] is None
+
+
+def test_old_entries_are_purged(real_repo):
+    from datetime import UTC, datetime, timedelta
+
+    from app.services.assistant_log import RETENTION_DAYS, AssistantLog
+    log = AssistantLog(real_repo)
+    log.record(question="récente", answer={"intent": "price"}, user_ref="a")
+    old = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS + 5)).isoformat()
+    with log._sqlite() as c:
+        c.execute("INSERT INTO assistant_log (created_at, question, intent) VALUES (?,?,?)", (old, "ancienne", "help"))
+    log.purge()
+    assert [r["question"] for r in log.recent(10)] == ["récente"]

@@ -117,7 +117,14 @@ def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collectio
         elif path.startswith("/assistant/ask"):
             bodies.append(route.request.post_data_json)
             route.fulfill(json={"text": "Le mil à Abéché : 425 XAF/kg\n<img src=x onerror=alert(1)>", "intent": "price",
-                                "lens": "markets", "refused": False, "data": {}, "sources": ["WFP"]})
+                                "lens": "markets", "refused": False, "data": {}, "sources": ["WFP"], "log_id": 11})
+        elif path.startswith("/assistant/feedback"):
+            bodies.append(route.request.post_data_json)
+            route.fulfill(json={"status": "ok"})
+        elif path.startswith("/assistant/summary"):
+            route.fulfill(json={"total": 7, "answered": 4, "answered_pct": 57.1, "refused": 1, "corrected": 1, "followups": 1,
+                                "helpful": 2, "not_helpful": 1, "median_ms": 42, "by_intent": [], "recent": [],
+                                "to_improve": [{"question": "<img src=x onerror=alert(1)>", "intent": "help", "count": 2}]})
         elif path.startswith("/audit-log"):
             route.fulfill(json={"entries": [{"created_at": "2026-10-23T09:00:00", "admin_email": "me@x.org", "action": "login", "target": None, "detail": {}},
                                             {"created_at": "2026-10-23T09:05:00", "admin_email": "<img src=x onerror=alert(1)>", "action": "weird.action", "target": "<b>t</b>", "detail": {}}]})
@@ -231,6 +238,25 @@ def test_assistant_tab_asks_shows_the_answer_and_escapes_html(probe):
     probe.page.click(".assistant-chip >> nth=1")                       # « Et à Dembé ? » : reprend le sujet précédent
     probe.page.wait_for_function("document.querySelectorAll('.assistant-turn').length === 2")
     assert calls.bodies[-1]["question"] == "Et à Dembé ?" and calls.bodies[-1]["context"]["lens"] == "markets"
+    assert probe.page_errors == []
+
+
+def test_assistant_summary_and_feedback(probe):
+    calls = _mock(probe.page)
+    _login(probe)
+    probe.page.wait_for_selector(".admin-tab")
+    probe.page.click('.admin-tab[data-tab="assistant"]')
+    probe.page.wait_for_selector("#assistant-sum-line")
+    line = probe.page.inner_text("#assistant-sum-line")
+    assert "7 questions" in line and "57.1 %" in line and "42 ms" in line and "👍 2" in line and "👎 1" in line
+    assert probe.page.locator("#assistant-improve img").count() == 0              # question hostile : jamais interprétée
+    assert "<img src=x" in probe.page.inner_text("#assistant-improve") and "×2" in probe.page.inner_text("#assistant-improve")
+    probe.page.fill("#assistant-q", "Prix du mil à Abéché")
+    probe.page.click("#assistant-send")
+    probe.page.wait_for_selector(".assistant-vote")
+    probe.page.click('.assistant-vote[data-v="-1"]')
+    probe.page.wait_for_selector('.assistant-vote[data-v="-1"][aria-pressed="true"]')
+    assert calls.bodies[-1] == {"log_id": 11, "value": -1}
     assert probe.page_errors == []
 
 

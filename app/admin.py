@@ -529,14 +529,45 @@ class AssistantBody(BaseModel):
 
 @router.post("/assistant/ask")
 async def assistant_ask(body: AssistantBody, admin: AdminUser = Depends(require_admin)) -> dict:
-    """Ask the data assistant (markets prices + weather) — the console used to try it before any
-    public channel such as WhatsApp. Answers come from the published data only; no external call."""
+    import time
+
     from app.assistant import Assistant
     from app.main import repository
+    from app.services.assistant_log import AssistantLog
     if not rate_limiter.allow(f"assistant:{admin.email}", 120):
         raise HTTPException(status_code=429, detail="Too many questions. Try again later.")
-    answer = await asyncio.to_thread(Assistant(repository).answer, body.question, body.context)
-    return answer.to_dict()
+    started = time.perf_counter()
+    answer = (await asyncio.to_thread(Assistant(repository).answer, body.question, body.context)).to_dict()
+    latency = int((time.perf_counter() - started) * 1000)
+    answer["log_id"] = await asyncio.to_thread(
+        lambda: AssistantLog(repository).record(question=body.question, answer=answer, user_ref=admin.email, latency_ms=latency))
+    return answer
+
+
+class FeedbackBody(BaseModel):
+    log_id: int
+    value: int = Field(ge=-1, le=1)
+
+
+@router.post("/assistant/feedback")
+async def assistant_feedback(body: FeedbackBody, admin: AdminUser = Depends(require_admin)) -> dict:
+    from app.main import repository
+    from app.services.assistant_log import AssistantLog
+    if body.value == 0:
+        raise HTTPException(status_code=422, detail="value must be -1 or 1")
+    ok = await asyncio.to_thread(AssistantLog(repository).set_feedback, body.log_id, body.value, admin.email)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Unknown question.")
+    return {"status": "ok"}
+
+
+@router.get("/assistant/summary")
+async def assistant_summary(admin: AdminUser = Depends(require_admin)) -> dict:
+    from app.main import repository
+    from app.services.assistant_log import AssistantLog
+    log = AssistantLog(repository)
+    await asyncio.to_thread(log.purge)
+    return await asyncio.to_thread(log.summary)
 
 
 # ── Team (owner only) ────────────────────────────────────────────────────────
