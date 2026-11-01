@@ -82,11 +82,18 @@ def verify_signature(body: bytes, header: str | None, secret: str | None) -> boo
     return hmac.compare_digest(expected, header[len("sha256="):].strip())
 
 
+def person_ref(msg: dict[str, str]) -> str:
+    """Stable anonymous code of the sender: the BSUID when Meta gives one (it survives a phone-number change),
+    otherwise the phone number."""
+    return phone_ref(msg.get("user_id") or msg.get("from") or "")
+
+
 def phone_ref(number: str) -> str:
-    """Salted, one-way code for a phone number (digits only): same person -> same code, never reversible."""
+    """Salted, one-way code for a phone number (digits only) or a BSUID: same person -> same code, never reversible."""
     key = (settings.whatsapp_hash_salt or settings.whatsapp_app_secret or "freedata").encode()
-    digits = re.sub(r"\D", "", number or "")
-    return hmac.new(key, digits.encode(), hashlib.sha256).hexdigest()[:16]
+    raw = (number or "").strip()
+    ident = raw.lower() if re.search(r"[A-Za-z]", raw) else re.sub(r"\D", "", raw)    # BSUID keeps its letters
+    return hmac.new(key, ident.encode(), hashlib.sha256).hexdigest()[:16]
 
 
 # ── small in-memory state ──────────────────────────────────────────────────
@@ -136,24 +143,46 @@ def _dict(value: Any) -> dict:
 
 
 def extract_messages(payload: Any) -> list[dict[str, str]]:
-    """[{from, id, type, text}] for every incoming user message; delivery statuses and malformed shapes are ignored."""
+    """[{from, user_id, id, type, text}] for every incoming user message; delivery statuses and malformed shapes
+    are ignored.
+
+    Meta now identifies people by a business-scoped user id (BSUID, e.g. "GH.4314..."): when a user has adopted a
+    username the phone number can be missing from the message. So `from` (phone) and `user_id` (BSUID) are both
+    optional, and at least one is required. The phone is also looked up in `contacts[].wa_id`."""
     out: list[dict[str, str]] = []
     for entry in _items(_dict(payload).get("entry")):
         for change in _items(_dict(entry).get("changes")):
-            for msg in _items(_dict(_dict(change).get("value")).get("messages")):
+            value = _dict(_dict(change).get("value"))
+            contacts = [_dict(c) for c in _items(value.get("contacts"))]
+            for msg in _items(value.get("messages")):
                 msg = _dict(msg)
-                if not msg.get("from") or not msg.get("id"):
+                bsuid = str(msg.get("from_user_id") or "")
+                phone = str(msg.get("from") or "")
+                if not phone:
+                    for c in contacts:                      # same person, identified in the contacts block
+                        if c.get("wa_id") and (not bsuid or str(c.get("user_id") or "") == bsuid):
+                            phone = str(c["wa_id"])
+                            break
+                if not bsuid:
+                    bsuid = next((str(c["user_id"]) for c in contacts if c.get("user_id") and str(c.get("wa_id") or "") == phone), "")
+                if not (phone or bsuid) or not msg.get("id"):
                     continue
                 kind = str(msg.get("type") or "")
                 text = _dict(msg.get("text")).get("body") if kind == "text" else ""
-                out.append({"from": str(msg["from"]), "id": str(msg["id"]), "type": kind, "text": text if isinstance(text, str) else ""})
+                out.append({"from": phone, "user_id": bsuid, "id": str(msg["id"]), "type": kind,
+                            "text": text if isinstance(text, str) else ""})
     return out
 
 
 # ── sending (replaceable in tests / for another provider) ──────────────────
-async def send_text(to: str, body: str) -> None:
+async def send_text(to: str, body: str, recipient: str | None = None) -> None:
+    """`to` = phone number; `recipient` = BSUID, used only when there is no phone number (never both)."""
     url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{settings.whatsapp_phone_number_id}/messages"
-    payload = {"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": body[:4000], "preview_url": False}}
+    payload: dict[str, Any] = {"messaging_product": "whatsapp", "type": "text", "text": {"body": body[:4000], "preview_url": False}}
+    if to:
+        payload["to"] = to
+    else:
+        payload["recipient"] = recipient
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.post(url, json=payload, headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"})
         if res.status_code >= 400:
@@ -179,7 +208,7 @@ def build_reply(msg: dict[str, str]) -> str | None:
     from app.main import repository
     from app.services.assistant_log import AssistantLog
 
-    ref = phone_ref(msg["from"])
+    ref = person_ref(msg)
     log = AssistantLog(repository)
     started = time.perf_counter()
     try:
@@ -213,7 +242,10 @@ async def handle_message(msg: dict[str, str]) -> None:
     try:
         reply = await asyncio.to_thread(build_reply, msg)
         if reply:
-            await sender(msg["from"], reply)
+            if msg["from"]:
+                await sender(msg["from"], reply)
+            else:
+                await sender("", reply, recipient=msg["user_id"])
     except Exception as exc:                                         # background task: never raise
         logger.exception("whatsapp message handling failed: %s", exc)
 
@@ -258,7 +290,7 @@ async def receive(request: Request, background: BackgroundTasks) -> dict:
     incoming = extract_messages(payload)[:10]
     record_event("messages" if incoming else "no_message")
     for msg in incoming:
-        if not rate_limiter.allow(f"wa-burst:{phone_ref(msg['from'])}", 20, window=timedelta(minutes=1)):
+        if not rate_limiter.allow(f"wa-burst:{person_ref(msg)}", 20, window=timedelta(minutes=1)):
             continue                                                  # flood protection (20 / minute / number)
         if _first_time(msg["id"]):
             background.add_task(handle_message, msg)

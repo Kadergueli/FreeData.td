@@ -47,8 +47,8 @@ def env(tmp_path, monkeypatch):
         monkeypatch.setattr(settings, key, value)
     sent = []
 
-    async def fake_send(to, body):
-        sent.append((to, body))
+    async def fake_send(to, body, recipient=None):
+        sent.append((to or f"bsuid:{recipient}", body))
     monkeypatch.setattr(wa, "sender", fake_send)
     wa.clear_state()
     rate_limiter._requests.clear()
@@ -308,3 +308,85 @@ def test_secrets_pasted_with_spaces_or_quotes_are_cleaned():
     from app.config import Settings
     cfg = Settings(whatsapp_verify_token='  "abc"\n', whatsapp_app_secret="   ", whatsapp_access_token=" tok ", _env_file=None)
     assert cfg.whatsapp_verify_token == "abc" and cfg.whatsapp_app_secret is None and cfg.whatsapp_access_token == "tok"
+
+
+# ── identifiants BSUID (nouveau format Meta) et vrai format observé ─────────────────────
+STATUS_PAYLOAD = {   # forme réelle d'un statut « read » reçu de Meta (numéros fictifs)
+    "object": "whatsapp_business_account",
+    "entry": [{"id": "1471598161521745", "changes": [{"field": "messages", "value": {
+        "messaging_product": "whatsapp", "metadata": {"display_phone_number": "15550143885", "phone_number_id": "1432167269978703"},
+        "contacts": [{"wa_id": "233500000000", "user_id": "GH.4314705788822591"}],
+        "statuses": [{"id": "wamid.X", "status": "read", "timestamp": "1793540379", "recipient_id": "233500000000",
+                      "recipient_user_id": "GH.4314705788822591", "conversation": {"id": "c", "origin": {"type": "utility"}},
+                      "pricing": {"billable": True, "category": "utility"}}]}}]}],
+}
+
+
+def _bsuid_msg(text="Prix du mil à Abéché", mid="wamid.b1", with_from=False, contact_phone=True):
+    msg = {"from_user_id": "GH.4314705788822591", "id": mid, "type": "text", "text": {"body": text}}
+    if with_from:
+        msg["from"] = NUMBER
+    contact = {"user_id": "GH.4314705788822591"}
+    if contact_phone:
+        contact["wa_id"] = NUMBER
+    return {"entry": [{"changes": [{"value": {"contacts": [contact], "messages": [msg]}}]}]}
+
+
+def test_the_real_status_payload_is_accepted_and_ignored(env):
+    client, sent, _ = env
+    assert post(client, STATUS_PAYLOAD).json() == {"status": "ok"}
+    assert sent == [] and wa.last_event()["kind"] == "no_message"
+    assert wa.extract_messages(STATUS_PAYLOAD) == []
+
+
+def test_phone_is_recovered_from_contacts_when_the_message_has_none(env):
+    client, sent, _ = env
+    assert wa.extract_messages(_bsuid_msg())[0] == {"from": NUMBER, "user_id": "GH.4314705788822591", "id": "wamid.b1",
+                                                     "type": "text", "text": "Prix du mil à Abéché"}
+    post(client, _bsuid_msg())
+    assert sent[0][0] == NUMBER and "425" in sent[0][1]                      # réponse envoyée au numéro retrouvé
+
+
+def test_user_with_only_a_bsuid_gets_a_reply_through_recipient(env):
+    client, sent, _ = env
+    post(client, _bsuid_msg(contact_phone=False))
+    assert sent[0][0] == "bsuid:GH.4314705788822591" and "425" in sent[0][1]
+
+
+def test_bsuid_replies_use_recipient_never_both_fields(monkeypatch):
+    import asyncio
+
+    import httpx
+    captured = []
+
+    class FakeClient:
+        def __init__(self, *a, **k): ...
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, json=None, headers=None):
+            captured.append(json)
+            return httpx.Response(200, json={})
+    monkeypatch.setattr(wa.httpx, "AsyncClient", FakeClient)
+    asyncio.run(wa.send_text("", "salut", recipient="GH.1"))
+    asyncio.run(wa.send_text("233500000000", "salut"))
+    assert captured[0]["recipient"] == "GH.1" and "to" not in captured[0]
+    assert captured[1]["to"] == "233500000000" and "recipient" not in captured[1]
+
+
+def test_the_same_person_keeps_one_code_whatever_the_identifier_given(env):
+    client, sent, repo = env
+    post(client, _bsuid_msg(mid="w1"))
+    post(client, _bsuid_msg(mid="w2", contact_phone=False))                  # même BSUID, sans téléphone cette fois
+    from app.services.assistant_log import AssistantLog
+    refs = {r["user_ref"] for r in AssistantLog(repo).recent(10)}
+    assert refs == {wa.phone_ref("GH.4314705788822591")} and "Bienvenue" not in sent[1][1]
+
+
+def test_bsuid_code_is_not_the_digits_only_hash():
+    assert wa.phone_ref("GH.4314705788822591") != wa.phone_ref("4314705788822591")
+    assert wa.phone_ref("GH.4314705788822591") == wa.phone_ref(" gh.4314705788822591 ")
+
+
+def test_messages_without_any_identifier_are_dropped():
+    bad = {"entry": [{"changes": [{"value": {"messages": [{"id": "x", "type": "text", "text": {"body": "hi"}}]}}]}]}
+    assert wa.extract_messages(bad) == []
