@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +42,16 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
+
+    @field_validator("whatsapp_verify_token", "whatsapp_app_secret", "whatsapp_access_token", "whatsapp_phone_number_id",
+                    "whatsapp_hash_salt", mode="before")
+    @classmethod
+    def _strip_secret(cls, value):
+        """A pasted secret often carries a trailing space or newline; an empty value means "not set"."""
+        if isinstance(value, str):
+            value = value.strip().strip('"').strip("'").strip()
+            return value or None
+        return value
 
     @property
     def database_file(self) -> Path:

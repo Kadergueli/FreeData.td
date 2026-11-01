@@ -287,3 +287,24 @@ def test_admin_summary_carries_the_last_event(env, monkeypatch):
     client.get(URL, params={"hub.mode": "subscribe", "hub.verify_token": "verify-me", "hub.challenge": "1"})
     ev = client.get("/api/v1/admin/assistant/summary", headers=h).json()["whatsapp_last_event"]
     assert ev["kind"] == "verified"
+
+
+def test_verification_tolerates_stray_spaces_and_explains_failures(env, monkeypatch):
+    client, _, _ = env
+    ask = lambda token, mode="subscribe": client.get(URL, params={"hub.mode": mode, "hub.verify_token": token, "hub.challenge": "9"})   # noqa: E731
+    assert ask("verify-me ").status_code == 200 and ask(" verify-me\n").text == "9"          # espace / retour à la ligne : accepté
+    assert ask("verify-mee").status_code == 403
+    assert "expects 9 characters, Meta sent 10" in wa.last_event()["detail"] and "verify-me" not in wa.last_event()["detail"]
+    ask("")
+    assert "no hub.verify_token" in wa.last_event()["detail"]
+    ask("verify-me", mode="unsubscribe")
+    assert "hub.mode" in wa.last_event()["detail"]
+    monkeypatch.setattr(settings, "whatsapp_verify_token", None)
+    ask("verify-me")
+    assert "not set on the server" in wa.last_event()["detail"]
+
+
+def test_secrets_pasted_with_spaces_or_quotes_are_cleaned():
+    from app.config import Settings
+    cfg = Settings(whatsapp_verify_token='  "abc"\n', whatsapp_app_secret="   ", whatsapp_access_token=" tok ", _env_file=None)
+    assert cfg.whatsapp_verify_token == "abc" and cfg.whatsapp_app_secret is None and cfg.whatsapp_access_token == "tok"

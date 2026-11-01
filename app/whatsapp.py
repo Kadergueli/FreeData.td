@@ -52,11 +52,13 @@ def enabled() -> bool:
     return bool(settings.whatsapp_app_secret and settings.whatsapp_access_token and settings.whatsapp_phone_number_id)
 
 
-def record_event(kind: str) -> None:
-    """kind: verified | verify_failed | messages | no_message | bad_signature | not_configured | bad_payload."""
+def record_event(kind: str, detail: str | None = None) -> None:
+    """kind: verified | verify_failed | messages | no_message | bad_signature | not_configured | bad_payload.
+    `detail` never contains a secret (only lengths / "not set"); it is shown to signed-in administrators only."""
     with _lock:
-        _last_event.update(kind=kind, at=datetime.now(UTC).isoformat())
-    (logger.info if kind in ("verified", "messages", "no_message") else logger.warning)("whatsapp webhook: %s", kind)
+        _last_event.clear()
+        _last_event.update(kind=kind, at=datetime.now(UTC).isoformat(), detail=detail)
+    (logger.info if kind in ("verified", "messages", "no_message") else logger.warning)("whatsapp webhook: %s %s", kind, detail or "")
 
 
 def last_event() -> dict[str, Any] | None:
@@ -221,10 +223,19 @@ async def handle_message(msg: dict[str, str]) -> None:
 def verify(mode: str = Query(default="", alias="hub.mode"), token: str = Query(default="", alias="hub.verify_token"),
            challenge: str = Query(default="", alias="hub.challenge")) -> PlainTextResponse:
     expected = settings.whatsapp_verify_token
-    if mode == "subscribe" and expected and hmac.compare_digest(token.encode(), expected.encode()):
+    received = token.strip()
+    if mode == "subscribe" and expected and hmac.compare_digest(received.encode(), expected.encode()):
         record_event("verified")
         return PlainTextResponse(challenge)
-    record_event("verify_failed")
+    if not expected:
+        detail = "WHATSAPP_VERIFY_TOKEN is not set on the server (name misspelled, or the service was not redeployed)"
+    elif mode != "subscribe":
+        detail = f"unexpected hub.mode {mode!r}"
+    elif not received:
+        detail = "no hub.verify_token received"
+    else:
+        detail = f"token differs: the server expects {len(expected)} characters, Meta sent {len(received)}"
+    record_event("verify_failed", detail)
     raise HTTPException(status_code=403, detail="Verification failed.")
 
 

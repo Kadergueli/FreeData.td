@@ -653,7 +653,7 @@ async function loadAssistant(panel) {
 function waEventLine(ev) {
   if (!ev) return escapeHtml(t('admin.assistant_wa_never'));
   const label = t(`admin.assistant_wa_ev_${ev.kind}`);
-  return `${escapeHtml(t('admin.assistant_wa_last'))} ${escapeHtml(fmtDateTime(ev.at))} : ${escapeHtml(label.startsWith('admin.') ? ev.kind : label)}`;
+  return `${escapeHtml(t('admin.assistant_wa_last'))} ${escapeHtml(fmtDateTime(ev.at))} : ${escapeHtml(label.startsWith('admin.') ? ev.kind : label)}${ev.detail ? ` — ${escapeHtml(ev.detail)}` : ''}`;
 }
 
 async function loadAssistantSummary(box) {
