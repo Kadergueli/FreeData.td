@@ -566,8 +566,11 @@ async def assistant_summary(admin: AdminUser = Depends(require_admin)) -> dict:
     from app.main import repository
     from app.services.assistant_log import AssistantLog
     log = AssistantLog(repository)
+    from app import whatsapp
     await asyncio.to_thread(log.purge)
-    return await asyncio.to_thread(log.summary)
+    summary = await asyncio.to_thread(log.summary)
+    summary["whatsapp_configured"] = whatsapp.enabled()
+    return summary
 
 
 # ── Team (owner only) ────────────────────────────────────────────────────────

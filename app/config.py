@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     admin_emails: str = ""
     # Extra origins (space separated) the browser may call, on top of SUPABASE_URL. Rarely needed.
     csp_connect_extra: str = ""
+    # WhatsApp (Meta Cloud API). The channel is OFF until the app secret and the access token are both set.
+    whatsapp_verify_token: str | None = None      # you choose it; Meta sends it back when you register the webhook
+    whatsapp_app_secret: str | None = None        # signs every webhook call (X-Hub-Signature-256)
+    whatsapp_access_token: str | None = None      # permanent token of the system user
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_hash_salt: str | None = None         # numbers are stored only as a salted hash
+    whatsapp_daily_limit: int = 30                # answered questions per number and 24 h
+    whatsapp_api_version: str = "v21.0"
     database_path: str = "data/freedatatd.db"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 

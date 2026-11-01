@@ -82,6 +82,25 @@ class AssistantLog:
             return [dict(r) for r in c.execute(
                 "SELECT * FROM assistant_log WHERE created_at >= ? ORDER BY id DESC LIMIT ?", (since, limit))]
 
+    def count_since(self, user_ref: str, hours: int = 24, refused_only: bool = False) -> int:
+        since = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+        if self._sb:
+            q = self._sb.table("table_assistant_log").select("id", count="exact").eq("user_ref", user_ref).gte("created_at", since)
+            if refused_only:
+                q = q.eq("refused", True)
+            return int(q.limit(1).execute().count or 0)
+        with self._sqlite() as c:
+            sql = "SELECT COUNT(*) AS n FROM assistant_log WHERE user_ref = ? AND created_at >= ?"
+            if refused_only:
+                sql += " AND refused = 1"
+            return int(c.execute(sql, (user_ref, since)).fetchone()["n"])
+
+    def has_any(self, user_ref: str) -> bool:
+        if self._sb:
+            return bool(self._sb.table("table_assistant_log").select("id").eq("user_ref", user_ref).limit(1).execute().data)
+        with self._sqlite() as c:
+            return c.execute("SELECT 1 FROM assistant_log WHERE user_ref = ? LIMIT 1", (user_ref,)).fetchone() is not None
+
     def purge(self) -> None:
         cutoff = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS)).isoformat()
         try:
@@ -113,6 +132,7 @@ class AssistantLog:
             "followups": sum(1 for r in rows if r["followup"]),
             "helpful": sum(1 for v in voted if v == 1), "not_helpful": sum(1 for v in voted if v == -1),
             "median_ms": median_ms,
+            "by_channel": dict(Counter(r.get("channel") or "admin" for r in rows)),
             "by_intent": [{"intent": i, "count": n} for i, n in intents.most_common()],
             "to_improve": [{"question": q, "intent": i, "count": n} for (q, i), n in to_improve.most_common(15)],
             "recent": rows[:30],

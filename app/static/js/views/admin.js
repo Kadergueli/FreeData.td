@@ -656,6 +656,7 @@ async function loadAssistantSummary(box) {
   try { s = await adminFetch('/assistant/summary'); } catch (e) { box.innerHTML = ''; return; }
   const pct = v => (v === null || v === undefined ? '–' : `${v} %`);
   box.innerHTML = `<h4 class="mono-sm uppercase mb-3">${t('admin.assistant_sum_title')}</h4>
+    <p class="mono-xs text-muted" id="assistant-wa-status">${t(s.whatsapp_configured ? 'admin.assistant_wa_on' : 'admin.assistant_wa_off')}${s.by_channel && s.by_channel.whatsapp ? ' · ' + s.by_channel.whatsapp + ' ' + 'questions' : ''}</p>
     ${s.total ? `<p class="mono-sm" id="assistant-sum-line">${escapeHtml(t('admin.assistant_sum_line').replace('{total}', s.total).replace('{pct}', pct(s.answered_pct)).replace('{refused}', s.refused).replace('{ms}', s.median_ms ?? '–'))}
       ${s.helpful + s.not_helpful ? ` · 👍 ${s.helpful} · 👎 ${s.not_helpful}` : ''}</p>
       <h5 class="mono-xs uppercase text-muted" style="margin:12px 0 6px;">${t('admin.assistant_sum_improve')}</h5>

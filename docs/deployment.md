@@ -84,3 +84,29 @@ Seuls les flux dont la vraie réponse a été examinée sont importés (voir `DA
 `app/agents/inseed.py`) ; les autres sont enregistrés mais signalés « unknown dataset ».
 La mention « Source : INSEED. Contient des informations sous licence selon l'Accord de Licence
 Ouverte de l'INSEED. » est conservée sur chaque donnée.
+
+## Assistant WhatsApp (Meta Cloud API)
+
+L'assistant de données (prix des marchés + météo) répond sur WhatsApp. Le canal reste **éteint** tant que les
+variables ci-dessous ne sont pas toutes définies (le webhook répond alors 503).
+
+1. Supabase : exécuter `supabase/assistant_log_setup.sql` (journal des questions et limites par numéro).
+2. Meta : developers.facebook.com > créer une app « Business » > ajouter le produit **WhatsApp**. Un numéro de test
+   gratuit est fourni (5 destinataires autorisés au maximum, sans vérification d'entreprise).
+3. Render : définir les variables
+
+| Variable | Valeur |
+|---|---|
+| `WHATSAPP_VERIFY_TOKEN` | un texte long que vous choisissez (sert à enregistrer le webhook) |
+| `WHATSAPP_APP_SECRET` | Meta > Paramètres de l'app > De base > « Clé secrète » (signe chaque appel) |
+| `WHATSAPP_ACCESS_TOKEN` | jeton **permanent** d'un utilisateur système (le jeton temporaire expire en 24 h) |
+| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp > Configuration de l'API > « Identifiant du numéro de téléphone » |
+| `WHATSAPP_HASH_SALT` | un secret long : les numéros ne sont stockés que sous forme hachée avec ce sel (ne plus le changer) |
+| `WHATSAPP_DAILY_LIMIT` | questions par numéro et par jour (30 par défaut) |
+
+4. Meta > WhatsApp > Configuration > Webhook : URL `https://<votre-site>/api/v1/whatsapp/webhook`, jeton de vérification =
+   `WHATSAPP_VERIFY_TOKEN`, puis s'abonner au champ **messages**.
+5. Envoyer « Prix du mil à Abéché » au numéro de test depuis un numéro autorisé.
+
+Pour un numéro **public**, Meta exige la vérification de l'entreprise (documents officiels) et un numéro dédié :
+à lancer en parallèle, c'est ce qui prend du temps. Le journal (admin > Assistant) distingue le canal `whatsapp`.

@@ -123,7 +123,7 @@ def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collectio
             route.fulfill(json={"status": "ok"})
         elif path.startswith("/assistant/summary"):
             route.fulfill(json={"total": 7, "answered": 4, "answered_pct": 57.1, "refused": 1, "corrected": 1, "followups": 1,
-                                "helpful": 2, "not_helpful": 1, "median_ms": 42, "by_intent": [], "recent": [],
+                                "helpful": 2, "not_helpful": 1, "median_ms": 42, "by_intent": [], "recent": [], "whatsapp_configured": True, "by_channel": {"whatsapp": 3},
                                 "to_improve": [{"question": "<img src=x onerror=alert(1)>", "intent": "help", "count": 2}]})
         elif path.startswith("/audit-log"):
             route.fulfill(json={"entries": [{"created_at": "2026-10-23T09:00:00", "admin_email": "me@x.org", "action": "login", "target": None, "detail": {}},
@@ -249,6 +249,7 @@ def test_assistant_summary_and_feedback(probe):
     probe.page.wait_for_selector("#assistant-sum-line")
     line = probe.page.inner_text("#assistant-sum-line")
     assert "7 questions" in line and "57.1 %" in line and "42 ms" in line and "👍 2" in line and "👎 1" in line
+    assert "WhatsApp : branché" in probe.page.inner_text("#assistant-wa-status") and "3" in probe.page.inner_text("#assistant-wa-status")
     assert probe.page.locator("#assistant-improve img").count() == 0              # question hostile : jamais interprétée
     assert "<img src=x" in probe.page.inner_text("#assistant-improve") and "×2" in probe.page.inner_text("#assistant-improve")
     probe.page.fill("#assistant-q", "Prix du mil à Abéché")

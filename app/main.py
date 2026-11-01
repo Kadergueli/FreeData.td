@@ -30,6 +30,7 @@ from app.agents.ds_insights import (
 )
 from app.admin import admin_configured
 from app.admin import router as admin_router
+from app.whatsapp import router as whatsapp_router
 from app.config import settings
 from app.security import read_limit_exceeded, require_analysis_rate_limit, require_collection_access
 from app.services.export import observations_to_csv, observations_to_parquet, observations_to_xml, parquet_available
@@ -124,6 +125,7 @@ class NoCacheJSMiddleware(BaseHTTPMiddleware):
 
 repository = ObservationRepository()
 app.include_router(admin_router)
+app.include_router(whatsapp_router)
 STATIC_DIR = Path(__file__).parent / "static"
 DASHBOARD = STATIC_DIR / "index.html"
 
