@@ -53,12 +53,13 @@ def enabled() -> bool:
 
 
 def record_event(kind: str, detail: str | None = None) -> None:
-    """kind: verified | verify_failed | messages | no_message | bad_signature | not_configured | bad_payload.
+    """kind: verified | verify_failed | messages | no_message | bad_signature | not_configured | bad_payload
+    | replied | send_failed.
     `detail` never contains a secret (only lengths / "not set"); it is shown to signed-in administrators only."""
     with _lock:
         _last_event.clear()
         _last_event.update(kind=kind, at=datetime.now(UTC).isoformat(), detail=detail)
-    (logger.info if kind in ("verified", "messages", "no_message") else logger.warning)("whatsapp webhook: %s %s", kind, detail or "")
+    (logger.info if kind in ("verified", "messages", "no_message", "replied") else logger.warning)("whatsapp webhook: %s %s", kind, detail or "")
 
 
 def last_event() -> dict[str, Any] | None:
@@ -175,6 +176,32 @@ def extract_messages(payload: Any) -> list[dict[str, str]]:
 
 
 # ── sending (replaceable in tests / for another provider) ──────────────────
+SEND_HINTS = {
+    131030: "this person is not in the allowed recipients of the TEST number: Meta dashboard > WhatsApp > API Setup > step 1 "
+            "'To' > Manage phone number list, add the number exactly as it is on WhatsApp (with country code) and confirm the code",
+    131047: "more than 24 h since the person last wrote: they must send a new message first",
+    131026: "message undeliverable (the number may not be on WhatsApp)",
+    131056: "too many messages to this person in a short time: Meta throttles the pair",
+    131009: "a parameter is invalid (check WHATSAPP_PHONE_NUMBER_ID)",
+    100: "invalid parameter (check WHATSAPP_PHONE_NUMBER_ID, or a BSUID recipient on a test number)",
+    190: "the access token is invalid or has expired: create a permanent token (system user) and update WHATSAPP_ACCESS_TOKEN",
+    10: "the token lacks the whatsapp_business_messaging permission",
+    200: "the token lacks the permission or the app is not linked to this WhatsApp account",
+}
+
+
+def _send_failure(status: int, text: str, via: str) -> str:
+    """Short, secret-free explanation of a refused send (Meta's error code + message + a hint)."""
+    try:
+        err = (httpx.Response(status, text=text).json() or {}).get("error") or {}
+    except ValueError:
+        err = {}
+    code = err.get("code")
+    message = str(err.get("message") or text)[:160]
+    hint = SEND_HINTS.get(code if isinstance(code, int) else -1)
+    return f"Meta error {code if code is not None else status} (HTTP {status}, recipient by {via}): {message}" + (f" — {hint}" if hint else "")
+
+
 async def send_text(to: str, body: str, recipient: str | None = None) -> None:
     """`to` = phone number; `recipient` = BSUID, used only when there is no phone number (never both)."""
     url = f"https://graph.facebook.com/{settings.whatsapp_api_version}/{settings.whatsapp_phone_number_id}/messages"
@@ -183,10 +210,13 @@ async def send_text(to: str, body: str, recipient: str | None = None) -> None:
         payload["to"] = to
     else:
         payload["recipient"] = recipient
+    via = "phone number" if to else "BSUID"
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.post(url, json=payload, headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"})
-        if res.status_code >= 400:
-            logger.warning("whatsapp send failed: %s %s", res.status_code, res.text[:200])
+    if res.status_code >= 400:
+        record_event("send_failed", _send_failure(res.status_code, res.text, via))
+    else:
+        record_event("replied", f"answer delivered to Meta (recipient by {via})")
 
 
 sender = send_text

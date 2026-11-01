@@ -390,3 +390,45 @@ def test_bsuid_code_is_not_the_digits_only_hash():
 def test_messages_without_any_identifier_are_dropped():
     bad = {"entry": [{"changes": [{"value": {"messages": [{"id": "x", "type": "text", "text": {"body": "hi"}}]}}]}]}
     assert wa.extract_messages(bad) == []
+
+
+# ── échec / succès de l'envoi vers Meta ─────────────────────────────────
+def _fake_graph(monkeypatch, status, body):
+    import httpx
+    sent = []
+
+    class FakeClient:
+        def __init__(self, *a, **k): ...
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, json=None, headers=None):
+            sent.append(json)
+            return httpx.Response(status, json=body)
+    monkeypatch.setattr(wa.httpx, "AsyncClient", FakeClient)
+    return sent
+
+
+def test_meta_refusing_the_send_is_explained_in_the_admin(env, monkeypatch):
+    import asyncio
+    _fake_graph(monkeypatch, 400, {"error": {"message": "(#131030) Recipient phone number not in allowed list", "code": 131030}})
+    asyncio.run(wa.send_text("233500000000", "salut"))
+    ev = wa.last_event()
+    assert ev["kind"] == "send_failed" and "131030" in ev["detail"] and "Manage phone number list" in ev["detail"]
+    assert "233500000000" not in ev["detail"] and "recipient by phone number" in ev["detail"]
+
+
+def test_expired_token_and_unknown_errors_are_explained(env, monkeypatch):
+    import asyncio
+    _fake_graph(monkeypatch, 401, {"error": {"message": "Session has expired", "code": 190}})
+    asyncio.run(wa.send_text("", "salut", recipient="GH.1"))
+    assert "permanent token" in wa.last_event()["detail"] and "BSUID" in wa.last_event()["detail"]
+    _fake_graph(monkeypatch, 500, {"weird": True})
+    asyncio.run(wa.send_text("233500000000", "salut"))
+    assert wa.last_event()["kind"] == "send_failed" and "HTTP 500" in wa.last_event()["detail"]
+
+
+def test_a_successful_send_is_recorded(env, monkeypatch):
+    import asyncio
+    _fake_graph(monkeypatch, 200, {"messages": [{"id": "wamid.ok"}]})
+    asyncio.run(wa.send_text("233500000000", "salut"))
+    assert wa.last_event()["kind"] == "replied"
