@@ -543,6 +543,21 @@ class ObservationRepository:
 
         return len(rows)
 
+    PAGE_SIZE = 1000          # Supabase's per-request row cap
+
+    def _read_pages(self, query: Any, wanted: int) -> list[dict[str, Any]]:
+        """Up to `wanted` rows of an ordered query, fetched in PAGE_SIZE pages."""
+        rows: list[dict[str, Any]] = []
+        start = 0
+        while len(rows) < wanted:
+            end = start + min(self.PAGE_SIZE, wanted - len(rows)) - 1
+            page = _with_retry(lambda s=start, e=end: query.range(s, e).execute(), attempts=2, label="table_public page").data or []
+            rows.extend(page)
+            if len(page) < end - start + 1:        # short page: no more rows
+                break
+            start = end + 1
+        return rows
+
     def list_observations(self, sector: str | None = None, region: str | None = None, limit: int = 100, q: str | None = None,
                           indicator: str | None = None) -> list[dict[str, Any]]:
         """`indicator` is an EXACT match on the indicator name (unlike `q`, a case-insensitive substring search over
@@ -550,7 +565,7 @@ class ObservationRepository:
         raw_obs: list[dict[str, Any]] = []
         # Over-fetch only a modest margin for the dedup pass below (it used to be
         # limit * 4: a 5000-row export pulled 20000 full rows into memory).
-        fetch_limit = (limit + max(100, limit // 2)) if limit else 1000
+        fetch_limit = (limit + min(1000, max(100, limit // 2))) if limit else 1000
 
         # Treat 'all' and 'national' (case-insensitive) as no region filter
         if region and region.strip().lower() in ("all", "national", "tous", "tout le tchad"):
@@ -574,8 +589,11 @@ class ObservationRepository:
                     query = query.or_(
                         f"indicateur.ilike.*{q}*,source_api.ilike.*{q}*,region.ilike.*{q}*,unite.ilike.*{q}*"
                     )
-                query = query.order("date_reference", desc=True).limit(fetch_limit)
-                raw_obs = [self._public_to_observation(row) for row in query.execute().data]
+                # Supabase answers at most 1000 rows per request (its "max rows" setting), whatever
+                # .limit() asks for: a single call silently cut every export at 1000 rows. Read
+                # page by page; "id" is the tie-breaker so two pages never overlap or skip a row.
+                query = query.order("date_reference", desc=True).order("id", desc=True)
+                raw_obs = [self._public_to_observation(row) for row in self._read_pages(query, fetch_limit)]
             except Exception as exc:
                 # The database is configured but unreadable: say so (503) instead of serving
                 # an empty or stale local copy as if it were the truth.

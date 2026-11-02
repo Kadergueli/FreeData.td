@@ -13,6 +13,7 @@ class _Q:
     def eq(self, *a, **k): return self
     def order(self, *a, **k): return self
     def limit(self, n): self.log.append(n); return self
+    def range(self, a, b): self.log.append(b - a + 1); return self
     @property
     def not_(self): return self
     def is_(self, *a, **k): return self
@@ -61,7 +62,7 @@ def test_overfetch_is_bounded():
     storage.invalidate_cache()
     r = _repo()
     r.list_observations(limit=5000)
-    assert max(r._supabase.limits) <= 7500  # was 20000 (limit*4)
+    assert max(r._supabase.limits) <= 1000  # one page at a time; the old single call asked for 20000 (limit*4)
 
 
 def test_rate_limiter_sweeps_idle_buckets():

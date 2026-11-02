@@ -44,6 +44,7 @@ class _FakeQuery:
     def eq(self, *_a, **_kw) -> "_FakeQuery": return self
     def order(self, *_a, **_kw) -> "_FakeQuery": return self
     def limit(self, *_a, **_kw) -> "_FakeQuery": return self
+    def range(self, *_a, **_kw) -> "_FakeQuery": return self
     def not_(self) -> "_FakeQuery": return self
     def is_(self, *_a, **_kw) -> "_FakeQuery": return self
 

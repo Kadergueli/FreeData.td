@@ -232,7 +232,7 @@ def pipeline_audit() -> dict:
 
 
 
-EXPORT_LIMIT = 5000
+EXPORT_LIMIT = 50_000
 
 
 def _export_headers(filename: str, truncated: bool, row_count: int) -> dict[str, str]:

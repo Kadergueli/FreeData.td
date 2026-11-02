@@ -74,6 +74,7 @@ def test_supabase_receives_the_accent_insensitive_pattern(tmp_path: Path):
         def or_(self, *a, **k): return self
         def order(self, *a, **k): return self
         def limit(self, *a, **k): return self
+        def range(self, *a, **k): return self
         def ilike(self, column, pattern):
             calls["ilike"] = (column, pattern)
             return self
