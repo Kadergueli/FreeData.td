@@ -72,8 +72,11 @@ def test_outage_gives_503_on_api_and_exports(monkeypatch):
         raise StorageUnavailable("down")
 
     monkeypatch.setattr(main.repository, "list_observations", boom)
+    monkeypatch.setattr(main.repository, "list_observations_page", boom)
+    monkeypatch.setattr(main.repository, "iter_observations", boom)
     client = TestClient(app)
-    for url in ("/api/v1/observations", "/api/v1/export/csv", "/api/v1/export/json"):
+    for url in ("/api/v1/observations", "/api/v1/export/csv", "/api/v1/export/json",
+                "/api/v1/export/csv?full=true", "/api/v1/export/json?full=true"):
         resp = client.get(url)
         assert resp.status_code == 503, url
         assert resp.headers.get("retry-after") == "30"

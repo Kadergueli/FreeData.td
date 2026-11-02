@@ -93,6 +93,23 @@ async function loadRegions() {
   wireRegionButtons();
 }
 
+/** Full export: a plain browser download of the streamed file, so a big table never has to fit in memory. */
+function downloadFull() {
+  const fmt = selectedFormat.toLowerCase();
+  if (fmt !== 'csv' && fmt !== 'json') {
+    showToast(t('api.full_formats'), 'info');
+    return;
+  }
+  const url = getExportUrl(fmt, selectedSector, selectedRegion);
+  const a = document.createElement('a');
+  a.href = url + (url.includes('?') ? '&' : '?') + 'full=true';
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast(t('api.full_started'), 'info');
+}
+
 /** Download through fetch so failures are reported instead of saved as a broken file. */
 async function downloadExport() {
   if (_downloading) return;
@@ -152,6 +169,8 @@ function exampleBlock() {
     `curl "${origin}/api/v1/observations?q=riz&region=Lac"`,
     `curl "${origin}/api/v1/stats"`,
     `curl -O -J "${origin}/api/v1/export/csv?sector=agriculture"`,
+    `curl -O -J "${origin}/api/v1/export/csv?sector=markets&full=true"   # every row, no limit`,
+    `curl -i "${origin}/api/v1/observations?sector=markets&limit=5000&offset=0"   # X-Next-Offset gives the next page`,
   ];
   return lines;
 }
@@ -225,6 +244,10 @@ export const ApiView = {
         <button class="btn btn-primary w-full justify-center mono-md fw-700" id="btn-generate-archive" style="padding:12px;">
           <i data-lucide="download-cloud" style="width:18px;height:18px;"></i> <span id="archive-label">${t('api.btn_archive')} (${selectedFormat})</span>
         </button>
+        <button type="button" class="btn btn-ghost w-full justify-center mono-sm" id="btn-full-archive" style="padding:10px;margin-top:8px;">
+          <i data-lucide="database" style="width:16px;height:16px;"></i> ${t('api.btn_full')}
+        </button>
+        <p class="mono-xs text-muted" style="margin-top:6px;">${t('api.full_hint')}</p>
       </div>
 
       <!-- 03 DOCUMENTATION -->
@@ -296,6 +319,7 @@ export const ApiView = {
     loadRegions();
 
     document.getElementById('btn-generate-archive')?.addEventListener('click', downloadExport);
+    document.getElementById('btn-full-archive')?.addEventListener('click', downloadFull);
 
     document.getElementById('btn-copy-examples')?.addEventListener('click', async () => {
       const text = document.getElementById('api-examples')?.textContent || '';

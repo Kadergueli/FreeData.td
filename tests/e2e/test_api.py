@@ -79,4 +79,22 @@ def test_truncated_export_warns_the_user(probe):
     with probe.page.expect_download():
         probe.page.click("#btn-generate-archive")
     probe.page.wait_for_selector(".toast")
-    assert "5" in probe.page.inner_text(".toast") and "000" in probe.page.inner_text(".toast")
+    assert "50 000" in probe.page.inner_text(".toast")
+
+
+def test_full_export_button_asks_for_every_row(probe):
+    probe.goto("#/api")
+    probe.page.wait_for_selector("#btn-full-archive")
+    probe.page.click('.export-fmt-btn[data-fmt="CSV"]')
+    with probe.page.expect_download() as download:
+        probe.page.click("#btn-full-archive")
+    assert "full=true" in download.value.url
+
+
+def test_full_export_explains_it_is_csv_or_json_only(probe):
+    probe.goto("#/api")
+    probe.page.wait_for_selector("#btn-full-archive")
+    probe.page.click('.export-fmt-btn[data-fmt="XML"]')
+    probe.page.click("#btn-full-archive")
+    probe.page.wait_for_selector(".toast")
+    assert "CSV" in probe.page.inner_text(".toast")

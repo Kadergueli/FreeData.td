@@ -1,4 +1,6 @@
+import itertools
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -6,7 +8,7 @@ from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,14 @@ from app.admin import router as admin_router
 from app.whatsapp import router as whatsapp_router
 from app.config import settings
 from app.security import read_limit_exceeded, require_analysis_rate_limit, require_collection_access
-from app.services.export import observations_to_csv, observations_to_parquet, observations_to_xml, parquet_available
+from app.services.export import (
+    observations_to_csv,
+    observations_to_parquet,
+    observations_to_xml,
+    parquet_available,
+    stream_csv,
+    stream_json,
+)
 from app.services.scheduler import scheduler_service
 from app.services.storage import SECTOR_IDS, ObservationRepository, StorageUnavailable, _cache_get, _cache_set
 
@@ -177,8 +186,15 @@ def observations(
     region: str | None = Query(default=None, max_length=100),
     q: str | None = Query(default=None, max_length=100, description="Free-text search (indicator, source, region, unit)"),
     limit: int = Query(default=200, ge=1, le=5000),
-) -> list[dict]:
-    return repository.list_observations(sector=sector, region=region, limit=limit, q=q)
+    offset: int = Query(default=0, ge=0, le=10_000_000, description="Rows to skip: read the whole dataset page by page"),
+) -> JSONResponse:
+    """One page of observations, newest first. When more rows exist, the `X-Next-Offset` header
+    holds the `offset` to request next; its absence means this was the last page."""
+    rows, next_offset = repository.list_observations_page(sector=sector, region=region, limit=limit, q=q, offset=offset)
+    headers = {"Access-Control-Expose-Headers": "X-Next-Offset"}
+    if next_offset is not None:
+        headers["X-Next-Offset"] = str(next_offset)
+    return JSONResponse(content=rows, headers=headers)
 
 
 @app.get("/api/v1/stats")
@@ -258,8 +274,52 @@ def _safe_filename_part(sector: str | None) -> str:
     return cleaned or "all"
 
 
+# A full export reads the whole table, so at most this many run at once (others get a 429).
+_FULL_EXPORT_SLOTS = threading.BoundedSemaphore(2)
+
+
+def _full_export(fmt: str, sector: str | None, region: str | None, filename: str) -> Response:
+    """Stream EVERY matching row (no cap), page by page, so memory stays flat on any table size."""
+    if not _FULL_EXPORT_SLOTS.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Another full export is running. Try again in a few minutes.",
+                            headers={"Retry-After": "120"})
+    try:
+        rows = repository.iter_observations(sector, region)
+        first = next(rows, None)        # a storage outage surfaces here as a 503, not as a broken file later
+    except BaseException:
+        _FULL_EXPORT_SLOTS.release()
+        raise
+    stream = stream_csv if fmt == "csv" else stream_json
+
+    def body():
+        try:
+            yield from stream(itertools.chain([] if first is None else [first], rows))
+        finally:
+            _FULL_EXPORT_SLOTS.release()
+
+    return StreamingResponse(
+        body(),
+        media_type="text/csv" if fmt == "csv" else "application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 "X-Export-Rows": "0" if first is None else "stream", "X-Export-Full": "true"},
+    )
+
+
+def _export_name(sector: str | None, region: str | None, suffix: str) -> str:
+    name_parts = _safe_filename_part(sector)
+    if region:
+        name_parts += f"-{_safe_filename_part(region)}"
+    return f"freedatatd-{name_parts}-{suffix}"
+
+
 @app.get("/api/v1/export/csv", response_class=PlainTextResponse)
-def export_csv(sector: str | None = Query(default=None, max_length=40), region: str | None = Query(default=None, max_length=100)) -> PlainTextResponse:
+def export_csv(
+    sector: str | None = Query(default=None, max_length=40),
+    region: str | None = Query(default=None, max_length=100),
+    full: bool = Query(default=False, description="Every row, no cap (streamed)"),
+) -> Response:
+    if full:
+        return _full_export("csv", sector, region, _export_name(sector, region, "full.csv"))
     rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     content = observations_to_csv(rows)
     name_parts = _safe_filename_part(sector)
@@ -274,7 +334,13 @@ def export_csv(sector: str | None = Query(default=None, max_length=40), region: 
 
 
 @app.get("/api/v1/export/json")
-def export_json(sector: str | None = Query(default=None, max_length=40), region: str | None = Query(default=None, max_length=100)) -> JSONResponse:
+def export_json(
+    sector: str | None = Query(default=None, max_length=40),
+    region: str | None = Query(default=None, max_length=100),
+    full: bool = Query(default=False, description="Every row, no cap (streamed)"),
+) -> Response:
+    if full:
+        return _full_export("json", sector, region, _export_name(sector, region, "full.json"))
     rows, truncated = repository.export_rows(sector, region, EXPORT_LIMIT)
     name_parts = _safe_filename_part(sector)
     if region:

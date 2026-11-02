@@ -23,6 +23,10 @@ class _CappedQuery:
     def ilike(self, *a, **k): return self
     def or_(self, *a, **k): return self
 
+    def gt(self, field, value):
+        self._rows = [r for r in self._rows if r[field] > value]
+        return self
+
     def eq(self, field, value):
         self._rows = [r for r in self._rows if r[field] == value]
         return self
@@ -96,3 +100,51 @@ def test_export_over_the_cap_is_flagged(tmp_path):
     rows, truncated = _repo(tmp_path, _rows(7000)).export_rows("markets", None, 5000)
     assert len(rows) == 5000
     assert truncated is True
+
+
+# --- offset paging (API pages) -------------------------------------------------------------------
+
+def test_offset_pages_cover_everything_once(tmp_path):
+    repo = _repo(tmp_path, _rows(2300))
+    seen, offset = [], 0
+    while offset is not None:
+        rows, offset = repo.list_observations_page(sector="markets", limit=1000, offset=offset)
+        seen += [o["id"] for o in rows]
+    assert len(seen) == 2300 and len(set(seen)) == 2300
+
+
+def test_last_page_has_no_next_offset(tmp_path):
+    rows, nxt = _repo(tmp_path, _rows(40)).list_observations_page(sector="markets", limit=100)
+    assert len(rows) == 40 and nxt is None
+
+
+def test_exactly_full_last_page_does_not_loop_forever(tmp_path):
+    repo = _repo(tmp_path, _rows(200))
+    rows, nxt = repo.list_observations_page(sector="markets", limit=100)
+    assert len(rows) == 100 and nxt == 100
+    rows, nxt = repo.list_observations_page(sector="markets", limit=100, offset=nxt)
+    assert len(rows) == 100 and nxt is None
+
+
+# --- full export: no cap, constant memory ----------------------------------------------------------
+
+def test_iter_observations_returns_every_row_past_the_server_cap(tmp_path):
+    repo = _repo(tmp_path, _rows(3500))
+    got = list(repo.iter_observations("markets", None))
+    assert len(got) == 3500 and len({o["id"] for o in got}) == 3500
+    assert all(c <= SERVER_CAP for c in repo._supabase.calls)
+
+
+def test_iter_observations_on_sqlite(tmp_path):
+    from app.schemas import ObservationCreate
+    repo = ObservationRepository(database_path=tmp_path / "t.db")
+    repo.PAGE_SIZE = 50
+    repo.upsert_many([ObservationCreate(sector="health", indicator=f"I{i}", value=float(i), unit="u",
+                                        reference_date="2024-01-01", source="Test", region="Lac") for i in range(130)])
+    assert len(list(repo.iter_observations("health", None))) == 130
+    assert len(list(repo.iter_observations("health", "Lac"))) == 130
+    assert list(repo.iter_observations("energy", None)) == []
+    rows, nxt = repo.list_observations_page(sector="health", limit=60, offset=0)
+    assert len(rows) == 60 and nxt == 60
+    rows2, _ = repo.list_observations_page(sector="health", limit=100, offset=nxt)
+    assert len(rows2) == 70 and not {o["id"] for o in rows} & {o["id"] for o in rows2}

@@ -5,7 +5,7 @@ import logging
 import sqlite3
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -545,10 +545,10 @@ class ObservationRepository:
 
     PAGE_SIZE = 1000          # Supabase's per-request row cap
 
-    def _read_pages(self, query: Any, wanted: int) -> list[dict[str, Any]]:
-        """Up to `wanted` rows of an ordered query, fetched in PAGE_SIZE pages."""
+    def _read_pages(self, query: Any, wanted: int, offset: int = 0) -> list[dict[str, Any]]:
+        """Up to `wanted` rows of an ordered query, from row `offset`, fetched in PAGE_SIZE pages."""
         rows: list[dict[str, Any]] = []
-        start = 0
+        start = offset
         while len(rows) < wanted:
             end = start + min(self.PAGE_SIZE, wanted - len(rows)) - 1
             page = _with_retry(lambda s=start, e=end: query.range(s, e).execute(), attempts=2, label="table_public page").data or []
@@ -562,6 +562,16 @@ class ObservationRepository:
                           indicator: str | None = None) -> list[dict[str, Any]]:
         """`indicator` is an EXACT match on the indicator name (unlike `q`, a case-insensitive substring search over
         several columns: "Rice" also matches every "... retail price" row)."""
+        return self.list_observations_page(sector, region, limit, q, indicator)[0]
+
+    def list_observations_page(self, sector: str | None = None, region: str | None = None, limit: int = 100,
+                               q: str | None = None, indicator: str | None = None,
+                               offset: int = 0) -> tuple[list[dict[str, Any]], int | None]:
+        """One page of observations, newest first, starting `offset` rows into the result.
+
+        Returns (rows, next_offset); next_offset is None on the last page, otherwise the offset
+        to ask for next. Pages are consistent unless new data is published between two requests."""
+        offset = max(0, int(offset or 0))
         raw_obs: list[dict[str, Any]] = []
         # Over-fetch only a modest margin for the dedup pass below (it used to be
         # limit * 4: a 5000-row export pulled 20000 full rows into memory).
@@ -593,7 +603,7 @@ class ObservationRepository:
                 # .limit() asks for: a single call silently cut every export at 1000 rows. Read
                 # page by page; "id" is the tie-breaker so two pages never overlap or skip a row.
                 query = query.order("date_reference", desc=True).order("id", desc=True)
-                raw_obs = [self._public_to_observation(row) for row in self._read_pages(query, fetch_limit)]
+                raw_obs = [self._public_to_observation(row) for row in self._read_pages(query, fetch_limit, offset)]
             except Exception as exc:
                 # The database is configured but unreadable: say so (503) instead of serving
                 # an empty or stale local copy as if it were the truth.
@@ -623,8 +633,8 @@ class ObservationRepository:
                     parameters.extend([like, like, like, like])
                 if conditions:
                     query += " WHERE " + " AND ".join(conditions)
-                query += " ORDER BY reference_date DESC LIMIT ?"
-                parameters.append(fetch_limit)
+                query += " ORDER BY reference_date DESC, id DESC LIMIT ? OFFSET ?"
+                parameters.extend([fetch_limit, offset])
                 with self._connection() as connection:
                     raw_obs = [dict(row) for row in connection.execute(query, parameters).fetchall()]
             except Exception as exc2:
@@ -634,7 +644,9 @@ class ObservationRepository:
         # Deduplicate observations by canonical business key
         seen_keys: set[tuple[str, str, str, str, str]] = set()
         deduped: list[dict[str, Any]] = []
+        consumed = 0
         for o in raw_obs:
+            consumed += 1
             key = (
                 str(o.get("sector", "")).strip().lower(),
                 str(o.get("indicator", "")).strip().lower(),
@@ -659,7 +671,63 @@ class ObservationRepository:
             if isinstance(val, float) and (val != val or val in (float("inf"), float("-inf"))):
                 o["value"] = None
 
-        return deduped
+        more = consumed < len(raw_obs) or len(raw_obs) >= fetch_limit
+        return deduped, (offset + consumed if more else None)
+
+    def iter_observations(self, sector: str | None = None, region: str | None = None) -> Iterator[dict[str, Any]]:
+        """EVERY matching observation, with no row cap, one page of PAGE_SIZE rows at a time.
+
+        Built for the full download: memory stays flat whatever the table size. Pages follow the
+        primary key (`id > last id`), which stays exact and fast however deep the read goes - unlike
+        an offset - and is not disturbed by rows published while the download is running."""
+        if region and region.strip().lower() in ("all", "national", "tous", "tout le tchad"):
+            region = None
+        if sector and sector.strip().lower() in ("all", "tous"):
+            sector = None
+        last_id = -1                     # below any id, so a row numbered 0 is never skipped
+        seen: set[int] = set()          # hashes, not keys: flat memory on a 150 000-row table
+        while True:
+            if self._supabase:
+                try:
+                    query = self._supabase.table("table_public").select("*").gt("id", last_id)
+                    if sector:
+                        query = query.eq("secteur", sector)
+                    if region:
+                        query = query.ilike("region", _region_like_pattern(region))
+                    page = _with_retry(lambda q=query: q.order("id").limit(self.PAGE_SIZE).execute(),
+                                       attempts=3, label="table_public full export page").data or []
+                except Exception as exc:
+                    logger.warning("Full export page failed: %s", exc)
+                    raise StorageUnavailable("The data store is temporarily unavailable.") from exc
+                batch = [self._public_to_observation(row) for row in page]
+            else:
+                sql, params = "SELECT * FROM observations WHERE id > ?", [last_id]
+                if sector:
+                    sql += " AND sector = ?"
+                    params.append(sector)
+                if region:
+                    sql += " AND region LIKE ? COLLATE NOCASE"
+                    params.append(_region_like_pattern(region))
+                sql += " ORDER BY id LIMIT ?"
+                params.append(self.PAGE_SIZE)
+                with self._connection() as connection:
+                    batch = [dict(r) for r in connection.execute(sql, params).fetchall()]
+            if not batch:
+                return
+            last_id = batch[-1]["id"]
+            for o in batch:
+                key = hash((str(o.get("sector", "")).strip().lower(), str(o.get("indicator", "")).strip().lower(),
+                            str(o.get("reference_date", "")).strip(), str(o.get("region", "")).strip().lower(),
+                            str(o.get("source", "")).strip().lower()))
+                if key in seen:
+                    continue
+                seen.add(key)
+                val = o.get("value")
+                if isinstance(val, float) and (val != val or val in (float("inf"), float("-inf"))):
+                    o["value"] = None
+                yield o
+            if len(batch) < self.PAGE_SIZE:
+                return
 
     LOG_KEEP_DAYS = 30
 

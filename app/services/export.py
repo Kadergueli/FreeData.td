@@ -1,6 +1,7 @@
 import csv
 import json
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable, Iterator
 from io import BytesIO, StringIO
 from typing import Any
 
@@ -62,6 +63,41 @@ def observations_to_csv(rows: list[dict]) -> str:
     for row in rows:
         writer.writerow({key: _escape_csv_cell(val) for key, val in row.items()})
     return output.getvalue()
+
+
+_CHUNK_ROWS = 500       # rows per chunk sent to the client while streaming
+
+
+def stream_csv(rows: Iterable[dict]) -> Iterator[str]:
+    """The CSV of observations() as text chunks, so a full download never sits whole in memory."""
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=_EXPORT_FIELDS, extrasaction="ignore")
+    writer.writeheader()
+    pending = 0
+    for row in rows:
+        writer.writerow({key: _escape_csv_cell(val) for key, val in row.items()})
+        pending += 1
+        if pending >= _CHUNK_ROWS:
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate(0)
+            pending = 0
+    yield buffer.getvalue()
+
+
+def stream_json(rows: Iterable[dict]) -> Iterator[str]:
+    """A JSON array (same shape as the normal JSON export) written one chunk at a time."""
+    yield "["
+    first = True
+    chunk: list[str] = []
+    for row in rows:
+        chunk.append(("" if first else ",") + "\n" + json.dumps(row, ensure_ascii=False))
+        first = False
+        if len(chunk) >= _CHUNK_ROWS:
+            yield "".join(chunk)
+            chunk = []
+    yield "".join(chunk)
+    yield "\n]\n"
 
 
 def observations_to_json(rows: list[dict]) -> str:
