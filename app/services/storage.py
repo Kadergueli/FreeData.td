@@ -857,18 +857,29 @@ class ObservationRepository:
         counts: dict[str, int] = {}
         ok = False
         if self._supabase:
-            try:
-                res = _with_retry(
-                    lambda: self._supabase.table("table_public").select("region").not_.is_("region", "null").limit(5000).execute(),
-                    label="region_counts",
-                )
-                for row in res.data or []:
+            try:                       # exact counts from the database (supabase/aggregates_setup.sql)
+                rows = self._read_pages(self._supabase.table("v_region_counts").select("region,n").order("region"), 100_000)
+                for row in rows:
                     reg = (row.get("region") or "").strip()
                     if reg and reg.lower() not in ("national", "", "tcd", "tchad"):
-                        counts[reg] = counts.get(reg, 0) + 1
+                        counts[reg] = counts.get(reg, 0) + int(row["n"])
                 ok = True
             except Exception as exc:
-                logger.warning("region_counts Supabase query failed: %s", exc)
+                logger.warning("v_region_counts unavailable (%s): sampling table_public instead; "
+                               "run supabase/aggregates_setup.sql for the exact list", exc)
+            if not ok:
+                try:
+                    res = _with_retry(
+                        lambda: self._supabase.table("table_public").select("region").not_.is_("region", "null").limit(5000).execute(),
+                        label="region_counts",
+                    )
+                    for row in res.data or []:
+                        reg = (row.get("region") or "").strip()
+                        if reg and reg.lower() not in ("national", "", "tcd", "tchad"):
+                            counts[reg] = counts.get(reg, 0) + 1
+                    ok = True
+                except Exception as exc:
+                    logger.warning("region_counts Supabase query failed: %s", exc)
         else:
             try:
                 with self._connection() as connection:
@@ -1049,6 +1060,16 @@ class ObservationRepository:
     def _build_catalog(self) -> list[dict[str, Any]]:
         rows = []
         if self._supabase:
+            try:                       # exact catalog computed by the database (supabase/aggregates_setup.sql)
+                view = self._read_pages(self._supabase.table("v_catalog").select("*")
+                                        .order("secteur").order("indicateur").order("source_api"), 100_000)
+                if view:
+                    return [{"sector": r["secteur"], "indicator": r["indicateur"], "source": r["source_api"],
+                             "records": int(r["records"]), "first_date": str(r["first_date"]), "last_date": str(r["last_date"])}
+                            for r in view]
+            except Exception as exc:
+                logger.warning("v_catalog unavailable (%s): rebuilding from the newest 1000 rows per sector; "
+                               "run supabase/aggregates_setup.sql for the exact catalog", exc)
             for sec in SECTOR_IDS:
                 try:
                     res = self._supabase.table("table_public").select("secteur,indicateur,source_api,date_reference").eq("secteur", sec).order("date_reference", desc=True).limit(1000).execute()

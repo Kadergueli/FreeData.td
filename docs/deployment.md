@@ -85,6 +85,13 @@ Seuls les flux dont la vraie réponse a été examinée sont importés (voir `DA
 La mention « Source : INSEED. Contient des informations sous licence selon l'Accord de Licence
 Ouverte de l'INSEED. » est conservée sur chaque donnée.
 
+## Listes de régions et catalogue (Supabase)
+
+Supabase ne renvoie jamais plus de 1000 lignes par requête. Pour que la liste des régions et le catalogue des
+indicateurs soient exacts (comptes et dates réels), exécuter une fois `supabase/aggregates_setup.sql` dans l'éditeur
+SQL. Tant que ce n'est pas fait, l'application utilise l'ancienne méthode, qui ne voit que les lignes les plus
+récentes (un avertissement apparaît dans les journaux).
+
 ## Assistant WhatsApp (Meta Cloud API)
 
 L'assistant de données (prix des marchés + météo) répond sur WhatsApp. Le canal reste **éteint** tant que les
