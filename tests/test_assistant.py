@@ -333,7 +333,7 @@ def test_every_number_in_a_price_answer_comes_from_the_data():
 
 def test_answers_serialise_to_plain_dicts():
     d = ask([price(ABECHE, "Millet", 431, "2026-06-01")], "prix du mil à Abéché").to_dict()
-    assert set(d) == {"text", "intent", "lens", "refused", "data", "sources"}
+    assert set(d) - {"rich"} == {"text", "intent", "lens", "refused", "data", "sources"}
 
 
 # ── avec la vraie couche de stockage (SQLite) ───────────────────────────

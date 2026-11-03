@@ -35,8 +35,8 @@ MAX_SEEN = 4000
 MAX_REPLY_CHARS = 1500
 ABUSE_LIMIT = 5                  # refused messages per 24 h before the number is ignored
 
-FIRST_CONTACT = ("Bienvenue sur FreeData.td 👋 Vos messages sont enregistrés sans votre numéro (un code anonyme seulement) "
-                 "pour améliorer le service, et supprimés après 6 mois.\n\n")
+FIRST_CONTACT = ("👋 Bienvenue sur FreeData.td, les données ouvertes du Tchad. Je réponds sur les prix des marchés et la météo.\n"
+                 "🔒 Votre numéro n'est pas conservé (un code anonyme seulement) et vos messages sont effacés après 6 mois.\n\n")
 NOT_TEXT = ("Pour l'instant, je comprends seulement les messages écrits. Posez-moi votre question par écrit, "
             "par exemple : « Prix du mil à Abéché ».")
 LIMIT_REACHED = ("Vous avez atteint la limite de questions pour aujourd'hui ({n}). Revenez demain : "
@@ -265,7 +265,7 @@ def build_reply(msg: dict[str, str]) -> str | None:
         set_context(ref, answer)
     log.record(question=question, answer=answer, user_ref=ref, channel="whatsapp",
                latency_ms=int((time.perf_counter() - started) * 1000))
-    return _trim((FIRST_CONTACT if newcomer else "") + answer["text"])
+    return _trim((FIRST_CONTACT if newcomer else "") + (answer.get("rich") or answer["text"]))
 
 
 async def handle_message(msg: dict[str, str]) -> None:

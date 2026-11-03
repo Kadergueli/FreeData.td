@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from app.assistant.cache import CachedRepo
-from app.assistant import guardrails, markets, spellfix, weather
+from app.assistant import guardrails, markets, rich, spellfix, weather
 from app.assistant.text import find_alias, fmt_number, normalize
 
 logger = logging.getLogger(__name__)
@@ -39,10 +39,14 @@ class Answer:
     refused: bool = False
     data: dict[str, Any] = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
+    rich: str = ""                   # même réponse mise en forme pour WhatsApp (emojis, lignes courtes) ; vide = utiliser text
 
     def to_dict(self) -> dict[str, Any]:
-        return {"text": self.text, "intent": self.intent, "lens": self.lens, "refused": self.refused,
-                "data": self.data, "sources": self.sources}
+        out = {"text": self.text, "intent": self.intent, "lens": self.lens, "refused": self.refused,
+               "data": self.data, "sources": self.sources}
+        if self.rich:
+            out["rich"] = self.rich
+        return out
 
 
 def _any(norm: str, words) -> bool:
@@ -251,8 +255,9 @@ class Assistant:
             text += f"\nJe n'ai pas de prix pour {', '.join(missing)} à {where}."
         text += ("\n" + markets._freshness(newest, self.today).strip().replace("ce relevé a", "ces relevés ont", 1)
                  if markets._freshness(newest, self.today) else "")
+        shown = [(d["product"], markets.money(d["value"], d["unit"])) for d in data]
         return Answer(text, "prices", "markets", data={"market": market.name, "product": products[0], "items": data},
-                      sources=sorted(sources))
+                      sources=sorted(sources), rich=rich.several(market.name, shown, newest, src, missing, self.today))
 
     def _cheapest(self, product: str, expensive: bool = False) -> Answer:
         ranked = markets.ranking(self.repo, product)
@@ -271,7 +276,7 @@ class Assistant:
                 f"{others}. J'ai comparé {len(ranked)} marchés (relevé de {markets.fmt_month(first.date)}, source "
                 f"{markets.src_name(first.source)}).{markets._freshness(first.date, self.today)}")
         return Answer(text, "ranking", "markets", data={"product": product, "ranking": [{"market": p.market, "value": p.value, "date": p.date} for p in top]},
-                      sources=[first.source])
+                      sources=[first.source], rich=rich.ranking(product, top, len(ranked), expensive, self.today))
 
     def _single(self, product: str, market: markets.Market, trend: bool) -> Answer:
         label = markets.DISPLAY_PRODUCT.get(product, product)
@@ -297,10 +302,14 @@ class Assistant:
                             f"(Source : {markets.src_name(new.source)}.)")
                 text += markets._freshness(new.date, self.today)
                 data.update({"previous_value": old.value, "previous_date": old.date, "change_pct": pct})
-                return Answer(text, "trend", "markets", data=data, sources=[new.source])
+                return Answer(text, "trend", "markets", data=data, sources=[new.source],
+                              rich=rich.price(product, market.name, latest, change, self.today))
             text = markets.describe_price(latest, self.today) + " Je n'ai pas assez de relevés plus anciens pour dire comment il évolue."
-            return Answer(text, "trend", "markets", data=data, sources=[latest.source])
-        return Answer(markets.describe_price(latest, self.today), "price", "markets", data=data, sources=[latest.source])
+            return Answer(text, "trend", "markets", data=data, sources=[latest.source],
+                          rich=rich.price(product, market.name, latest, None, self.today)
+                          + "\nℹ️ Pas assez de relevés plus anciens pour mesurer l'évolution.")
+        return Answer(markets.describe_price(latest, self.today), "price", "markets", data=data, sources=[latest.source],
+                      rich=rich.price(product, market.name, latest, markets.price_change(history), self.today))
 
     def _compare(self, product: str, a: markets.Market, b: markets.Market) -> Answer:
         label = markets.DISPLAY_PRODUCT.get(product, product)
@@ -326,7 +335,8 @@ class Assistant:
         text += markets._freshness(max(comp.a.date, comp.b.date), self.today).replace("ce relevé a", "ces relevés ont", 1)
         data = {"product": product, "a": comp.a.__dict__, "b": comp.b.__dict__, "cheaper": comp.cheaper,
                 "gap_pct": comp.gap_pct, "same_period": comp.same_period}
-        return Answer(text, "compare", "markets", data=data, sources=[comp.a.source, comp.b.source])
+        return Answer(text, "compare", "markets", data=data, sources=[comp.a.source, comp.b.source],
+                      rich=rich.compare(product, comp, self.today))
 
     # ── lens météo ───────────────────────────────────────────────────────
     def _weather(self, norm: str) -> Answer | None:
