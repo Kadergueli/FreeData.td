@@ -1,5 +1,4 @@
 """Patch 0021 — home: real numbers, no duplicate listeners, no public collection."""
-import json
 
 
 def test_home_uses_light_endpoints_only(probe):

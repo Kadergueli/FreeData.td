@@ -1,7 +1,6 @@
 """Patch 0035 — reliability: honest 503 on outage, log labels that fit the DB, chunked raw archive."""
 from types import SimpleNamespace
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app

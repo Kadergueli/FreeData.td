@@ -1,5 +1,4 @@
 """Patch 0043 — public reads are capped per client, security headers, input validation."""
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
