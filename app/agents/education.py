@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from app.agents.base import BaseAgent, source_terms, wb_years
-from app.agents.osm import SCHOOLS, collect_osm_counts
+from app.agents.osm import HIGHER_EDUCATION, SCHOOLS, collect_osm_counts
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -200,8 +200,8 @@ class EducationAgent(BaseAgent):
 
     # ─── Source 4: OpenStreetMap (Overpass) ──────────────────────────────────
     async def _collect_open_street_map(self) -> list[dict[str, Any]]:
-        """Mapped schools per region (OpenStreetMap contributors)."""
-        return await collect_osm_counts([SCHOOLS], self.source_errors)
+        """Mapped schools, universities and colleges per region (OpenStreetMap contributors)."""
+        return await collect_osm_counts([SCHOOLS, HIGHER_EDUCATION], self.source_errors)
 
     # ─── Normalize ───────────────────────────────────────────────────────────
     def normalize(self, record: dict[str, Any]) -> ObservationCreate | None:

@@ -9,7 +9,7 @@ import httpx
 import asyncio
 
 from app.agents.base import BaseAgent, source_terms, wb_years
-from app.agents.osm import HOSPITALS, collect_osm_counts
+from app.agents.osm import HOSPITALS, PHARMACIES, WATER_POINTS, collect_osm_counts
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,8 @@ class HealthAgent(BaseAgent):
         raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'open-street-map', 'demo'.")
 
     async def _collect_open_street_map(self) -> list[dict[str, Any]]:
-        """Mapped hospitals and clinics per region (OpenStreetMap contributors)."""
-        return await collect_osm_counts([HOSPITALS], self.source_errors)
+        """Mapped hospitals and clinics, pharmacies and water points per region (OpenStreetMap contributors)."""
+        return await collect_osm_counts([HOSPITALS, PHARMACIES, WATER_POINTS], self.source_errors)
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
         return [

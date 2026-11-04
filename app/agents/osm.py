@@ -47,6 +47,12 @@ class OsmFeature:
 HOSPITALS = OsmFeature("Mapped hospitals and clinics (OpenStreetMap)", "facilities",
                        ('nwr["amenity"="hospital"]', 'nwr["amenity"="clinic"]'))
 SCHOOLS = OsmFeature("Mapped schools (OpenStreetMap)", "schools", ('nwr["amenity"="school"]',))
+HIGHER_EDUCATION = OsmFeature("Mapped universities and colleges (OpenStreetMap)", "institutions",
+                              ('nwr["amenity"="university"]', 'nwr["amenity"="college"]'))
+PHARMACIES = OsmFeature("Mapped pharmacies (OpenStreetMap)", "pharmacies", ('nwr["amenity"="pharmacy"]',))
+# wells and boreholes carry man_made=water_well; public taps and fountains carry amenity=drinking_water
+WATER_POINTS = OsmFeature("Mapped water wells and drinking-water points (OpenStreetMap)", "water points",
+                          ('nwr["man_made"="water_well"]', 'nwr["amenity"="drinking_water"]'))
 AERODROMES = OsmFeature("Mapped aerodromes (OpenStreetMap)", "aerodromes", ('nwr["aeroway"="aerodrome"]',), national=True)
 # exact tag matches (no regular expression): much cheaper for the server than ["highway"~"..."]
 MAIN_ROADS = OsmFeature("Mapped trunk and primary road segments (OpenStreetMap)", "segments",

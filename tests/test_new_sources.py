@@ -392,3 +392,34 @@ def test_osm_regions_are_visited_in_shuffled_order(monkeypatch):
     run(osm.collect_osm_counts([osm.SCHOOLS], [], pause=0))
     assert sorted(seen) == sorted(osm.REGIONS)
     assert seen != list(osm.REGIONS)                       # not the fixed dictionary order
+
+
+# --- more regional OpenStreetMap series (pharmacies, water points, higher education) -------------
+
+def test_new_osm_features_build_valid_queries_and_distinct_names():
+    features = [osm.HOSPITALS, osm.PHARMACIES, osm.WATER_POINTS, osm.SCHOOLS, osm.HIGHER_EDUCATION]
+    assert len({f.indicator for f in features}) == len(features)
+    assert all(len(f.unit) <= 40 and "OpenStreetMap" in f.indicator for f in features)
+    q = osm.build_query("TD-LC", osm.WATER_POINTS)
+    assert '"man_made"="water_well"' in q and '"amenity"="drinking_water"' in q and q.count("out count;") == 1
+    assert q.count("(area.a);") == 2 and "(nwr" in q                      # union of the two selectors
+    assert 'nwr["amenity"="pharmacy"](area.a);' in osm.build_query("TD-ND", osm.PHARMACIES)
+    assert '"amenity"="university"' in osm.build_query("TD-ND", osm.HIGHER_EDUCATION)
+
+
+def test_health_and_education_ask_for_their_new_features(monkeypatch, tmp_path):
+    from app.agents.education import EducationAgent
+    from app.agents.health import HealthAgent
+    from app.services.storage import ObservationRepository
+    asked = {}
+
+    async def fake_collect(features, errors, **kw):
+        asked.setdefault("calls", []).append([f.indicator for f in features])
+        return []
+    monkeypatch.setattr("app.agents.health.collect_osm_counts", fake_collect)
+    monkeypatch.setattr("app.agents.education.collect_osm_counts", fake_collect)
+    run(HealthAgent(ObservationRepository(database_path=tmp_path / "a.db"))._collect_open_street_map())
+    run(EducationAgent(ObservationRepository(database_path=tmp_path / "b.db"))._collect_open_street_map())
+    health, education = asked["calls"]
+    assert health == [osm.HOSPITALS.indicator, osm.PHARMACIES.indicator, osm.WATER_POINTS.indicator]
+    assert education == [osm.SCHOOLS.indicator, osm.HIGHER_EDUCATION.indicator]
