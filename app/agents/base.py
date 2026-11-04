@@ -26,6 +26,7 @@ SOURCE_TERMS: dict[str, tuple[str, str]] = {
     "IMF": ("IMF terms of use", "Source: International Monetary Fund, World Economic Outlook (DataMapper)."),
     "OurAirports": ("Public domain", "Source: OurAirports (ourairports.com), public-domain data."),
     "WFP": ("CC BY-IGO 3.0", "Source: World Food Programme (WFP), via the Humanitarian Data Exchange."),
+    "UNHCR": ("CC BY 4.0", "UNHCR Refugee Population Statistics Database (api.unhcr.org). Terms: https://www.unhcr.org/terms-use-datasets"),
 }
 
 

@@ -198,6 +198,19 @@ export const OFFICIAL_SOURCES = [
     url: 'https://data.worldbank.org/topic/population',
     desc_fr: 'Population totale, croissance, structure par âge, urbanisation, natalité, mortalité, fécondité et migration nette du Tchad.',
     desc_en: 'Total population, growth, age structure, urbanisation, birth and death rates, fertility and net migration for Chad.'
+  },
+  {
+    id: 'unhcr',
+    name: 'UNHCR Refugee Population Statistics',
+    org_fr: 'Haut-Commissariat des Nations Unies pour les réfugiés (HCR)',
+    org_en: 'United Nations High Commissioner for Refugees (UNHCR)',
+    sector_fr: 'Démographie & Population',
+    sector_en: 'Demography & Population',
+    sectorId: 'demography',
+    license: 'CC BY 4.0 (UNHCR Terms of Use for Datasets)',
+    url: 'https://www.unhcr.org/refugee-statistics',
+    desc_fr: 'Réfugiés et demandeurs d\'asile accueillis au Tchad par pays d\'origine, déplacés internes et réfugiés tchadiens à l\'étranger, par année.',
+    desc_en: 'Refugees and asylum seekers hosted in Chad by country of origin, internally displaced people, and Chadian refugees abroad, by year.'
   }
 ];
 

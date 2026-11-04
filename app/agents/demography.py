@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import date
+import asyncio
+from datetime import UTC, date, datetime
 import logging
 from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent, wb_years
+from app.agents.base import BaseAgent, source_terms, wb_years
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,98 @@ class DemographyAgent(BaseAgent):
     async def collect(self, source: str) -> list[dict[str, Any]]:
         if source == "demo":
             return self._get_demo_records()
-        if source in ("world-bank", "all", "auto"):
+        if source == "world-bank":
             return await self._collect_world_bank()
-        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'demo'.")
+        if source == "unhcr":
+            return await self._collect_unhcr()
+        if source in ("all", "auto"):
+            names = ("world-bank", "unhcr")
+            results = await asyncio.gather(self._collect_world_bank(), self._collect_unhcr(), return_exceptions=True)
+            combined: list[dict[str, Any]] = []
+            for name, res in zip(names, results):
+                if isinstance(res, list):
+                    combined.extend(res)
+                elif isinstance(res, Exception):
+                    logger.error("DemographyAgent source %s failed: %s", name, res)
+                    self.note_source_failure(name, res)
+            return combined
+        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'unhcr', 'demo'.")
+
+    UNHCR_URL = "https://api.unhcr.org/population/v1/population/"
+
+    @staticmethod
+    def _count(value: Any) -> int:
+        """UNHCR writes '-' (or nothing) where there is no figure."""
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return 0
+
+    async def _unhcr_items(self, client: httpx.AsyncClient, extra: dict[str, str]) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        page, pages = 1, 1
+        while page <= pages and page <= 20:
+            params = {"limit": 1000, "page": page, "yearFrom": 2000, "yearTo": datetime.now(UTC).year,
+                      "cf_type": "ISO", **extra}
+            payload = await self.fetch_json_with_retry(client, self.UNHCR_URL, params=params, throttle_seconds=0.2)
+            if not isinstance(payload, dict):
+                break
+            items.extend(x for x in payload.get("items", []) if isinstance(x, dict))
+            try:
+                pages = int(payload.get("maxPages") or 1)
+            except (TypeError, ValueError):
+                pages = 1
+            page += 1
+        return items
+
+    async def _collect_unhcr(self) -> list[dict[str, Any]]:
+        """Forced displacement from the UNHCR population statistics (end-of-year stocks):
+        people hosted in Chad (by country of origin), internally displaced, and Chadians abroad."""
+        async with httpx.AsyncClient(timeout=60) as client:
+            hosted = await self._unhcr_items(client, {"coa": self.CHAD_ISO3, "coo_all": "true"})
+            abroad = await self._unhcr_items(client, {"coo": self.CHAD_ISO3, "coa_all": "true"})
+        return self.unhcr_records(hosted, abroad)
+
+    def unhcr_records(self, hosted: list[dict[str, Any]], abroad: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        today = datetime.now(UTC).date()
+        totals: dict[tuple[int, str], int] = {}
+        records: list[dict[str, Any]] = []
+
+        def put(year: int, indicator: str, value: int, url: str = self.UNHCR_URL) -> None:
+            if value > 0:
+                records.append({"year": year, "month": 12 if year < today.year else today.month,
+                                "day": 31 if year < today.year else today.day, "value": float(value),
+                                "source": "UNHCR", "indicator": indicator, "unit": "people",
+                                "region": "national", "url": url})
+
+        for it in hosted:
+            try:
+                year = int(it.get("year"))
+            except (TypeError, ValueError):
+                continue
+            if it.get("coo_iso") == self.CHAD_ISO3:                      # Chadians displaced inside Chad
+                totals[(year, "Internally displaced persons in Chad")] = (
+                    totals.get((year, "Internally displaced persons in Chad"), 0) + self._count(it.get("idps")))
+                continue
+            refugees = self._count(it.get("refugees"))
+            totals[(year, "Refugees hosted in Chad")] = totals.get((year, "Refugees hosted in Chad"), 0) + refugees
+            totals[(year, "Asylum seekers in Chad")] = (
+                totals.get((year, "Asylum seekers in Chad"), 0) + self._count(it.get("asylum_seekers")))
+            origin = str(it.get("coo_name") or "").strip()
+            if origin:
+                put(year, f"Refugees from {origin} in Chad", refugees)
+        for it in abroad:
+            try:
+                year = int(it.get("year"))
+            except (TypeError, ValueError):
+                continue
+            if it.get("coa_iso") == self.CHAD_ISO3:
+                continue
+            for field, label in (("refugees", "Chadian refugees abroad"), ("asylum_seekers", "Chadian asylum seekers abroad")):
+                totals[(year, label)] = totals.get((year, label), 0) + self._count(it.get(field))
+        for (year, indicator), value in totals.items():
+            put(year, indicator, value)
+        return records
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
         return [
@@ -89,6 +179,7 @@ class DemographyAgent(BaseAgent):
         val = float(record["value"])
         if not val.is_integer():
             val = round(val, 2)
+        licence, notes = source_terms(str(record["source"]), "DemographyAgent")
         return ObservationCreate(
             sector="demography",
             indicator=str(record["indicator"]),
@@ -98,6 +189,6 @@ class DemographyAgent(BaseAgent):
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license="CC BY 4.0",
-            notes=f"Automated harvest by DemographyAgent from {record['source']}.",
+            license=licence,
+            notes=notes,
         )
