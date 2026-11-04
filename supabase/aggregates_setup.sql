@@ -5,13 +5,13 @@
 -- 1000. These views let the database do the counting. Until they exist the app keeps working with
 -- its old (sampled) method, so running this file is safe at any time and can be repeated.
 
-create or replace view public.v_region_counts as
+create or replace view public.v_region_counts with (security_invoker = true) as
 select region, count(*)::bigint as n
 from public.table_public
 where region is not null
 group by region;
 
-create or replace view public.v_catalog as
+create or replace view public.v_catalog with (security_invoker = true) as
 select secteur, indicateur, source_api,
        count(*)::bigint as records,
        min(date_reference) as first_date,
@@ -19,5 +19,7 @@ select secteur, indicateur, source_api,
 from public.table_public
 group by secteur, indicateur, source_api;
 
-grant select on public.v_region_counts to anon, authenticated, service_role;
-grant select on public.v_catalog to anon, authenticated, service_role;
+-- The server reads them with the service-role key. They run with the caller's rights
+-- (security_invoker) and are not exposed to anon/authenticated: public.table_public has RLS on.
+revoke all on public.v_region_counts, public.v_catalog from anon, authenticated;
+grant select on public.v_region_counts, public.v_catalog to service_role;

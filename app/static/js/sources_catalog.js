@@ -52,8 +52,8 @@ export const OFFICIAL_SOURCES = [
     sectorId: 'economy',
     license: 'CC BY 4.0 Open Data',
     url: 'https://data.worldbank.org/country/chad',
-    desc_fr: 'Indicateurs de développement mondial, PIB, dépenses publiques, éducation et croissance économique du Tchad.',
-    desc_en: 'World development indicators, GDP, public expenditure, literacy, and economic growth for Chad.'
+    desc_fr: 'PIB, inflation, dette, pauvreté et inégalités (Gini), chômage, rente pétrolière, accès à internet et au mobile, parité au parlement, agriculture et alphabétisation, depuis 2000.',
+    desc_en: 'GDP, inflation, debt, poverty and inequality (Gini), unemployment, oil rents, internet and mobile access, women in parliament, agriculture and literacy, since 2000.'
   },
   {
     id: 'wfp-vam',
@@ -144,8 +144,8 @@ export const OFFICIAL_SOURCES = [
     sectorId: 'health',
     license: 'ODbL (Open Database License)',
     url: 'https://www.openstreetmap.org/',
-    desc_fr: 'Nombre d\'hôpitaux, de cliniques et d\'écoles cartographiés par région (ce qui est cartographié, pas ce qui existe).',
-    desc_en: 'Number of hospitals, clinics and schools mapped per region (what contributors have mapped, not what exists).'
+    desc_fr: 'Nombre d\'hôpitaux, de cliniques, de pharmacies, de points d\'eau, d\'écoles et d\'universités cartographiés par région (ce qui est cartographié, pas ce qui existe).',
+    desc_en: 'Number of hospitals, clinics, pharmacies, water points, schools and universities mapped per region (what contributors have mapped, not what exists).'
   },
   {
     id: 'world-bank-health',
@@ -157,8 +157,8 @@ export const OFFICIAL_SOURCES = [
     sectorId: 'health',
     license: 'CC BY 4.0 Open Data',
     url: 'https://data.worldbank.org/indicator?tab=all',
-    desc_fr: 'Espérance de vie, mortalité maternelle et infantile, dépenses de santé et accès aux services de base au Tchad.',
-    desc_en: 'Life expectancy, maternal & child mortality, health expenditure, and access to water and sanitation for Chad.'
+    desc_fr: 'Espérance de vie, mortalité maternelle, néonatale et infantile, vaccination, paludisme, tuberculose, VIH, personnel de santé, nutrition, dépenses de santé et accès à l\'eau, depuis 2000.',
+    desc_en: 'Life expectancy, maternal, neonatal and child mortality, immunization, malaria, tuberculosis, HIV, health workforce, nutrition, health spending and access to water, since 2000.'
   },
   {
     id: 'world-bank-energy',
@@ -196,8 +196,8 @@ export const OFFICIAL_SOURCES = [
     sectorId: 'demography',
     license: 'CC BY 4.0 Open Data',
     url: 'https://data.worldbank.org/topic/population',
-    desc_fr: 'Population totale, croissance, structure par âge, urbanisation, natalité, mortalité, fécondité et migration nette du Tchad.',
-    desc_en: 'Total population, growth, age structure, urbanisation, birth and death rates, fertility and net migration for Chad.'
+    desc_fr: 'Population totale, croissance, structure par âge, urbanisation, natalité, mortalité, fécondité, migration nette et part de migrants internationaux du Tchad.',
+    desc_en: 'Total population, growth, age structure, urbanisation, birth and death rates, fertility, net migration and international migrant share for Chad.'
   },
   {
     id: 'unhcr',

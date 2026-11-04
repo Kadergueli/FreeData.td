@@ -36,11 +36,8 @@ class EconomyAgent(BaseAgent):
         "SI.POV.GINI": ("Gini index", "index (0-100)"),
         "SL.UEM.TOTL.ZS": ("Unemployment rate (ILO modeled)", "% of labour force"),
         "SL.TLF.CACT.FE.ZS": ("Female labour force participation", "% of women ages 15+"),
-        # Trade, oil and investment
+        # Oil (exports, imports and FDI are collected by MarketsAgent: not repeated here)
         "NY.GDP.PETR.RT.ZS": ("Oil rents", "% of GDP"),
-        "NE.EXP.GNFS.ZS": ("Exports of goods and services", "% of GDP"),
-        "NE.IMP.GNFS.ZS": ("Imports of goods and services", "% of GDP"),
-        "BX.KLT.DINV.WD.GD.ZS": ("Foreign direct investment, net inflows", "% of GDP"),
         # Digital access and gender
         "IT.NET.USER.ZS": ("Individuals using the Internet", "% of population"),
         "IT.CEL.SETS.P2": ("Mobile cellular subscriptions", "per 100 people"),
