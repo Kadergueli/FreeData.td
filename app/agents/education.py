@@ -32,6 +32,7 @@ class EducationAgent(BaseAgent):
         "SE.TER.ENRR": ("Tertiary gross enrollment ratio", "% of age cohort"),
         "SE.ADT.LITR.ZS": ("Adult literacy rate", "% of population age 15+"),
         "SE.YTH.LITR.ZS": ("Youth literacy rate", "% of population age 15-24"),
+        "SE.ADT.LITR.FE.ZS": ("Adult female literacy rate", "% of females age 15+"),
         "SE.PRM.CMPT.ZS": ("Primary school completion rate", "% of age group"),
         "SE.XPD.TOTL.GD.ZS": ("Government expenditure on education", "% of GDP"),
         "SE.PRM.ENRL.FE.ZS": ("Primary female enrollment share", "% of total primary pupils"),

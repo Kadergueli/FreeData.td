@@ -26,6 +26,11 @@ class AgricultureAgent(BaseAgent):
         "AG.PRD.LVST.XD": ("Livestock production index", "index (2014-2016=100)"),
         "AG.LND.AGRI.K2": ("Agricultural land area", "sq. km"),
         "AG.CON.FERT.ZS": ("Fertilizer consumption", "kg/ha"),
+        "AG.LND.AGRI.ZS": ("Agricultural land share", "% of land area"),
+        "AG.LND.ARBL.ZS": ("Arable land share", "% of land area"),
+        "AG.LND.FRST.ZS": ("Forest area share", "% of land area"),
+        "NV.AGR.TOTL.ZS": ("Agriculture, forestry and fishing value added", "% of GDP"),
+        "SL.AGR.EMPL.ZS": ("Employment in agriculture (ILO modeled)", "% of total employment"),
     }
 
     # Key agricultural regions in Chad with GPS coordinates for agrometeorology
@@ -107,7 +112,7 @@ class AgricultureAgent(BaseAgent):
         async with httpx.AsyncClient(timeout=30) as client:
             for code, (name, unit) in self.WORLD_BANK_INDICATORS.items():
                 url = f"https://api.worldbank.org/v2/country/TD/indicator/{code}"
-                params = {"format": "json", "per_page": 50, "date": wb_years(2015)}
+                params = {"format": "json", "per_page": 100, "date": wb_years(2000)}
                 payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
                 if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
                     for item in payload[1]:

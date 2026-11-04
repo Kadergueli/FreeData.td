@@ -62,6 +62,7 @@ class HealthAgent(BaseAgent):
         "SN.ITK.DEFC.ZS": ("Prevalence of undernourishment", "% of population"),
         "SH.STA.OWAD.ZS": ("Overweight prevalence, adults", "% of adults"),
         "SH.H2O.SMDW.ZS": ("Safely managed drinking water", "% of population"),
+        "SP.DYN.CONU.ZS": ("Contraceptive prevalence, any method", "% of married women 15-49"),
     }
 
     # ISO3 for Chad

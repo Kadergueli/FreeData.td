@@ -30,6 +30,21 @@ class EconomyAgent(BaseAgent):
         "GC.REV.XAGT.GD.ZS": ("Tax revenue", "% of GDP"),
         "DT.DOD.DECT.GN.ZS": ("External debt stocks", "% of GNI"),
         "BX.TRF.PWKR.DT.GD.ZS": ("Personal remittances received", "% of GDP"),
+        # Poverty, inequality, jobs
+        "SI.POV.DDAY": ("Poverty headcount at $3.00 a day (2021 PPP)", "% of population"),
+        "SI.POV.NAHC": ("Poverty headcount at national poverty line", "% of population"),
+        "SI.POV.GINI": ("Gini index", "index (0-100)"),
+        "SL.UEM.TOTL.ZS": ("Unemployment rate (ILO modeled)", "% of labour force"),
+        "SL.TLF.CACT.FE.ZS": ("Female labour force participation", "% of women ages 15+"),
+        # Trade, oil and investment
+        "NY.GDP.PETR.RT.ZS": ("Oil rents", "% of GDP"),
+        "NE.EXP.GNFS.ZS": ("Exports of goods and services", "% of GDP"),
+        "NE.IMP.GNFS.ZS": ("Imports of goods and services", "% of GDP"),
+        "BX.KLT.DINV.WD.GD.ZS": ("Foreign direct investment, net inflows", "% of GDP"),
+        # Digital access and gender
+        "IT.NET.USER.ZS": ("Individuals using the Internet", "% of population"),
+        "IT.CEL.SETS.P2": ("Mobile cellular subscriptions", "per 100 people"),
+        "SG.GEN.PARL.ZS": ("Seats held by women in national parliament", "% of seats"),
     }
 
     async def collect(self, source: str) -> list[dict[str, Any]]:
@@ -112,7 +127,7 @@ class EconomyAgent(BaseAgent):
         async with httpx.AsyncClient(timeout=30) as client:
             for code, (name, unit) in self.WORLD_BANK_INDICATORS.items():
                 url = f"https://api.worldbank.org/v2/country/TD/indicator/{code}"
-                params = {"format": "json", "per_page": 50, "date": wb_years(2015)}
+                params = {"format": "json", "per_page": 100, "date": wb_years(2000)}
                 payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
                 if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
                     for item in payload[1]:

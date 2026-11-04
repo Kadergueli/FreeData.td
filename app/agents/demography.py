@@ -37,6 +37,7 @@ class DemographyAgent(BaseAgent):
         "SP.DYN.TFRT.IN": ("Fertility rate", "births per woman"),
         "SM.POP.NETM": ("Net migration", "people"),
         "EN.POP.DNST": ("Population density", "people per km²"),
+        "SM.POP.TOTL.ZS": ("International migrant stock", "% of population"),
     }
 
     CHAD_ISO3 = "TCD"
