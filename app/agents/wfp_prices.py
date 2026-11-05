@@ -20,9 +20,11 @@ HDX_PACKAGE_ID = "wfp-food-prices-for-chad"
 SOURCE_LABEL = "WFP"
 
 
-def pick_csv_url(package: Any) -> str | None:
-    """Address of the full price file: the CSV resource that is not the 'QuickCharts' extract."""
+def pick_csv_urls(package: Any) -> list[str]:
+    """Addresses of the CSV files of the dataset, most likely first: the file named like the full price
+    list, then the other CSVs. The 'QuickCharts' extract is never used."""
     resources = ((package or {}).get("result") or {}).get("resources") if isinstance(package, dict) else None
+    found: list[tuple[int, str]] = []
     for resource in resources or []:
         if not isinstance(resource, dict):
             continue
@@ -31,8 +33,15 @@ def pick_csv_url(package: Any) -> str | None:
             continue
         url = resource.get("download_url") or resource.get("url")
         if url:
-            return str(url)
-    return None
+            rank = 0 if ("food" in name and "price" in name) else 1
+            found.append((rank, str(url)))
+    return [url for _, url in sorted(found, key=lambda item: item[0])]
+
+
+def pick_csv_url(package: Any) -> str | None:
+    """Address of the full price file: the first candidate of `pick_csv_urls`."""
+    urls = pick_csv_urls(package)
+    return urls[0] if urls else None
 
 
 def parse_wfp_csv(text: str, history_years: int = 3) -> tuple[list[dict[str, Any]], int]:

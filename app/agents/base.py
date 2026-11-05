@@ -206,6 +206,9 @@ class BaseAgent(ABC):
                     continue
 
                 response.raise_for_status()
+                if not response.text.strip() and errors is not None:
+                    errors[:] = [f"HTTP {response.status_code} with an empty body "
+                                 f"(content-type {response.headers.get('content-type', 'unknown')})"]
                 return response.text
             except (httpx.HTTPStatusError, httpx.RequestError) as exc:
                 logger.warning("HTTP error fetching text from %s: %s", url, exc)

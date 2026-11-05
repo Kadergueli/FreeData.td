@@ -224,7 +224,7 @@ def test_wfp_collection_end_to_end(monkeypatch):
 @pytest.mark.parametrize("package,text,message", [
     (None, "", "HDX catalogue did not answer .*HTTP 503"),
     ({"result": {"resources": []}}, "", "no CSV file"),
-    ({"result": {"resources": [{"name": "p", "format": "CSV", "url": "https://x/p.csv"}]}}, "", "could not be downloaded \\(HTTP 403\\)"),
+    ({"result": {"resources": [{"name": "p", "format": "CSV", "url": "https://x/p.csv"}]}}, "", "could not be downloaded .*p\\.csv: HTTP 403"),
     ({"result": {"resources": [{"name": "p", "format": "CSV", "url": "https://x/p.csv"}]}}, "date,price\n", "no usable"),
 ])
 def test_wfp_failures_are_explicit(monkeypatch, package, text, message):
@@ -441,3 +441,68 @@ def test_text_fetch_reports_why_it_failed():
         return got, reasons
     got, reasons = run(go())
     assert got is None and reasons == ["HTTP 403"]
+
+
+# --- the WFP dataset has several CSV files: an empty or unusable one must not stop the collection ----
+
+def test_every_csv_is_a_candidate_best_first_and_quickcharts_is_never_used():
+    from app.agents.wfp_prices import pick_csv_urls
+    pkg = {"result": {"resources": [
+        {"name": "QuickCharts - prices", "format": "CSV", "url": "https://x/quick.csv"},
+        {"name": "Notes", "format": "CSV", "url": "https://x/notes.csv"},
+        {"name": "Chad - Food Prices", "format": "csv", "download_url": "https://x/full.csv"},
+        {"name": "Map", "format": "GeoJSON", "url": "https://x/map.json"}]}}
+    assert pick_csv_urls(pkg) == ["https://x/full.csv", "https://x/notes.csv"]
+
+
+def _two_file_agent(monkeypatch, answers):
+    agent = MarketsAgent(SimpleNamespace())
+    pkg = {"result": {"resources": [
+        {"name": "Chad - Food Prices", "format": "CSV", "url": "https://x/full.csv"},
+        {"name": "Chad - Food Prices (older)", "format": "CSV", "url": "https://x/older.csv"}]}}
+
+    async def fetch_json(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
+        return pkg
+
+    async def fetch_text(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
+        text, why = answers[url.rsplit("/", 1)[-1]]
+        if why and errors is not None:
+            errors[:] = [why]
+        return text
+    monkeypatch.setattr(MarketsAgent, "fetch_json_with_retry", staticmethod(fetch_json))
+    monkeypatch.setattr(MarketsAgent, "fetch_text_with_retry", staticmethod(fetch_text))
+    return agent
+
+
+def test_an_empty_first_file_falls_back_to_the_next_one(monkeypatch):
+    agent = _two_file_agent(monkeypatch, {"full.csv": ("", "HTTP 200 with an empty body (content-type text/html)"),
+                                          "older.csv": (CSV, None)})
+    assert run(agent._collect_wfp_prices())
+
+
+def test_when_every_file_fails_the_message_names_each_file(monkeypatch):
+    agent = _two_file_agent(monkeypatch, {"full.csv": ("", "HTTP 200 with an empty body (content-type text/html)"),
+                                          "older.csv": ("", None)})
+    with pytest.raises(RuntimeError, match=r"could not be downloaded .*full\.csv: HTTP 200 with an empty body.*older\.csv: empty answer"):
+        run(agent._collect_wfp_prices())
+
+
+def test_a_readable_file_without_usable_prices_is_reported_as_such(monkeypatch):
+    agent = _two_file_agent(monkeypatch, {"full.csv": ("date,price\n", None), "older.csv": ("", None)})
+    with pytest.raises(RuntimeError, match="read but no usable retail XAF price.*full\\.csv"):
+        run(agent._collect_wfp_prices())
+
+
+def test_text_fetch_names_an_empty_body():
+    import httpx
+    from app.agents.base import BaseAgent
+
+    def handler(request):
+        return httpx.Response(200, text="", headers={"content-type": "text/html"})
+
+    async def go():
+        reasons: list[str] = []
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await BaseAgent.fetch_text_with_retry(client, "https://x/f.csv", max_retries=1, throttle_seconds=0, errors=reasons)
+        return reasons
+    assert "empty body" in run(go())[0] and "text/html" in run(go())[0]

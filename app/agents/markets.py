@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from app.agents.base import BaseAgent, source_terms, wb_years
-from app.agents.wfp_prices import HDX_PACKAGE_ID, HDX_PACKAGE_URL, parse_wfp_csv, pick_csv_url
+from app.agents.wfp_prices import HDX_PACKAGE_ID, HDX_PACKAGE_URL, parse_wfp_csv, pick_csv_urls
 from app.agents.fews_prices import FEWS_URL, extract_items, parse_record, resolve_collisions
 from app.schemas import ObservationCreate
 
@@ -161,17 +161,29 @@ class MarketsAgent(BaseAgent):
                 client, HDX_PACKAGE_URL, params={"id": HDX_PACKAGE_ID}, errors=reason)
             if package is None:
                 raise RuntimeError(f"HDX catalogue did not answer ({reason[0] if reason else 'no detail'})")
-            csv_url = pick_csv_url(package)
-            if not csv_url:
+            csv_urls = pick_csv_urls(package)
+            if not csv_urls:
                 raise RuntimeError("HDX: no CSV file found in the WFP Chad food prices dataset")
-            file_reason: list[str] = []
-            text = await self.fetch_text_with_retry(client, csv_url, throttle_seconds=0.3, errors=file_reason)
-            if not text:
-                detail = file_reason[0] if file_reason else "empty answer"
-                raise RuntimeError(f"HDX: the WFP price file could not be downloaded ({detail})")
-        records, skipped = parse_wfp_csv(text, self.WFP_HISTORY_YEARS)
+            records: list[dict[str, Any]] = []
+            skipped = 0
+            problems: list[str] = []
+            readable = False
+            for csv_url in csv_urls[:4]:                 # a file that is empty or unusable: try the next one
+                file_reason: list[str] = []
+                text = await self.fetch_text_with_retry(client, csv_url, throttle_seconds=0.3, errors=file_reason)
+                name = csv_url.rsplit("/", 1)[-1][:60]
+                if not text or not text.strip():
+                    problems.append(f"{name}: {file_reason[0] if file_reason else 'empty answer'}")
+                    continue
+                readable = True
+                records, skipped = parse_wfp_csv(text, self.WFP_HISTORY_YEARS)
+                if records:
+                    break
+                problems.append(f"{name}: no usable retail XAF price")
         if not records:
-            raise RuntimeError("WFP price file read but no usable retail XAF price found")
+            if readable:
+                raise RuntimeError("WFP price file read but no usable retail XAF price found (" + "; ".join(problems) + ")")
+            raise RuntimeError("HDX: the WFP price file could not be downloaded (" + "; ".join(problems) + ")")
         if skipped:
             logger.info("WFP prices: %d row(s) skipped (duplicates, other currency, bad value).", skipped)
         return records
