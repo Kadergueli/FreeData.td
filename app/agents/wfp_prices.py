@@ -89,3 +89,57 @@ def parse_wfp_csv(text: str, history_years: int = 3) -> tuple[list[dict[str, Any
             "url": f"https://data.humdata.org/dataset/{HDX_PACKAGE_ID}",
         })
     return records, skipped
+
+
+# ─── HDX Humanitarian API (HAPI): the same WFP prices, served as JSON ─────────────────────────────
+HAPI_URL = "https://hapi.humdata.org/api/v2/food-security-nutrition-poverty/food-prices-market-monitor"
+HAPI_PAGE = 1000
+HAPI_MAX_PAGES = 300          # 300 000 rows: far above the ~100 000 of Chad, a stop against a runaway loop
+
+
+def parse_hapi_prices(items: list[dict[str, Any]], history_years: int = 3) -> tuple[list[dict[str, Any]], int]:
+    """Same records as `parse_wfp_csv`, from HAPI rows (market_name, admin1_name, commodity_name, unit,
+    currency_code, price_type, price, reference_period_start). Same rules: the last `history_years`
+    calendar years present, retail prices in XAF only, one price per (month, market, product)."""
+    rows = []
+    for item in items:
+        stamp = str(item.get("reference_period_start", "")).strip()
+        if len(stamp) >= 7 and stamp[:4].isdigit() and stamp[4] == "-":
+            rows.append((stamp, item))
+    if not rows:
+        return [], 0
+    first_year = max(int(stamp[:4]) for stamp, _ in rows) - history_years + 1
+
+    records: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    skipped = 0
+    for stamp, row in rows:
+        year, month = int(stamp[:4]), int(stamp[5:7]) if stamp[5:7].isdigit() else 1
+        if year < first_year:
+            continue
+        market = str(row.get("market_name", "")).strip()
+        commodity = str(row.get("commodity_name", "")).strip()
+        currency = str(row.get("currency_code", "")).strip().upper()
+        pricetype = str(row.get("price_type", "")).strip().lower()
+        try:
+            price = float(str(row.get("price", "")).replace(",", ""))
+        except ValueError:
+            skipped += 1
+            continue
+        if not market or not commodity or currency != "XAF" or price <= 0 or pricetype not in ("", "retail"):
+            skipped += 1
+            continue
+        key = (stamp[:7], market, commodity)
+        if key in seen:
+            skipped += 1
+            continue
+        seen.add(key)
+        admin1 = str(row.get("admin1_name", "")).strip()
+        unit = str(row.get("unit", "")).strip() or "KG"
+        records.append({
+            "year": year, "month": month, "day": 1, "value": round(price, 2),
+            "source": SOURCE_LABEL, "indicator": f"{commodity} retail price (WFP)",
+            "unit": f"XAF/{unit}"[:30], "region": f"{market} ({admin1})" if admin1 else market,
+            "url": f"https://data.humdata.org/dataset/{HDX_PACKAGE_ID}",
+        })
+    return records, skipped

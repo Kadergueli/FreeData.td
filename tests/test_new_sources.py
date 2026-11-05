@@ -197,6 +197,7 @@ def test_pick_csv_url_prefers_the_full_file():
 
 
 def _wfp_agent(monkeypatch, package, text):
+    monkeypatch.setattr("app.agents.markets.settings.hdx_app_identifier", None, raising=False)
     agent = MarketsAgent(SimpleNamespace())
 
     async def fetch_json(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
@@ -456,6 +457,7 @@ def test_every_csv_is_a_candidate_best_first_and_quickcharts_is_never_used():
 
 
 def _two_file_agent(monkeypatch, answers):
+    monkeypatch.setattr("app.agents.markets.settings.hdx_app_identifier", None, raising=False)
     agent = MarketsAgent(SimpleNamespace())
     pkg = {"result": {"resources": [
         {"name": "Chad - Food Prices", "format": "CSV", "url": "https://x/full.csv"},
@@ -506,3 +508,116 @@ def test_text_fetch_names_an_empty_body():
             await BaseAgent.fetch_text_with_retry(client, "https://x/f.csv", max_retries=1, throttle_seconds=0, errors=reasons)
         return reasons
     assert "empty body" in run(go())[0] and "text/html" in run(go())[0]
+
+
+# --- WFP prices through the HDX Humanitarian API (HAPI) ------------------------------------------------
+SECRET = "c2VjcmV0LWlkZW50aWZpZXI="
+
+
+def _hapi_row(year, month, market="Dembe", admin1="N'DJAMENA", commodity="Garlic", price=1393.46,
+              unit="KG", currency="XAF", ptype="Retail"):
+    """Shape copied from a real HAPI answer for Chad."""
+    return {"location_code": "TCD", "admin1_name": admin1, "market_name": market, "commodity_name": commodity,
+            "currency_code": currency, "unit": unit, "price_flag": "actual", "price_type": ptype, "price": price,
+            "reference_period_start": f"{year}-{month:02d}-15T00:00:00",
+            "reference_period_end": f"{year}-{month + 1:02d}-14T23:59:59"}
+
+
+def test_hapi_rows_become_the_same_records_as_the_csv():
+    from app.agents.wfp_prices import parse_hapi_prices
+    rows = [_hapi_row(2026, 5), _hapi_row(2026, 5),                                      # duplicate
+            _hapi_row(2026, 5, commodity="Fish (dry)", price=1336.0),
+            _hapi_row(2026, 5, commodity="Salt", ptype="Wholesale"),                      # not retail
+            _hapi_row(2026, 5, commodity="Sugar", currency="USD"),                        # not XAF
+            _hapi_row(2026, 5, commodity="Oil (groundnut)", price=0),                     # no price
+            _hapi_row(2022, 5)]                                                           # older than 3 years
+    records, skipped = parse_hapi_prices(rows, history_years=3)
+    assert {r["indicator"] for r in records} == {"Garlic retail price (WFP)", "Fish (dry) retail price (WFP)"}
+    garlic = next(r for r in records if r["indicator"].startswith("Garlic"))
+    assert (garlic["year"], garlic["month"], garlic["day"], garlic["value"]) == (2026, 5, 1, 1393.46)
+    assert garlic["unit"] == "XAF/KG" and garlic["region"] == "Dembe (N'DJAMENA)" and garlic["source"] == "WFP"
+    assert skipped == 4
+    # the same labels the rest of the platform uses once the schema has cleaned them
+    obs = MarketsAgent(SimpleNamespace()).normalize(garlic)
+    assert obs.region == "Dembe (N'Djamena)" and obs.license == "CC BY-IGO 3.0"
+
+
+def test_hapi_garbage_gives_no_records():
+    from app.agents.wfp_prices import parse_hapi_prices
+    assert parse_hapi_prices([], 3) == ([], 0)
+    assert parse_hapi_prices([{"reference_period_start": "n/a"}, {"price": 3}], 3) == ([], 0)
+
+
+def _hapi_agent(monkeypatch, pages, csv_outcome=None, seen=None):
+    monkeypatch.setattr("app.agents.markets.settings.hdx_app_identifier", SECRET, raising=False)
+    monkeypatch.setattr("app.agents.markets.HAPI_PAGE", 2)
+    agent = MarketsAgent(SimpleNamespace())
+    seen = seen if seen is not None else []
+
+    async def fetch_json(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
+        seen.append((url, dict(params or {}), dict(headers or {})))
+        page = (params or {}).get("offset", 0) // 2
+        answer = pages[page] if page < len(pages) else {"data": []}
+        if answer is None and errors is not None:
+            errors[:] = ["HTTP 500"]
+        return answer
+    monkeypatch.setattr(MarketsAgent, "fetch_json_with_retry", staticmethod(fetch_json))
+
+    async def csv_path():
+        if isinstance(csv_outcome, Exception):
+            raise csv_outcome
+        return csv_outcome or []
+    monkeypatch.setattr(agent, "_collect_wfp_csv", csv_path)
+    return agent, seen
+
+
+def test_hapi_is_read_page_by_page_until_a_short_page(monkeypatch):
+    pages = [{"data": [_hapi_row(2026, 1), _hapi_row(2026, 2)]},
+             {"data": [_hapi_row(2026, 3), _hapi_row(2026, 4)]},
+             {"data": [_hapi_row(2026, 5)]}]                                              # short: the end
+    agent, seen = _hapi_agent(monkeypatch, pages)
+    records = run(agent._collect_wfp_prices())
+    assert [c[1]["offset"] for c in seen] == [0, 2, 4]
+    assert len(records) == 5 and all(c[1]["location_code"] == "TCD" and c[1]["limit"] == 2 for c in seen)
+
+
+def test_the_identifier_travels_in_a_header_never_in_the_address(monkeypatch):
+    agent, seen = _hapi_agent(monkeypatch, [{"data": [_hapi_row(2026, 1)]}])
+    run(agent._collect_wfp_prices())
+    url, params, headers = seen[0]
+    assert headers == {"X-HDX-HAPI-APP-IDENTIFIER": SECRET}
+    assert SECRET not in url and SECRET not in str(params) and "app_identifier" not in params
+
+
+def test_rows_older_than_the_history_window_are_not_kept_in_memory(monkeypatch):
+    agent, _ = _hapi_agent(monkeypatch, [{"data": [_hapi_row(2017, 1), _hapi_row(2026, 1)]}])
+    records = run(agent._collect_wfp_prices())
+    assert [r["year"] for r in records] == [2026]
+
+
+def test_when_hapi_fails_the_csv_download_is_tried(monkeypatch):
+    csv_records = [{"year": 2026, "month": 1, "day": 1, "value": 1.0, "source": "WFP", "indicator": "X retail price (WFP)",
+                    "unit": "XAF/KG", "region": "Abeche (Ouaddai)"}]
+    agent, _ = _hapi_agent(monkeypatch, [None], csv_outcome=csv_records)
+    assert run(agent._collect_wfp_prices()) == csv_records
+
+
+def test_when_both_fail_the_message_has_both_reasons_and_no_secret(monkeypatch):
+    agent, _ = _hapi_agent(monkeypatch, [None], csv_outcome=RuntimeError("HDX: could not be downloaded (HTTP 202)"))
+    with pytest.raises(RuntimeError) as info:
+        run(agent._collect_wfp_prices())
+    text = str(info.value)
+    assert "HAPI" in text and "HTTP 500" in text and "CSV fallback" in text and "HTTP 202" in text
+    assert SECRET not in text
+
+
+def test_without_an_identifier_hapi_is_never_called(monkeypatch):
+    agent, seen = _hapi_agent(monkeypatch, [{"data": [_hapi_row(2026, 1)]}], csv_outcome=[{"year": 1}])
+    monkeypatch.setattr("app.agents.markets.settings.hdx_app_identifier", None, raising=False)
+    assert run(agent._collect_wfp_prices()) == [{"year": 1}]
+    assert seen == []
+
+
+def test_an_unexpected_hapi_shape_falls_back(monkeypatch):
+    agent, _ = _hapi_agent(monkeypatch, [{"error": "nope"}], csv_outcome=[{"year": 2}])
+    assert run(agent._collect_wfp_prices()) == [{"year": 2}]

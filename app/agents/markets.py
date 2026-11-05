@@ -8,8 +8,10 @@ from typing import Any
 import httpx
 
 from app.agents.base import BaseAgent, source_terms, wb_years
-from app.agents.wfp_prices import HDX_PACKAGE_ID, HDX_PACKAGE_URL, parse_wfp_csv, pick_csv_urls
+from app.agents.wfp_prices import (HAPI_MAX_PAGES, HAPI_PAGE, HAPI_URL, HDX_PACKAGE_ID, HDX_PACKAGE_URL,
+                                   parse_hapi_prices, parse_wfp_csv, pick_csv_urls)
 from app.agents.fews_prices import FEWS_URL, extract_items, parse_record, resolve_collisions
+from app.config import settings
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -151,10 +153,56 @@ class MarketsAgent(BaseAgent):
     WFP_HISTORY_YEARS = 3
 
     async def _collect_wfp_prices(self) -> list[dict[str, Any]]:
-        """Monthly retail prices by market and product from the WFP file on HDX.
+        """Monthly retail prices by market and product, from the WFP data on HDX.
 
-        Raises when the HDX catalogue or the file cannot be read, so the failure shows up in the
-        run result."""
+        With HDX_APP_IDENTIFIER set, the HDX Humanitarian API (HAPI) is used: HDX now puts a bot
+        challenge in front of the CSV download, but not in front of its API. Without the identifier,
+        or if HAPI fails, the CSV download is tried. Raises when both fail, with both reasons."""
+        identifier = (getattr(settings, "hdx_app_identifier", None) or "").strip()
+        if not identifier:
+            return await self._collect_wfp_csv()
+        try:
+            return await self._collect_wfp_hapi(identifier)
+        except RuntimeError as hapi_exc:
+            try:
+                return await self._collect_wfp_csv()
+            except RuntimeError as csv_exc:
+                raise RuntimeError(f"HAPI: {hapi_exc}; CSV fallback: {csv_exc}") from csv_exc
+
+    async def _collect_wfp_hapi(self, identifier: str) -> list[dict[str, Any]]:
+        """All WFP price rows of Chad from HAPI (it cannot filter by date: it lists everything, by
+        product then market), kept for the last years only. The identifier goes in a header, never in
+        the address, so it cannot end up in a log line."""
+        headers = {"X-HDX-HAPI-APP-IDENTIFIER": identifier}
+        keep_from = datetime.now(UTC).year - self.WFP_HISTORY_YEARS
+        items: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=20.0), follow_redirects=True) as client:
+            for page in range(HAPI_MAX_PAGES):
+                why: list[str] = []
+                payload = await self.fetch_json_with_retry(
+                    client, HAPI_URL,
+                    params={"location_code": "TCD", "output_format": "json", "offset": page * HAPI_PAGE, "limit": HAPI_PAGE},
+                    headers=headers, throttle_seconds=0.2, errors=why)
+                if payload is None:
+                    raise RuntimeError(f"HAPI did not answer on page {page + 1} ({why[0] if why else 'no detail'})")
+                data = payload.get("data") if isinstance(payload, dict) else None
+                if not isinstance(data, list):
+                    raise RuntimeError(f"HAPI answered with an unexpected shape on page {page + 1}")
+                for row in data:
+                    stamp = str(row.get("reference_period_start", ""))[:4] if isinstance(row, dict) else ""
+                    if stamp.isdigit() and int(stamp) >= keep_from:        # the rest is never used: do not hold it
+                        items.append(row)
+                if len(data) < HAPI_PAGE:
+                    break
+        records, skipped = parse_hapi_prices(items, self.WFP_HISTORY_YEARS)
+        if not records:
+            raise RuntimeError("answer read but no usable retail XAF price found")
+        if skipped:
+            logger.info("WFP prices (HAPI): %d row(s) skipped (duplicates, other currency, bad value).", skipped)
+        return records
+
+    async def _collect_wfp_csv(self) -> list[dict[str, Any]]:
+        """The file download from HDX (see _collect_wfp_prices)."""
         async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0), follow_redirects=True) as client:
             reason: list[str] = []
             package = await self.fetch_json_with_retry(

@@ -117,3 +117,16 @@ variables ci-dessous ne sont pas toutes définies (le webhook répond alors 503)
 
 Pour un numéro **public**, Meta exige la vérification de l'entreprise (documents officiels) et un numéro dédié :
 à lancer en parallèle, c'est ce qui prend du temps. Le journal (admin > Assistant) distingue le canal `whatsapp`.
+
+## Prix du PAM (HDX / HAPI)
+
+HDX protège désormais le téléchargement automatique du fichier CSV des prix du PAM (réponse HTTP 202 vide).
+Son API pour les programmes, HAPI, n'est pas concernée. Pour l'utiliser :
+
+1. Créer un identifiant gratuit sur `https://hapi.humdata.org/docs` (« Generate App Identifier »).
+2. L'ajouter dans les variables d'environnement de Render : `HDX_APP_IDENTIFIER` (secret : ne jamais le coller dans
+   un chat, un ticket ou un dépôt). Il est envoyé dans un en-tête, jamais dans l'adresse.
+3. Relancer la collecte du secteur « marchés ».
+
+Sans cet identifiant, ou si HAPI échoue, le collecteur essaie l'ancien téléchargement CSV ; si les deux échouent,
+le résultat de la collecte nomme les deux raisons.
