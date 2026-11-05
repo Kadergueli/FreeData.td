@@ -204,7 +204,9 @@ def _wfp_agent(monkeypatch, package, text):
             errors[:] = ["HTTP 503"]
         return package
 
-    async def fetch_text(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15):
+    async def fetch_text(client, url, params=None, headers=None, max_retries=3, throttle_seconds=0.15, errors=None):
+        if not text and errors is not None:
+            errors[:] = ["HTTP 403"]
         return text
     monkeypatch.setattr(MarketsAgent, "fetch_json_with_retry", staticmethod(fetch_json))
     monkeypatch.setattr(MarketsAgent, "fetch_text_with_retry", staticmethod(fetch_text))
@@ -222,7 +224,7 @@ def test_wfp_collection_end_to_end(monkeypatch):
 @pytest.mark.parametrize("package,text,message", [
     (None, "", "HDX catalogue did not answer .*HTTP 503"),
     ({"result": {"resources": []}}, "", "no CSV file"),
-    ({"result": {"resources": [{"name": "p", "format": "CSV", "url": "https://x/p.csv"}]}}, "", "could not be downloaded"),
+    ({"result": {"resources": [{"name": "p", "format": "CSV", "url": "https://x/p.csv"}]}}, "", "could not be downloaded \\(HTTP 403\\)"),
     ({"result": {"resources": [{"name": "p", "format": "CSV", "url": "https://x/p.csv"}]}}, "date,price\n", "no usable"),
 ])
 def test_wfp_failures_are_explicit(monkeypatch, package, text, message):
@@ -423,3 +425,19 @@ def test_health_and_education_ask_for_their_new_features(monkeypatch, tmp_path):
     health, education = asked["calls"]
     assert health == [osm.HOSPITALS.indicator, osm.PHARMACIES.indicator, osm.WATER_POINTS.indicator]
     assert education == [osm.SCHOOLS.indicator, osm.HIGHER_EDUCATION.indicator]
+
+
+def test_text_fetch_reports_why_it_failed():
+    import httpx
+    from app.agents.base import BaseAgent
+
+    def handler(request):
+        return httpx.Response(403, text="forbidden")
+
+    async def go():
+        reasons: list[str] = []
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            got = await BaseAgent.fetch_text_with_retry(client, "https://x/f.csv", max_retries=1, throttle_seconds=0, errors=reasons)
+        return got, reasons
+    got, reasons = run(go())
+    assert got is None and reasons == ["HTTP 403"]

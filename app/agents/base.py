@@ -183,7 +183,10 @@ class BaseAgent(ABC):
         headers: dict[str, str] | None = None,
         max_retries: int = 3,
         throttle_seconds: float = 0.15,
+        errors: list[str] | None = None,
     ) -> str | None:
+        """GET a text document (CSV...), retrying transient failures. Returns None when it still
+        fails; the reason of the last failure is appended to `errors` so the caller can say WHY."""
         req_headers = {"User-Agent": "FreeData.td Open Data Engine/1.0 (+https://freedata-td.onrender.com)"}
         if headers:
             req_headers.update(headers)
@@ -197,6 +200,8 @@ class BaseAgent(ABC):
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
                     wait_time = _retry_after_seconds(retry_after, default=float(2 ** attempt))
+                    if errors is not None:
+                        errors[:] = ["HTTP 429 (rate limited)"]
                     await asyncio.sleep(wait_time)
                     continue
 
@@ -204,6 +209,11 @@ class BaseAgent(ABC):
                 return response.text
             except (httpx.HTTPStatusError, httpx.RequestError) as exc:
                 logger.warning("HTTP error fetching text from %s: %s", url, exc)
+                if errors is not None:
+                    if isinstance(exc, httpx.HTTPStatusError):
+                        errors[:] = [f"HTTP {exc.response.status_code}"]
+                    else:
+                        errors[:] = [f"{type(exc).__name__}: {str(exc)[:150] or 'no detail'}"]
                 if attempt < max_retries:
                     await asyncio.sleep(1.0)
                 else:

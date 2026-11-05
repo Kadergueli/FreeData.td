@@ -164,9 +164,11 @@ class MarketsAgent(BaseAgent):
             csv_url = pick_csv_url(package)
             if not csv_url:
                 raise RuntimeError("HDX: no CSV file found in the WFP Chad food prices dataset")
-            text = await self.fetch_text_with_retry(client, csv_url, throttle_seconds=0.3)
+            file_reason: list[str] = []
+            text = await self.fetch_text_with_retry(client, csv_url, throttle_seconds=0.3, errors=file_reason)
             if not text:
-                raise RuntimeError("HDX: the WFP price file could not be downloaded")
+                detail = file_reason[0] if file_reason else "empty answer"
+                raise RuntimeError(f"HDX: the WFP price file could not be downloaded ({detail})")
         records, skipped = parse_wfp_csv(text, self.WFP_HISTORY_YEARS)
         if not records:
             raise RuntimeError("WFP price file read but no usable retail XAF price found")
