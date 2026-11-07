@@ -161,6 +161,32 @@ export const OFFICIAL_SOURCES = [
     desc_en: 'Life expectancy, maternal, neonatal and child mortality, immunization, malaria, tuberculosis, HIV, health workforce, nutrition, health spending and access to water, since 2000.'
   },
   {
+    id: 'who-gho',
+    name: 'WHO Global Health Observatory',
+    org_fr: 'Organisation mondiale de la santé (OMS)',
+    org_en: 'World Health Organization (WHO)',
+    sector_fr: 'Santé & Développement Humain',
+    sector_en: 'Health & Human Development',
+    sectorId: 'health',
+    license: 'CC BY-NC-SA 3.0 IGO (non-commercial)',
+    url: 'https://www.who.int/data/gho',
+    desc_fr: 'Séries officielles de l\'OMS pour le Tchad : espérance de vie, mortalité adulte, infantile et maternelle, couverture vaccinale, paludisme, VIH, personnel de santé, dépenses de santé, eau et assainissement.',
+    desc_en: 'Official WHO series for Chad: life expectancy, adult, child and maternal mortality, vaccine coverage, malaria, HIV, health workforce, health spending, water and sanitation.'
+  },
+  {
+    id: 'dhs-program',
+    name: 'DHS Program (Demographic and Health Surveys)',
+    org_fr: 'Programme DHS (ICF), enquêtes démographiques et de santé',
+    org_en: 'The DHS Program (ICF), Demographic and Health Surveys',
+    sector_fr: 'Santé, Éducation & Eau par région',
+    sector_en: 'Health, Education & Water by region',
+    sectorId: 'health',
+    license: 'DHS Program terms of use',
+    url: 'https://dhsprogram.com/data/',
+    desc_fr: 'Indicateurs des enquêtes DHS du Tchad (1997, 2004, 2014), au niveau national et par région : mortalité des enfants, soins prénataux, vaccination, nutrition, paludisme, planification familiale, alphabétisation, eau et électricité des ménages.',
+    desc_en: 'Indicators from Chad\'s DHS surveys (1997, 2004, 2014), national and by region: child mortality, antenatal care, vaccination, nutrition, malaria, family planning, literacy, household water and electricity.'
+  },
+  {
     id: 'world-bank-energy',
     name: 'World Bank Energy (SE4ALL)',
     org_fr: 'Groupe de la Banque Mondiale — Sustainable Energy for All',

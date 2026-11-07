@@ -9,18 +9,18 @@ import httpx
 import asyncio
 
 from app.agents.base import BaseAgent, source_terms, wb_years
+from app.agents.dhs import DHS_INDICATORS, DHS_URL, MAX_PAGES, PAGE, parse_dhs
 from app.agents.osm import HOSPITALS, PHARMACIES, WATER_POINTS, collect_osm_counts
+from app.agents.who_gho import GHO_INDICATORS, GHO_URL, parse_gho
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
 
 
 class HealthAgent(BaseAgent):
-    """Collects public health indicators for Chad from the World Bank API
-    (World Development Indicators, sourced upstream from WHO/UNICEF/national
-    surveys). Reuses the same reliable, keyless, well-documented endpoint
-    already used by EconomyAgent — no dependency on the WHO GHO OData API,
-    which WHO itself has flagged as deprecated since end of 2025."""
+    """Collects public health indicators for Chad: World Bank (WDI), WHO Global Health Observatory
+    (OData API, checked live in Nov 2026), DHS Program survey indicators by region, and
+    OpenStreetMap health facilities."""
 
     sector = "health"
     name = "HealthAgent"
@@ -78,10 +78,17 @@ class HealthAgent(BaseAgent):
         if source == "open-street-map":
             return await self._collect_open_street_map()
 
+        if source == "who-gho":
+            return await self._collect_who_gho()
+
+        if source == "dhs":
+            return await self._collect_dhs()
+
         if source in ("all", "auto"):
-            names = ("world-bank", "open-street-map")
+            names = ("world-bank", "who-gho", "dhs", "open-street-map")
             results = await asyncio.gather(
-                self._collect_world_bank(), self._collect_open_street_map(), return_exceptions=True)
+                self._collect_world_bank(), self._collect_who_gho(), self._collect_dhs(),
+                self._collect_open_street_map(), return_exceptions=True)
             combined: list[dict[str, Any]] = []
             for name, res in zip(names, results):
                 if isinstance(res, list):
@@ -91,7 +98,52 @@ class HealthAgent(BaseAgent):
                     self.note_source_failure(name, res)
             return combined
 
-        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'open-street-map', 'demo'.")
+        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'who-gho', 'dhs', 'open-street-map', 'demo'.")
+
+    async def _collect_who_gho(self) -> list[dict[str, Any]]:
+        """WHO Global Health Observatory series for Chad. One indicator failing is listed in the run
+        errors without hiding the others; nothing at all raises so the run reports the failure."""
+        records: list[dict[str, Any]] = []
+        failed: list[str] = []
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            for code in GHO_INDICATORS:
+                reason: list[str] = []
+                payload = await self.fetch_json_with_retry(
+                    client, f"{GHO_URL}/{code}", params={"$filter": f"SpatialDim eq '{self.CHAD_ISO3}'"},
+                    throttle_seconds=0.2, errors=reason)
+                parsed = parse_gho(payload, code) if payload is not None else []
+                if parsed:
+                    records.extend(parsed)
+                else:
+                    failed.append(f"{code} ({reason[0] if reason else 'no data for Chad'})")
+        if failed:
+            self.source_errors.append(f"WHO GHO: {len(failed)}/{len(GHO_INDICATORS)} series empty: {'; '.join(failed[:4])}")
+        if not records:
+            raise RuntimeError("WHO GHO returned nothing")
+        return records
+
+    async def _collect_dhs(self) -> list[dict[str, Any]]:
+        """DHS Program survey indicators for Chad: national and by region (surveys 1997, 2004, 2014)."""
+        records: list[dict[str, Any]] = []
+        ids = ",".join(DHS_INDICATORS)
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            for breakdown in ("national", "subnational"):
+                page, pages = 1, 1
+                while page <= min(pages, MAX_PAGES):
+                    reason: list[str] = []
+                    payload = await self.fetch_json_with_retry(
+                        client, DHS_URL, params={"countryIds": "TD", "indicatorIds": ids, "breakdown": breakdown,
+                                                "perpage": PAGE, "page": page, "f": "json"},
+                        throttle_seconds=0.3, errors=reason)
+                    if payload is None:
+                        self.source_errors.append(f"DHS {breakdown} page {page}: {reason[0] if reason else 'no answer'}")
+                        break
+                    records.extend(parse_dhs(payload))
+                    pages = int(payload.get("TotalPages", 1) or 1) if isinstance(payload, dict) else 1
+                    page += 1
+        if not records:
+            raise RuntimeError("DHS Program returned nothing")
+        return records
 
     async def _collect_open_street_map(self) -> list[dict[str, Any]]:
         """Mapped hospitals and clinics, pharmacies and water points per region (OpenStreetMap contributors)."""
