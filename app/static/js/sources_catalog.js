@@ -224,6 +224,19 @@ export const OFFICIAL_SOURCES = [
     url: 'https://data.worldbank.org/topic/infrastructure',
     desc_fr: 'Abonnements mobiles et haut débit, utilisateurs d\'Internet, téléphonie fixe, serveurs sécurisés et part des biens et services TIC dans les échanges du Tchad, depuis 2000.',
     desc_en: 'Mobile and broadband subscriptions, Internet users, fixed telephony, secure servers and the share of ICT goods and services in Chad\'s trade, since 2000.'
+  },
+  {
+    id: 'world-bank-trade',
+    name: 'World Bank Trade (WITS, UN Comtrade)',
+    org_fr: 'Groupe de la Banque Mondiale, données du système WITS et de la base UN Comtrade',
+    org_en: 'World Bank Group, data from WITS and the UN Comtrade database',
+    sector_fr: 'Commerce extérieur',
+    sector_en: 'Foreign Trade',
+    sectorId: 'trade',
+    license: 'CC BY 4.0 Open Data',
+    url: 'https://data.worldbank.org/topic/trade',
+    desc_fr: 'Valeur des exportations et importations de marchandises du Tchad et leur composition (pétrole, alimentation, matières premières agricoles, minerais), termes de l\'échange, depuis 2000.',
+    desc_en: 'Value of Chad\'s merchandise exports and imports and their composition (fuel, food, agricultural raw materials, ores), terms of trade, since 2000.'
   }
 ];
 

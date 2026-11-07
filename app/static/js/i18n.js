@@ -116,6 +116,7 @@ const TRANSLATIONS = {
         energy:      'ÉNERGIE',
         demography:  'DÉMOGRAPHIE',
         telecom:    'TÉLÉCOMS',
+        trade:      'COMMERCE',
       },
     },
 
@@ -212,6 +213,7 @@ const TRANSLATIONS = {
         education:   'ÉDUCATION',
         demography:  'DÉMOGRAPHIE',
         telecom:    'TÉLÉCOMS',
+        trade:      'COMMERCE',
       },
       ds: {
         freshness_title:    'Fraîcheur des Données par Secteur',
@@ -657,6 +659,7 @@ const TRANSLATIONS = {
         energy:      'ENERGY',
         demography:  'DEMOGRAPHY',
         telecom:    'TELECOM',
+        trade:      'TRADE',
       },
     },
 
@@ -749,6 +752,7 @@ const TRANSLATIONS = {
         education:   'EDUCATION',
         demography:  'DEMOGRAPHY',
         telecom:    'TELECOM',
+        trade:      'TRADE',
       },
       ds: {
         freshness_title:    'Data Freshness by Sector',

@@ -34,7 +34,7 @@ def test_recent_collection_is_skipped_and_old_one_is_due():
     runs = [_run(SECTOR_IDS, 24 * 3)]   # everything collected 3 days ago
     due, skipped = split_due(runs, list(SECTOR_IDS), NOW)
     assert set(due) == {"environment", "agriculture"}               # daily ones
-    assert set(skipped) == {"markets", "transport", "health", "education", "economy", "energy", "demography", "telecom"}
+    assert set(skipped) == {"markets", "transport", "health", "education", "economy", "energy", "demography", "telecom", "trade"}
 
 
 def test_weekly_and_monthly_become_due_on_time():

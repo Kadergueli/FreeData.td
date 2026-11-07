@@ -31,6 +31,7 @@ function getSectorsFilter() {
     { id: 'economy', label: t('sectors.names.economy') },
     { id: 'demography', label: t('sectors.names.demography') },
     { id: 'telecom', label: t('sectors.names.telecom') },
+    { id: 'trade', label: t('sectors.names.trade') },
   ];
 }
 

@@ -4,12 +4,12 @@ import asyncio
 import pytest
 
 from app.agents import (AgricultureAgent, DemographyAgent, EconomyAgent, EducationAgent, EnergyAgent, HealthAgent,
-                        MarketsAgent, TelecomAgent, TransportAgent)
+                        MarketsAgent, TelecomAgent, TradeAgent, TransportAgent)
 from app.agents.base import BaseAgent
 from app.services.storage import ObservationRepository
 
 AGENTS = [AgricultureAgent, DemographyAgent, EconomyAgent, EducationAgent, EnergyAgent, HealthAgent,
-          MarketsAgent, TelecomAgent, TransportAgent]
+          MarketsAgent, TelecomAgent, TradeAgent, TransportAgent]
 # Inflation has been collected twice for a long time (economy and markets, under two names); known, not new.
 KNOWN_OVERLAP = {"FP.CPI.TOTL.ZG"}
 
@@ -69,3 +69,17 @@ def test_telecom_demo_and_unknown_source(tmp_path):
     assert asyncio.run(TelecomAgent(repo).run("demo")).stored == 1
     with pytest.raises(ValueError, match="Unknown source"):
         asyncio.run(TelecomAgent(repo).collect("nope"))
+
+
+def test_trade_collects_its_table_and_stores_under_its_own_sector(monkeypatch, tmp_path):
+    seen = []
+
+    async def fake_fetch(client, url, params=None, **kw):
+        seen.append(url)
+        return [{"page": 1}, [{"date": "2022", "value": 3.1e9}, {"date": "2021", "value": None}]]
+    monkeypatch.setattr(BaseAgent, "fetch_json_with_retry", staticmethod(fake_fetch))
+    repo = ObservationRepository(database_path=tmp_path / "t.db")
+    result = asyncio.run(TradeAgent(repo).run("world-bank"))
+    rows = repo.list_observations(sector="trade", limit=500)
+    assert len(seen) == len(TradeAgent.WORLD_BANK_INDICATORS) and result.stored == len(seen)
+    assert {r["sector"] for r in rows} == {"trade"}
