@@ -14,6 +14,7 @@ from app.agents import (
     EnvironmentAgent,
     HealthAgent,
     MarketsAgent,
+    TelecomAgent,
     TransportAgent,
 )
 from app.services.cadence import split_due
@@ -182,6 +183,7 @@ class AutonomousHarvesterScheduler:
             ("transport", TransportAgent(self.repository)),
             ("education", EducationAgent(self.repository)),
             ("demography", DemographyAgent(self.repository)),
+            ("telecom", TelecomAgent(self.repository)),
         ]
 
         wanted = self._next_sectors

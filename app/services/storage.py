@@ -15,7 +15,7 @@ from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
 
-SECTOR_IDS = ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy", "demography"]
+SECTOR_IDS = ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy", "demography", "telecom"]
 
 # --- Small process-wide TTL cache for expensive, read-mostly aggregates -----
 # catalog()/list_regions() each pull thousands of rows from Supabase and

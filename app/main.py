@@ -22,6 +22,7 @@ from app.agents import (
     EnvironmentAgent,
     HealthAgent,
     MarketsAgent,
+    TelecomAgent,
     TransportAgent,
 )
 from app.agents.ds_insights import (
@@ -470,6 +471,16 @@ async def collect_education(source: str = "all") -> dict:
 async def collect_demography(source: str = "all") -> dict:
     try:
         return (await DemographyAgent(repository).run(source)).model_dump(mode="json")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/collection/telecom", status_code=202, dependencies=[Depends(require_collection_access)])
+async def collect_telecom(source: str = "all") -> dict:
+    try:
+        return (await TelecomAgent(repository).run(source)).model_dump(mode="json")
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:

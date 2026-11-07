@@ -19,8 +19,8 @@ from app.services.storage import SECTOR_IDS, ObservationRepository
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static" / "js"
 
 
-def test_nine_sectors_including_demography():
-    assert len(SECTOR_IDS) == 9 and "demography" in SECTOR_IDS
+def test_ten_sectors_including_demography_and_telecom():
+    assert len(SECTOR_IDS) == 10 and {"demography", "telecom"} <= set(SECTOR_IDS)
 
 
 def test_schema_cadence_and_scheduler_cover_every_sector():

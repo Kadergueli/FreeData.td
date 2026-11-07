@@ -211,6 +211,19 @@ export const OFFICIAL_SOURCES = [
     url: 'https://www.unhcr.org/refugee-statistics',
     desc_fr: 'Réfugiés et demandeurs d\'asile accueillis au Tchad par pays d\'origine, déplacés internes et réfugiés tchadiens à l\'étranger, par année.',
     desc_en: 'Refugees and asylum seekers hosted in Chad by country of origin, internally displaced people, and Chadian refugees abroad, by year.'
+  },
+  {
+    id: 'world-bank-telecom',
+    name: 'World Bank Digital Development (ICT)',
+    org_fr: 'Groupe de la Banque Mondiale, données de l\'Union internationale des télécommunications (UIT)',
+    org_en: 'World Bank Group, data from the International Telecommunication Union (ITU)',
+    sector_fr: 'Télécommunications',
+    sector_en: 'Telecommunications',
+    sectorId: 'telecom',
+    license: 'CC BY 4.0 Open Data',
+    url: 'https://data.worldbank.org/topic/infrastructure',
+    desc_fr: 'Abonnements mobiles et haut débit, utilisateurs d\'Internet, téléphonie fixe, serveurs sécurisés et part des biens et services TIC dans les échanges du Tchad, depuis 2000.',
+    desc_en: 'Mobile and broadband subscriptions, Internet users, fixed telephony, secure servers and the share of ICT goods and services in Chad\'s trade, since 2000.'
   }
 ];
 

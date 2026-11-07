@@ -38,9 +38,7 @@ class EconomyAgent(BaseAgent):
         "SL.TLF.CACT.FE.ZS": ("Female labour force participation", "% of women ages 15+"),
         # Oil (exports, imports and FDI are collected by MarketsAgent: not repeated here)
         "NY.GDP.PETR.RT.ZS": ("Oil rents", "% of GDP"),
-        # Digital access and gender
-        "IT.NET.USER.ZS": ("Individuals using the Internet", "% of population"),
-        "IT.CEL.SETS.P2": ("Mobile cellular subscriptions", "per 100 people"),
+        # Gender (internet and mobile subscriptions moved to TelecomAgent)
         "SG.GEN.PARL.ZS": ("Seats held by women in national parliament", "% of seats"),
     }
 

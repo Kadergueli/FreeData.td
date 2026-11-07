@@ -24,6 +24,7 @@ function getKnownSectors() {
     { id: 'education', icon: 'graduation-cap', name: t('sectors.names.education') },
     { id: 'economy', icon: 'trending-up', name: t('sectors.names.economy') },
     { id: 'demography', icon: 'users', name: t('sectors.names.demography') },
+    { id: 'telecom', icon: 'radio-tower', name: t('sectors.names.telecom') },
   ];
 }
 

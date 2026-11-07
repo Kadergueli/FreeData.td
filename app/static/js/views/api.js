@@ -20,7 +20,7 @@ let selectedRegion = 'all';
 let _downloading = false;
 
 const FORMATS = ['JSON', 'CSV', 'XML', 'PARQUET'];
-const SECTOR_IDS = ['all', 'agriculture', 'environment', 'markets', 'health', 'energy', 'economy', 'transport', 'education', 'demography'];
+const SECTOR_IDS = ['all', 'agriculture', 'environment', 'markets', 'health', 'energy', 'economy', 'transport', 'education', 'demography', 'telecom'];
 
 // All 23 official administrative regions of Chad (ISO 3166-2:TD), spelled WITHOUT accents exactly like the
 // region names stored with the data (FEWS NET, INSEED): an accented filter would match nothing.

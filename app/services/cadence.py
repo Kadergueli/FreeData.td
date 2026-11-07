@@ -20,6 +20,7 @@ SECTOR_CADENCE_DAYS: dict[str, int] = {
     "economy": 30,
     "energy": 30,
     "demography": 30,   # censuses and projections: yearly at best
+    "telecom": 30,
 }
 DEFAULT_CADENCE_DAYS = 1
 # A daily run starts a few minutes after the previous one: without this margin a sector

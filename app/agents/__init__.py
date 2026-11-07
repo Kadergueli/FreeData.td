@@ -8,6 +8,7 @@ from .environment import EnvironmentAgent
 from .health import HealthAgent
 from .markets import MarketsAgent
 from .transport import TransportAgent
+from .telecom import TelecomAgent
 
 __all__ = [
     "AgricultureAgent",
@@ -20,4 +21,5 @@ __all__ = [
     "HealthAgent",
     "MarketsAgent",
     "TransportAgent",
+    "TelecomAgent",
 ]

@@ -7,7 +7,7 @@ from app.regions import canonical_region
 
 
 class ObservationCreate(BaseModel):
-    sector: Literal["agriculture", "markets", "transport", "education", "environment", "economy", "health", "energy", "demography"]
+    sector: Literal["agriculture", "markets", "transport", "education", "environment", "economy", "health", "energy", "demography", "telecom"]
     indicator: str = Field(min_length=2, max_length=120)
     value: float
     unit: str = Field(min_length=1, max_length=40)
