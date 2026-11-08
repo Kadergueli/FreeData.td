@@ -19,6 +19,8 @@ const TRANSLATIONS = {
       status:     'Statut',
       terms:      'Conditions & Licence',
       admin:      'Administration',
+      install:    'Installer',
+      install_ios: 'Sur iPhone/iPad : appuyez sur Partager puis « Sur l\'écran d\'accueil ».',
     },
 
     // ── Common ──
@@ -51,7 +53,7 @@ const TRANSLATIONS = {
     // ── Footer ──
     footer: {
       text: 'FreeData.td — Infrastructure de Données Ouvertes pour le Tchad',
-      node: 'Nœud National : TD-PROD-01',
+      node: 'Licence Ouverte CC BY 4.0 · CSV / JSON / Parquet',
     },
 
     // ── Home ──
@@ -298,6 +300,8 @@ const TRANSLATIONS = {
       docs: [
         { id: 'swagger', icon: 'file-text',  name: 'Spécification API OpenAPI et Swagger', desc: 'Spécifications complètes des points d\'accès et schémas interactifs au /docs', link: '/docs' },
         { id: 'redoc',   icon: 'book-open',  name: 'Documentation ReDoc',                desc: 'Documentation ReDoc et visionneuse de schémas au /redoc', link: '/redoc' },
+        { id: 'jsonld',  icon: 'share-2',    name: 'Catalogue Schema.org (JSON-LD)',       desc: 'Catalogue standardisé des jeux de données (Google Dataset Search) à /api/v1/catalog.jsonld', link: '/api/v1/catalog.jsonld' },
+        { id: 'dcat',    icon: 'database',   name: 'Catalogue DCAT-AP (HDX / OpenDataSoft)', desc: 'Point d\'entrée de moissonnage automatique DCAT-AP à /api/v1/catalog.dcat.json', link: '/api/v1/catalog.dcat.json' },
         { id: 'health',  icon: 'activity',   name: 'Point d\'Accès Santé Système',       desc: 'Tester le statut live du système à /api/v1/health', link: '/api/v1/health' },
       ],
     },
@@ -570,6 +574,8 @@ const TRANSLATIONS = {
       status:     'Status',
       terms:      'Terms & License',
       admin:      'Administration',
+      install:    'Install App',
+      install_ios: 'On iPhone/iPad: tap Share then “Add to Home Screen”.',
     },
     common: {
       active:      'ACTIVE',
@@ -598,7 +604,7 @@ const TRANSLATIONS = {
     },
     footer: {
       text: 'FreeData.td — Open Data Infrastructure for Chad',
-      node: 'National Node: TD-PROD-01',
+      node: 'CC BY 4.0 Open License · CSV / JSON / Parquet',
     },
     home: {
       title:        'OPEN DATA INFRASTRUCTURE FOR CHAD',
@@ -835,6 +841,8 @@ const TRANSLATIONS = {
       docs: [
         { id: 'swagger', icon: 'file-text', name: 'OpenAPI and Swagger Specification', desc: 'Full endpoint specifications, interactive schemas & try-it-out at /docs', link: '/docs' },
         { id: 'redoc',   icon: 'book-open', name: 'ReDoc Documentation',                 desc: 'Clean ReDoc documentation & schema viewer at /redoc', link: '/redoc' },
+        { id: 'jsonld',  icon: 'share-2',   name: 'Schema.org Dataset Catalog (JSON-LD)', desc: 'Standardized dataset catalog (Google Dataset Search) at /api/v1/catalog.jsonld', link: '/api/v1/catalog.jsonld' },
+        { id: 'dcat',    icon: 'database',  name: 'DCAT-AP Catalog (HDX / OpenDataSoft)', desc: 'Automated harvesting endpoint in DCAT-AP format at /api/v1/catalog.dcat.json', link: '/api/v1/catalog.dcat.json' },
         { id: 'health',  icon: 'activity',  name: 'System Health Check Endpoint',          desc: 'Test API system status live at /api/v1/health', link: '/api/v1/health' },
       ],
     },

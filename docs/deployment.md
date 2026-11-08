@@ -25,6 +25,24 @@ secrets dans GitHub (Settings > Secrets and variables > Actions) :
 
 Lancement manuel : onglet Actions > « Daily harvest (sectors that are due) » > Run workflow.
 
+## Maintien en éveil (Cold Starts Render & WhatsApp) et Cache CDN (Cloudflare)
+
+1. **Prévention des Cold Starts (`.github/workflows/keep_warm.yml`)** :
+   - Sur l'offre gratuite de Render, le conteneur passe en veille après 15 minutes d'inactivité (30 à 50 s de redémarrage, ce qui provoque des timeouts sur les webhooks WhatsApp de Meta limités à ~15–20 s).
+   - Le workflow `.github/workflows/keep_warm.yml` effectue un ping `GET /api/v1/health` toutes les 10 minutes entre **06h00 et 22h00 UTC** (07h00–23h00 heure du Tchad) en utilisant le secret `APP_URL`, ce qui maintient l'instance chaude toute la journée sans dépasser le quota gratuit de 750 h/mois (~496 h/mois actives).
+   - Pour une cadence garantie à la minute près (les crons GitHub Actions pouvant fluctuer de quelques minutes en période de forte charge), ajoutez également une sonde gratuite **UptimeRobot** ou **Better Stack** toutes les 10 minutes sur `https://<votre-site>/api/v1/health` (fenêtre 06h00–22h00 UTC).
+
+2. **Mise en cache CDN en amont (Cloudflare)** :
+   - Les endpoints publics de lecture (`/api/v1/observations`, `/api/v1/stats`, `/api/v1/catalog`, `/api/v1/catalog.jsonld`, `/api/v1/catalog.dcat.json`, `/api/v1/regions`, `/api/v1/sources/freshness`, `/api/v1/export/*`, `/sitemap.xml`) émettent l'en-tête `Cache-Control: public, max-age=3600` (1 heure), tandis que `/api/v1/health` et `/api/v1/collection/scheduler-status` émettent `Cache-Control: no-store`.
+   - En plaçant votre domaine derrière **Cloudflare** (mode Proxy activé + Cache Rule « Respect Origin Cache-Control » pour `/api/v1/*` et `/sitemap.xml`), 80 % à 90 % des lectures de prix des marchés, de météo et d'exports sont servies directement par le CDN sans solliciter la RAM (512 Mo) ni la bande passante de Render.
+
+## Découvrabilité SEO & Moissonnage Open Data (Google Dataset Search, HDX, OpenDataSoft)
+
+- **`/sitemap.xml` & `/robots.txt`** : listent le portail, la documentation et les jeux de données des 9 secteurs pour l'indexation par les moteurs de recherche.
+- **`/api/v1/catalog.jsonld`** : catalogue complet au standard **schema.org/DataCatalog & Dataset** (JSON-LD) pour Google Dataset Search.
+- **`/api/v1/catalog.dcat.json`** : catalogue complet au standard **DCAT-AP** (JSON-LD) pour le moissonnage automatique par HDX, OpenDataSoft et CKAN.
+- **Balisage statique initial (`index.html`)** : inclut les métadonnées Microdata `schema.org/DataCatalog` et un bloc `<noscript>` listant les téléchargements directs CSV/Parquet de chaque secteur pour les robots qui n'exécutent pas JavaScript.
+
 ## Espace administrateur (`#/admin`)
 
 1. Supabase : exécuter `supabase/admin_setup.sql` (tables `table_admins` et `table_admin_audit`).

@@ -29,3 +29,50 @@ def test_index_does_not_load_unpinned_cdn_or_chartjs_eagerly():
     assert "@latest" not in html
     assert "chart.js" not in html  # loaded on demand by charts.js
     assert 'href="#/data"' in html
+    assert 'href="/static/favicon.svg"' in html
+    assert 'itemtype="https://schema.org/DataCatalog"' in html
+
+
+def test_favicon_and_discoverability_endpoints():
+    for path, ctype in (
+        ("/favicon.ico", "image/x-icon"),
+        ("/static/favicon.ico", "image/x-icon"),
+        ("/static/favicon.png", "image/png"),
+        ("/static/icon-192.png", "image/png"),
+        ("/static/icon-512.png", "image/png"),
+        ("/static/icon-maskable-512.png", "image/png"),
+        ("/static/favicon.svg", "image/svg+xml"),
+        ("/manifest.webmanifest", "application/manifest+json"),
+        ("/sw.js", "application/javascript"),
+        ("/sitemap.xml", "application/xml"),
+        ("/robots.txt", "text/plain"),
+        ("/api/v1/catalog.jsonld", "application/ld+json"),
+        ("/api/v1/catalog.dcat.json", "application/ld+json"),
+    ):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert ctype in r.headers["content-type"], (path, r.headers["content-type"])
+        assert len(r.content) > 50, path
+
+    jsonld = client.get("/api/v1/catalog.jsonld").json()
+    assert jsonld["@type"] == "DataCatalog"
+    assert len(jsonld["dataset"]) == 9
+
+    dcat = client.get("/api/v1/catalog.dcat.json").json()
+    assert dcat["@type"] == "dcat:Catalog"
+    assert len(dcat["dcat:dataset"]) == 9
+
+
+def test_public_read_endpoints_emit_cdn_cache_control_and_health_is_no_store():
+    obs = client.get("/api/v1/observations?limit=5")
+    assert obs.status_code == 200
+    assert obs.headers.get("cache-control") == "public, max-age=3600"
+
+    stats = client.get("/api/v1/stats")
+    assert stats.status_code == 200
+    assert stats.headers.get("cache-control") == "public, max-age=3600"
+
+    health = client.get("/api/v1/health")
+    assert health.status_code == 200
+    assert health.headers.get("cache-control") == "no-store"
+

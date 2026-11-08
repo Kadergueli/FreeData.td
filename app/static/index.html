@@ -6,6 +6,23 @@
   <title>FreeData.td — Open Data Infrastructure for Chad</title>
   <meta name="description" content="Making Chad's public data accessible, reliable, and useful for everyone.">
 
+  <!-- Favicon & PWA (Official FD Logo) -->
+  <meta name="theme-color" content="#2563eb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FreeData.td">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" sizes="192x192" href="/static/apple-touch-icon.png">
+
+  <!-- Open Data Discoverability (Sitemap, Schema.org/Dataset JSON-LD & DCAT-AP) -->
+  <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
+  <link rel="alternate" type="application/ld+json" title="Schema.org DataCatalog (JSON-LD)" href="/api/v1/catalog.jsonld">
+  <link rel="alternate" type="application/ld+json" title="DCAT-AP Catalog (JSON-LD)" href="/api/v1/catalog.dcat.json">
+
   <!-- Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,6 +46,10 @@
 
       <!-- Desktop header actions -->
       <div class="header-actions">
+        <button class="btn btn-ghost lang-toggle" id="pwa-install-btn" hidden aria-label="Install App" title="Installer l'application sur téléphone ou ordinateur / Install App">
+          <i data-lucide="download" style="width:14px;height:14px;"></i>
+          <span data-i18n="nav.install">Installer</span>
+        </button>
         <button class="btn btn-ghost lang-toggle" id="lang-toggle" aria-label="Switch language" title="Changer de langue / Switch language">
           <i data-lucide="globe" style="width:14px;height:14px;"></i>
           <span id="lang-label">EN</span>
@@ -76,20 +97,111 @@
     <div class="mobile-nav-overlay" id="mobile-nav-overlay"></div>
 
     <main class="app-main" id="app-main">
-      <!-- Dynamic View content rendered by Router -->
+      <!-- Dynamic View content rendered by Router; <noscript> provides static links for non-JS harvesters -->
+      <noscript>
+        <section>
+          <h1>FreeData.td — Open Socioeconomic Data Catalog for Chad (Tchad)</h1>
+          <p>Direct tabular downloads (CC BY 4.0) and standardized metadata feeds:</p>
+          <ul>
+            <li><a href="/api/v1/catalog.jsonld">Schema.org DataCatalog &amp; Datasets (JSON-LD)</a></li>
+            <li><a href="/api/v1/catalog.dcat.json">DCAT-AP Catalog for HDX / OpenDataSoft (JSON-LD)</a></li>
+            <li><a href="/sitemap.xml">XML Sitemap</a> · <a href="/docs">OpenAPI Documentation</a></li>
+            <li><a href="/api/v1/export/csv?sector=agriculture">Agriculture (CSV)</a> · <a href="/api/v1/export/parquet?sector=agriculture">Parquet</a></li>
+            <li><a href="/api/v1/export/csv?sector=markets">Markets &amp; Food Prices (CSV)</a> · <a href="/api/v1/export/parquet?sector=markets">Parquet</a></li>
+            <li><a href="/api/v1/export/csv?sector=environment">Climate &amp; Environment (CSV)</a> · <a href="/api/v1/export/parquet?sector=environment">Parquet</a></li>
+            <li><a href="/api/v1/export/csv?sector=economy">Macroeconomy (CSV)</a> · <a href="/api/v1/export/parquet?sector=economy">Parquet</a></li>
+            <li><a href="/api/v1/export/csv?sector=health">Public Health (CSV)</a> · <a href="/api/v1/export/parquet?sector=health">Parquet</a></li>
+            <li><a href="/api/v1/export/csv?sector=energy">Energy &amp; Electrification (CSV)</a> · <a href="/api/v1/export/parquet?sector=energy">Parquet</a></li>
+            <li><a href="/api/v1/export/csv?sector=transport">Transport &amp; Airports (CSV)</a> · <a href="/api/v1/export/parquet?sector=transport">Parquet</a></li>
+            <li><a href="/api/v1/export/csv?sector=education">Education (CSV)</a> · <a href="/api/v1/export/parquet?sector=education">Parquet</a></li>
+            <li><a href="/api/v1/export/csv?sector=demography">Demography &amp; Population (CSV)</a> · <a href="/api/v1/export/parquet?sector=demography">Parquet</a></li>
+          </ul>
+        </section>
+      </noscript>
     </main>
+
+    <!-- Static Schema.org DataCatalog & Dataset Microdata for crawlers that do not execute JavaScript -->
+    <div id="seo-datacatalog" itemscope itemtype="https://schema.org/DataCatalog" hidden>
+      <meta itemprop="name" content="FreeData.td — Open Data Infrastructure for Chad">
+      <meta itemprop="description" content="Open socioeconomic, agricultural, climate, market price, health, energy, transport, education, and demographic datasets for the Republic of Chad (Tchad).">
+      <link itemprop="url" href="/">
+      <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Agriculture &amp; Crop Production Dataset (Tchad)">
+        <meta itemprop="description" content="Agricultural production, cereal yields, arable land, and agro-meteorology in Chad (World Bank, FAOSTAT, NASA POWER, Open-Meteo).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=agriculture">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=agriculture"></div>
+      </div>
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Market Prices &amp; Food Security Dataset (Tchad)">
+        <meta itemprop="description" content="Retail and wholesale food commodity prices (millet, sorghum, maize, rice, groundnuts, livestock) across Chad markets (FEWS NET, WFP HDX, FAOSTAT).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=markets">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=markets"></div>
+      </div>
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Climate, Weather &amp; Environment Dataset (Tchad)">
+        <meta itemprop="description" content="Meteorological observations, rainfall, temperature, solar radiation, and active fire detections across Chad provinces (Open-Meteo, NASA POWER, NASA FIRMS).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=environment">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=environment"></div>
+      </div>
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Macroeconomic Indicators Dataset (Tchad)">
+        <meta itemprop="description" content="GDP, economic growth, inflation, public debt, and trade indicators for Chad (World Bank WDI, IMF WEO).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=economy">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=economy"></div>
+      </div>
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Public Health &amp; Facilities Dataset (Tchad)">
+        <meta itemprop="description" content="Public health indicators, life expectancy, mortality, immunization, and health facility mapping across Chad provinces (World Bank, OpenStreetMap).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=health">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=health"></div>
+      </div>
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Energy &amp; Electrification Dataset (Tchad)">
+        <meta itemprop="description" content="Electricity access rates (urban, rural, national) and renewable energy indicators for Chad (World Bank).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=energy">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=energy"></div>
+      </div>
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Transport &amp; Airport Infrastructure Dataset (Tchad)">
+        <meta itemprop="description" content="Airports, airstrips, runways, and transport logistics indicators in Chad (OurAirports, Open-Meteo, World Bank).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=transport">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=transport"></div>
+      </div>
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Education &amp; Schools Dataset (Tchad)">
+        <meta itemprop="description" content="Literacy, enrollment rates, gender parity, and school locations across Chad (UNESCO UIS, UNICEF, OpenStreetMap, World Bank).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=education">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=education"></div>
+      </div>
+      <div itemprop="dataset" itemscope itemtype="https://schema.org/Dataset">
+        <meta itemprop="name" content="Chad Demography, Population &amp; Displacement Dataset (Tchad)">
+        <meta itemprop="description" content="Population by age, sex, urban/rural residence, fertility, and displaced populations in Chad (INSEED, World Bank WDI, UNHCR).">
+        <link itemprop="license" href="https://creativecommons.org/licenses/by/4.0/">
+        <link itemprop="url" href="/api/v1/observations?sector=demography">
+        <div itemprop="distribution" itemscope itemtype="https://schema.org/DataDownload"><meta itemprop="encodingFormat" content="text/csv"><link itemprop="contentUrl" href="/api/v1/export/csv?sector=demography"></div>
+      </div>
+    </div>
 
     <footer class="app-footer" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
       <span class="mono-xs text-muted" data-i18n="footer.text">FreeData.td — Infrastructure de Données Ouvertes pour le Tchad</span>
       <div style="display:flex;align-items:center;gap:16px;">
         <a class="mono-xs text-cyan" id="footer-terms-btn" href="#/terms" style="text-decoration:underline;" data-i18n="nav.terms">Conditions &amp; Licence</a>
         <a class="mono-xs text-muted" id="footer-admin-link" href="#/admin" data-i18n="nav.admin" style="text-decoration:none;">Administration</a>
-        <span class="mono-xs" data-i18n="footer.node">Nœud National : TD-PROD-01</span>
+        <span class="mono-xs" data-i18n="footer.node">Licence Ouverte CC BY 4.0 · CSV / JSON / Parquet</span>
       </div>
     </footer>
   </div>
 
   <!-- SPA Module Entry Point -->
-  <script type="module" src="/static/js/app.js?v=0.2.6"></script>
+  <script type="module" src="/static/js/app.js?v=0.2.7"></script>
 </body>
 </html>

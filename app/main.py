@@ -37,6 +37,16 @@ from app.admin import router as admin_router
 from app.whatsapp import router as whatsapp_router
 from app.config import settings
 from app.security import read_limit_exceeded, require_analysis_rate_limit, require_collection_access
+from app.services.discoverability import (
+    FAVICON_ICO,
+    FAVICON_PNG,
+    ICON_192_PNG,
+    ICON_512_PNG,
+    ICON_MASKABLE_512_PNG,
+    build_dcat_ap_catalog,
+    build_schema_org_catalog,
+    build_sitemap_xml,
+)
 from app.services.export import (
     observations_to_csv,
     observations_to_parquet,
@@ -124,6 +134,19 @@ class ReadRateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+_CDN_CACHEABLE_PREFIXES = (
+    "/api/v1/observations",
+    "/api/v1/stats",
+    "/api/v1/catalog",
+    "/api/v1/regions",
+    "/api/v1/sources/freshness",
+    "/api/v1/pipeline/audit",
+    "/api/v1/insights/cross-sector",
+    "/api/v1/export/",
+    "/sitemap.xml",
+)
+
+
 class NoCacheJSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
@@ -132,6 +155,19 @@ class NoCacheJSMiddleware(BaseHTTPMiddleware):
             # "no-cache" = always revalidate (ETag/Last-Modified -> cheap 304),
             # instead of "no-store" which re-downloaded every file on every load.
             response.headers["Cache-Control"] = "no-cache"
+        elif path in ("/api/v1/health", "/api/v1/collection/scheduler-status"):
+            # Live health & harvest probes must never be cached by an upstream CDN (Cloudflare),
+            # otherwise keep-warm pings would not wake a sleeping Render instance.
+            response.headers["Cache-Control"] = "no-store"
+        elif (
+            request.method == "GET"
+            and response.status_code == 200
+            and "Cache-Control" not in response.headers
+            and path.startswith(_CDN_CACHEABLE_PREFIXES)
+        ):
+            # Allow upstream CDN (Cloudflare) and browsers to cache public data reads for 1 hour,
+            # offloading 80-90% of read traffic from Render's 512 MB RAM and bandwidth limits.
+            response.headers["Cache-Control"] = "public, max-age=3600"
         return response
 
 repository = ObservationRepository()
@@ -152,6 +188,93 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 @app.get("/", include_in_schema=False)
 def dashboard() -> FileResponse:
     return FileResponse(DASHBOARD, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/static/favicon.ico", include_in_schema=False)
+def favicon_ico() -> Response:
+    return Response(
+        content=FAVICON_ICO,
+        media_type="image/x-icon",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/static/favicon.png", include_in_schema=False)
+def favicon_png() -> Response:
+    return Response(
+        content=FAVICON_PNG,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/static/apple-touch-icon.png", include_in_schema=False)
+@app.get("/static/icon-192.png", include_in_schema=False)
+def pwa_icon_192() -> Response:
+    return Response(
+        content=ICON_192_PNG,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/static/icon-512.png", include_in_schema=False)
+def pwa_icon_512() -> Response:
+    return Response(
+        content=ICON_512_PNG,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/static/icon-maskable-512.png", include_in_schema=False)
+def pwa_icon_maskable_512() -> Response:
+    return Response(
+        content=ICON_MASKABLE_512_PNG,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+@app.get("/static/manifest.webmanifest", include_in_schema=False)
+def pwa_manifest() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "manifest.webmanifest",
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/sw.js", include_in_schema=False)
+def pwa_service_worker() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
+    )
+
+
+@app.get("/sitemap.xml", include_in_schema=False, response_class=PlainTextResponse)
+def sitemap_xml(request: StarletteRequest) -> Response:
+    """XML sitemap listing the portal, metadata feeds, and all sector dataset endpoints."""
+    base_url = str(request.base_url).rstrip("/")
+    body = build_sitemap_xml(base_url, repository.get_stats())
+    return Response(
+        content=body,
+        media_type="application/xml; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/robots.txt", include_in_schema=False, response_class=PlainTextResponse)
+def robots_txt(request: StarletteRequest) -> PlainTextResponse:
+    base_url = str(request.base_url).rstrip("/")
+    return PlainTextResponse(
+        f"User-agent: *\nAllow: /\nSitemap: {base_url}/sitemap.xml\n",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 
@@ -208,6 +331,22 @@ def stats() -> dict:
 @app.get("/api/v1/catalog")
 def catalog() -> list[dict]:
     return repository.catalog()
+
+
+@app.get("/api/v1/catalog.jsonld")
+def catalog_schema_org(request: StarletteRequest) -> JSONResponse:
+    """Standardized schema.org/DataCatalog + Dataset export in JSON-LD for Google Dataset Search."""
+    base_url = str(request.base_url).rstrip("/")
+    payload = build_schema_org_catalog(base_url, repository.catalog(), repository.get_stats())
+    return JSONResponse(content=payload, media_type="application/ld+json")
+
+
+@app.get("/api/v1/catalog.dcat.json")
+def catalog_dcat_ap(request: StarletteRequest) -> JSONResponse:
+    """Standardized DCAT-AP catalogue export in JSON-LD for HDX, OpenDataSoft, and CKAN harvesters."""
+    base_url = str(request.base_url).rstrip("/")
+    payload = build_dcat_ap_catalog(base_url, repository.catalog(), repository.get_stats())
+    return JSONResponse(content=payload, media_type="application/ld+json")
 
 
 @app.get("/api/v1/regions")

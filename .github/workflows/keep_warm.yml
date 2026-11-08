@@ -1,0 +1,38 @@
+name: Keep Render instance warm (06:00-22:00 UTC)
+
+# Pings GET /api/v1/health every 10 minutes during active Chad daytime/evening hours
+# (06:00-22:00 UTC = 07:00-23:00 WAT) so the Render free-tier container does not spin down
+# after 15 minutes of inactivity. This prevents 30-50 s cold starts on both the web UI and
+# Meta WhatsApp Cloud API webhooks (which time out after ~15-20 s), while letting the
+# container sleep overnight (~496 active hours/month vs Render's 750 free hours/month cap).
+
+on:
+  schedule:
+    - cron: '*/10 6-22 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: keep-warm
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+    steps:
+      - name: Ping health endpoint
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::notice::Secret APP_URL is not set; skipping keep-warm ping."
+            exit 0
+          fi
+          curl -fsS --retry 2 --retry-delay 5 --retry-all-errors --max-time 25 \
+            -H "Cache-Control: no-cache" \
+            "${APP_URL%/}/api/v1/health" > /dev/null
+          echo "Health check OK."
+

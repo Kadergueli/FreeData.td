@@ -1,0 +1,66 @@
+{
+  "id": "/",
+  "name": "FreeData.td — Infrastructure de Données Ouvertes pour le Tchad",
+  "short_name": "FreeData.td",
+  "description": "Plateforme ouverte de données socioéconomiques, agricoles, climatiques, sanitaires et des marchés du Tchad.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "categories": ["education", "government", "productivity", "reference"],
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Répertoire des données",
+      "short_name": "Données",
+      "description": "Rechercher et filtrer les observations par secteur et région",
+      "url": "/#/data",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Explorateur sectoriel",
+      "short_name": "Secteurs",
+      "description": "Explorer les 9 secteurs socioéconomiques du Tchad",
+      "url": "/#/sectors",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Export & API",
+      "short_name": "Exports",
+      "description": "Télécharger en CSV, JSON, XML ou Parquet",
+      "url": "/#/api",
+      "icons": [{ "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
+

@@ -1,5 +1,30 @@
 import { initRouter, rerenderCurrent } from './router.js';
 import { t, setLang, getLang } from './i18n.js';
+import { showToast } from './ui.js';
+
+let _deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) {
+    installBtn.hidden = false;
+    if (window.lucide) window.lucide.createIcons();
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  _deferredInstallPrompt = null;
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) installBtn.hidden = true;
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+  });
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   const toggle = document.getElementById('menu-toggle');
@@ -56,6 +81,27 @@ document.addEventListener('DOMContentLoaded', () => {
       setLang(next);
       applyShellLang(next);
       rerenderCurrent();
+    });
+  }
+
+  const installBtn = document.getElementById('pwa-install-btn');
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (installBtn && !isStandalone && (_deferredInstallPrompt || isIOS)) {
+    installBtn.hidden = false;
+  }
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (_deferredInstallPrompt) {
+        _deferredInstallPrompt.prompt();
+        const choice = await _deferredInstallPrompt.userChoice.catch(() => null);
+        if (choice && choice.outcome === 'accepted') {
+          _deferredInstallPrompt = null;
+          installBtn.hidden = true;
+        }
+      } else if (isIOS) {
+        showToast(t('nav.install_ios'), 'info');
+      }
     });
   }
 
