@@ -1,14 +1,345 @@
 {
-  "_note": "Besoins indicatifs par culture, forme trapèze [min absolu, optimum min, optimum max, max absolu]. Valeurs de départ à VÉRIFIER une par une contre FAO EcoCrop avant publication (verified=false tant que ce n'est pas fait).",
+  "_note": "Besoins par culture, forme trapèze [min absolu, optimum min, optimum max, max absolu]. Température = moyenne pendant le cycle ; pluie = cumul pendant le cycle (en zone sahélienne à une saison, proche du cumul de la saison des pluies). Source : FAO EcoCrop. Licence des données à confirmer avant diffusion (voir README du dépôt OpenCLIM/ecocrop).",
   "crops": {
-    "millet":    {"fr": "Mil",           "en": "Pearl millet", "rain_mm": [200, 350, 800, 1200],  "temp_mean_c": [15, 25, 32, 38], "ph": [4.5, 5.5, 7.5, 8.5], "cycle_days": [70, 120],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
-    "sorghum":   {"fr": "Sorgho",        "en": "Sorghum",      "rain_mm": [300, 450, 900, 1500],  "temp_mean_c": [15, 22, 30, 38], "ph": [5.0, 5.5, 7.5, 8.5], "cycle_days": [90, 140],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
-    "maize":     {"fr": "Maïs",          "en": "Maize",        "rain_mm": [500, 600, 1200, 2000], "temp_mean_c": [14, 18, 27, 35], "ph": [5.0, 5.5, 7.5, 8.0], "cycle_days": [80, 140],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
-    "groundnut": {"fr": "Arachide",      "en": "Groundnut",    "rain_mm": [400, 600, 1100, 1800], "temp_mean_c": [15, 22, 28, 36], "ph": [4.5, 5.5, 7.0, 8.0], "cycle_days": [90, 140],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
-    "cotton":    {"fr": "Coton",         "en": "Cotton",       "rain_mm": [500, 700, 1200, 1800], "temp_mean_c": [16, 22, 30, 38], "ph": [5.0, 5.5, 8.0, 8.5], "cycle_days": [150, 200], "source": "FAO EcoCrop (à vérifier)", "verified": false},
-    "sesame":    {"fr": "Sésame",        "en": "Sesame",       "rain_mm": [300, 500, 900, 1500],  "temp_mean_c": [18, 24, 30, 38], "ph": [5.0, 5.5, 7.5, 8.0], "cycle_days": [90, 120],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
-    "rice":      {"fr": "Riz pluvial",   "en": "Upland rice",  "rain_mm": [800, 1000, 1800, 3000],"temp_mean_c": [16, 22, 30, 38], "ph": [4.5, 5.5, 7.0, 8.0], "cycle_days": [100, 150], "source": "FAO EcoCrop (à vérifier)", "verified": false},
-    "cowpea":    {"fr": "Niébé",         "en": "Cowpea",       "rain_mm": [300, 500, 900, 1500],  "temp_mean_c": [15, 24, 30, 38], "ph": [4.5, 5.5, 7.5, 8.5], "cycle_days": [60, 120],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
-    "cassava":   {"fr": "Manioc",        "en": "Cassava",      "rain_mm": [600, 1000, 1500, 3000],"temp_mean_c": [18, 25, 29, 35], "ph": [4.5, 5.5, 7.5, 8.5], "cycle_days": [240, 360], "source": "FAO EcoCrop (à vérifier)", "verified": false}
+    "millet": {
+      "fr": "Mil",
+      "en": "Pearl millet",
+      "scientific_name": "Pennisetum glaucum",
+      "ecoport_code": 8418,
+      "rain_mm": [
+        200,
+        400,
+        900,
+        1700
+      ],
+      "temp_mean_c": [
+        12,
+        25,
+        35,
+        40
+      ],
+      "ph": [
+        4.5,
+        5,
+        6.5,
+        8.3
+      ],
+      "cycle_days": [
+        60,
+        120
+      ],
+      "texture_optimal": [
+        "medium",
+        "light"
+      ],
+      "texture_tolerated": [
+        "medium",
+        "light"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "sorghum": {
+      "fr": "Sorgho",
+      "en": "Sorghum",
+      "scientific_name": "Sorghum bicolor",
+      "ecoport_code": 48747,
+      "rain_mm": [
+        300,
+        400,
+        600,
+        700
+      ],
+      "temp_mean_c": [
+        8,
+        22,
+        35,
+        40
+      ],
+      "ph": [
+        5,
+        5.5,
+        7.5,
+        8
+      ],
+      "cycle_days": [
+        90,
+        300
+      ],
+      "texture_optimal": [
+        "heavy",
+        "medium"
+      ],
+      "texture_tolerated": [
+        "wide"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "maize": {
+      "fr": "Maïs",
+      "en": "Maize",
+      "scientific_name": "Zea mays",
+      "ecoport_code": 2175,
+      "rain_mm": [
+        400,
+        600,
+        1200,
+        1800
+      ],
+      "temp_mean_c": [
+        10,
+        18,
+        33,
+        47
+      ],
+      "ph": [
+        4.5,
+        5,
+        7,
+        8.5
+      ],
+      "cycle_days": [
+        65,
+        365
+      ],
+      "texture_optimal": [],
+      "texture_tolerated": [],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "groundnut": {
+      "fr": "Arachide",
+      "en": "Groundnut",
+      "scientific_name": "Arachis hypogaea",
+      "ecoport_code": 2199,
+      "rain_mm": [
+        400,
+        600,
+        1500,
+        4000
+      ],
+      "temp_mean_c": [
+        10,
+        22,
+        32,
+        45
+      ],
+      "ph": [
+        4.5,
+        5.5,
+        6.5,
+        8.5
+      ],
+      "cycle_days": [
+        90,
+        150
+      ],
+      "texture_optimal": [
+        "medium"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light",
+        "organic"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "cotton": {
+      "fr": "Coton",
+      "en": "Cotton",
+      "scientific_name": "Gossypium hirsutum",
+      "ecoport_code": 1160,
+      "rain_mm": [
+        450,
+        750,
+        1200,
+        1500
+      ],
+      "temp_mean_c": [
+        15,
+        22,
+        36,
+        42
+      ],
+      "ph": [
+        5,
+        6,
+        7.5,
+        9.5
+      ],
+      "cycle_days": [
+        150,
+        200
+      ],
+      "texture_optimal": [
+        "heavy",
+        "medium"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light",
+        "organic"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "sesame": {
+      "fr": "Sésame",
+      "en": "Sesame",
+      "scientific_name": "Sesamum indicum",
+      "ecoport_code": 1937,
+      "rain_mm": [
+        300,
+        500,
+        1000,
+        1500
+      ],
+      "temp_mean_c": [
+        10,
+        20,
+        30,
+        40
+      ],
+      "ph": [
+        4.5,
+        5.5,
+        7.5,
+        8
+      ],
+      "cycle_days": [
+        40,
+        180
+      ],
+      "texture_optimal": [
+        "medium"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "rice": {
+      "fr": "Riz",
+      "en": "Rice",
+      "scientific_name": "Oryza sativa",
+      "ecoport_code": 1574,
+      "rain_mm": [
+        1000,
+        1500,
+        2000,
+        4000
+      ],
+      "temp_mean_c": [
+        10,
+        20,
+        30,
+        36
+      ],
+      "ph": [
+        4.5,
+        5.5,
+        7,
+        9
+      ],
+      "cycle_days": [
+        80,
+        180
+      ],
+      "texture_optimal": [
+        "wide"
+      ],
+      "texture_tolerated": [
+        "wide"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "cowpea": {
+      "fr": "Niébé",
+      "en": "Cowpea",
+      "scientific_name": "Vigna unguiculata",
+      "ecoport_code": 2153,
+      "rain_mm": [
+        300,
+        500,
+        1500,
+        4100
+      ],
+      "temp_mean_c": [
+        15,
+        25,
+        35,
+        40
+      ],
+      "ph": [
+        4,
+        5.5,
+        7.5,
+        8.8
+      ],
+      "cycle_days": [
+        30,
+        240
+      ],
+      "texture_optimal": [
+        "medium",
+        "light"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light",
+        "wide"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "cassava": {
+      "fr": "Manioc",
+      "en": "Cassava",
+      "scientific_name": "Manihot esculenta",
+      "ecoport_code": 1420,
+      "rain_mm": [
+        500,
+        1000,
+        1500,
+        5000
+      ],
+      "temp_mean_c": [
+        10,
+        20,
+        29,
+        35
+      ],
+      "ph": [
+        4,
+        5.5,
+        8,
+        9
+      ],
+      "cycle_days": [
+        180,
+        365
+      ],
+      "texture_optimal": [
+        "medium",
+        "light"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light",
+        "organic"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    }
   }
 }

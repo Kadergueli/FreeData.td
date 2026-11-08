@@ -45,7 +45,7 @@ def test_every_crop_is_well_formed_and_flagged():
         for key in ("rain_mm", "temp_mean_c", "ph"):
             a, b, c2, d = c[key]
             assert a < b <= c2 < d, (cid, key)
-        assert c["verified"] is False and c["source"]
+        assert c["verified"] is True and c["source"] and c["ecoport_code"]
 
 
 def test_verdict_thresholds():
