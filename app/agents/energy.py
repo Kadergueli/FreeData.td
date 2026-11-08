@@ -1,15 +1,37 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 import logging
 from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent, wb_years
+from app.agents.base import BaseAgent, nasa_power_years, wb_years
+from app.agents.environment import EnvironmentAgent
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
+
+
+def parse_power_energy(payload: Any, region: str, parameters: dict[str, tuple[str, str]], url: str) -> list[dict[str, Any]]:
+    """Monthly records of a NASA POWER answer; the yearly mean (month 13) and the -999 gaps are dropped."""
+    data = payload.get("properties", {}).get("parameter") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return []
+    records: list[dict[str, Any]] = []
+    for key, (name, unit) in parameters.items():
+        series = data.get(key)
+        if not isinstance(series, dict):
+            continue
+        for stamp, value in series.items():
+            if not (isinstance(value, (int, float)) and not isinstance(value, bool)) or value <= -999:
+                continue
+            if len(str(stamp)) != 6 or not str(stamp).isdigit() or not 1 <= int(str(stamp)[4:]) <= 12:
+                continue
+            records.append({"year": int(str(stamp)[:4]), "month": int(str(stamp)[4:]), "value": float(value),
+                            "source": "NASA POWER", "indicator": name, "unit": unit, "region": region, "url": url})
+    return records
 
 
 class EnergyAgent(BaseAgent):
@@ -17,7 +39,8 @@ class EnergyAgent(BaseAgent):
     World Bank API (World Development Indicators, sourced upstream from the
     Sustainable Energy for All / SE4ALL Global Tracking Framework led jointly
     by the World Bank, IEA, and ESMAP). Same reliable, keyless endpoint
-    already used by EconomyAgent and HealthAgent."""
+    already used by EconomyAgent and HealthAgent, plus the solar irradiance and
+    wind speed of each of the 23 regions from NASA POWER (renewable potential)."""
 
     sector = "energy"
     name = "EnergyAgent"
@@ -31,6 +54,12 @@ class EnergyAgent(BaseAgent):
         "EG.USE.PCAP.KG.OE": ("Energy use per capita", "kg of oil equivalent"),
     }
 
+    # NASA POWER parameter -> (indicator name, unit). Community "RE" (renewable energy).
+    POWER_PARAMETERS = {
+        "ALLSKY_SFC_SW_DWN": ("Solar irradiance (all-sky)", "kWh/m²/day"),
+        "WS50M": ("Wind speed at 50 m", "m/s"),
+    }
+
     # ISO3 for Chad
     CHAD_ISO3 = "TCD"
 
@@ -38,10 +67,25 @@ class EnergyAgent(BaseAgent):
         if source == "demo":
             return self._get_demo_records()
 
-        if source in ("world-bank", "all", "auto"):
+        if source == "world-bank":
             return await self._collect_world_bank()
 
-        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'demo'.")
+        if source == "nasa-power":
+            return await self._collect_nasa_power()
+
+        if source in ("all", "auto"):
+            names = ("world-bank", "nasa-power")
+            results = await asyncio.gather(self._collect_world_bank(), self._collect_nasa_power(), return_exceptions=True)
+            combined: list[dict[str, Any]] = []
+            for name, res in zip(names, results):
+                if isinstance(res, list):
+                    combined.extend(res)
+                elif isinstance(res, Exception):
+                    logger.error("EnergyAgent source %s failed: %s", name, res)
+                    self.note_source_failure(name, res)
+            return combined
+
+        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'nasa-power', 'demo'.")
 
     def _get_demo_records(self) -> list[dict[str, Any]]:
         return [
@@ -99,6 +143,30 @@ class EnergyAgent(BaseAgent):
                                 )
                             except (ValueError, TypeError):
                                 continue
+        return records
+
+    async def _collect_nasa_power(self) -> list[dict[str, Any]]:
+        """Monthly solar irradiance and wind speed for every region (NASA POWER, free, no key).
+        A region that does not answer is listed in the run errors without hiding the others."""
+        records: list[dict[str, Any]] = []
+        failed: list[str] = []
+        first, last = nasa_power_years(span=5)
+        url = "https://power.larc.nasa.gov/api/temporal/monthly/point"
+        async with httpx.AsyncClient(timeout=60) as client:
+            for region, coords in EnvironmentAgent.CHAD_REGIONS.items():
+                params = {"parameters": ",".join(self.POWER_PARAMETERS), "community": "RE", "longitude": coords["lon"],
+                          "latitude": coords["lat"], "start": first, "end": last, "format": "JSON"}
+                reason: list[str] = []
+                payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.2, errors=reason)
+                parsed = parse_power_energy(payload, region, self.POWER_PARAMETERS, url) if payload is not None else []
+                if parsed:
+                    records.extend(parsed)
+                else:
+                    failed.append(f"{region} ({reason[0] if reason else 'no data'})")
+        if failed:
+            self.source_errors.append(f"NASA POWER: {len(failed)}/{len(EnvironmentAgent.CHAD_REGIONS)} regions empty: {'; '.join(failed[:3])}")
+        if not records:
+            raise RuntimeError("NASA POWER returned nothing")
         return records
 
     def normalize(self, record: dict[str, Any]) -> ObservationCreate | None:

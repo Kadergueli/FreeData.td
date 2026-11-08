@@ -19,7 +19,7 @@ SECTOR_SOURCES: dict[str, tuple[str, ...]] = {
     "markets": ("world-bank", "fews-net", "wfp", "faostat"),
     "economy": ("world-bank", "imf"),
     "health": ("world-bank", "who-gho", "dhs", "unicef", "open-street-map"),
-    "energy": ("world-bank",),
+    "energy": ("world-bank", "nasa-power"),
     "transport": ("world-bank", "ourairports", "open-street-map", "open-meteo-transport"),
     "education": ("world-bank", "unesco-uis", "unicef", "open-street-map"),
     "demography": ("world-bank", "unhcr"),
