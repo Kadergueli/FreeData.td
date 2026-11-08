@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     whatsapp_api_version: str = "v21.0"
     database_path: str = "data/freedatatd.db"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # Render automatically injects RENDER_EXTERNAL_URL on every Web Service.
+    # You can also set KEEP_ALIVE_URL explicitly to ping every 14 minutes so the container never sleeps.
+    render_external_url: str | None = None
+    keep_alive_url: str | None = None
+    keep_alive_interval_minutes: int = 14
 
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
 
@@ -66,6 +71,11 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def target_keep_alive_url(self) -> str | None:
+        raw = (self.keep_alive_url or self.render_external_url or "").strip().rstrip("/")
+        return raw if raw.startswith(("http://", "https://")) else None
 
 
 settings = Settings()

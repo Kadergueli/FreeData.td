@@ -7,6 +7,11 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Keep the server warm every 14 minutes while a tab is open so Render's 15-min idle timer never triggers.
+setInterval(() => {
+  fetch('/api/v1/health', { cache: 'no-store' }).catch(() => {});
+}, 14 * 60 * 1000);
+
 document.addEventListener('DOMContentLoaded', () => {
   const toggle = document.getElementById('menu-toggle');
   const closeBtn = document.getElementById('menu-close');

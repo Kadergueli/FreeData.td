@@ -5,6 +5,9 @@ from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any
 
+import httpx
+
+from app.config import settings
 from app.agents import (
     AgricultureAgent,
     DemographyAgent,
@@ -36,6 +39,7 @@ def agent_classes() -> dict[str, Any]:
 # Safety net: one sector that never answers must not keep the whole harvest "running" for ever
 # (and block every later run). The slowest legitimate sector (FEWS NET prices) takes ~2 minutes.
 SECTOR_TIMEOUT_SECONDS = 20 * 60
+KEEP_ALIVE_INTERVAL_SECONDS = 14 * 60
 
 
 class AutonomousHarvesterScheduler:
@@ -44,6 +48,7 @@ class AutonomousHarvesterScheduler:
     def __init__(self, interval_hours: int = 6) -> None:
         self.interval_seconds = interval_hours * 3600
         self._task: asyncio.Task | None = None
+        self._keep_alive_task: asyncio.Task | None = None
         self._bg_task: asyncio.Task | None = None  # on-demand run started via the API
         self._job_lock = asyncio.Lock()
         self._job_running = False
@@ -66,6 +71,10 @@ class AutonomousHarvesterScheduler:
         # A run still marked 'running' belongs to the process that just died.
         self.history.close_stale()
         self._task = asyncio.create_task(self._scheduler_loop())
+        keep_alive_url = settings.target_keep_alive_url
+        if keep_alive_url:
+            self._keep_alive_task = asyncio.create_task(self._keep_alive_loop(keep_alive_url))
+            logger.info("Render keep-alive loop started (target: %s, interval: 14 min).", keep_alive_url)
         logger.info("Autonomous Harvester Scheduler started (interval: %ds).", self.interval_seconds)
 
     def stop(self) -> None:
@@ -74,7 +83,31 @@ class AutonomousHarvesterScheduler:
         self.is_running = False
         if self._task and not self._task.done():
             self._task.cancel()
+        if self._keep_alive_task and not self._keep_alive_task.done():
+            self._keep_alive_task.cancel()
         logger.info("Autonomous Harvester Scheduler stopped.")
+
+    async def _keep_alive_loop(self, base_url: str) -> None:
+        """Pings the public Render URL every 14 minutes so Render's 15-minute idle timer never expires."""
+        interval = max(60, int(settings.keep_alive_interval_minutes or 14) * 60)
+        health_url = f"{base_url.rstrip('/')}/api/v1/health"
+        while self.is_running:
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+            if not self.is_running:
+                break
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    await client.get(
+                        health_url,
+                        headers={"Cache-Control": "no-cache", "User-Agent": "FreeDataTD-KeepAlive/1.0"},
+                    )
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.debug("Keep-alive ping to %s failed: %s", health_url, exc)
 
     async def _scheduler_loop(self) -> None:
         # Do not run immediate heavy harvest on server startup to keep API 100% responsive

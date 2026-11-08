@@ -1,14 +1,12 @@
-name: Keep Render instance warm (06:00-22:00 UTC)
+name: Keep Render instance warm (every 14 min 24/7)
 
-# Pings GET /api/v1/health every 10 minutes during active Chad daytime/evening hours
-# (06:00-22:00 UTC = 07:00-23:00 WAT) so the Render free-tier container does not spin down
-# after 15 minutes of inactivity. This prevents 30-50 s cold starts on both the web UI and
-# Meta WhatsApp Cloud API webhooks (which time out after ~15-20 s), while letting the
-# container sleep overnight (~496 active hours/month vs Render's 750 free hours/month cap).
+# Pings GET /api/v1/health every 14 minutes 24/7 so the Render free-tier container never spins down
+# after 15 minutes of inactivity. Render's free tier includes 750 hours/month (more than a full
+# 31-day month = 744 hours), so a single service can stay awake 24/7 all month.
 
 on:
   schedule:
-    - cron: '*/10 6-22 * * *'
+    - cron: '*/14 * * * *'
   workflow_dispatch:
 
 concurrency:
