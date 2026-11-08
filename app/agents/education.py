@@ -8,6 +8,8 @@ from typing import Any
 import httpx
 
 from app.agents.base import BaseAgent, source_terms, wb_years
+from app.agents.unesco_uis import UIS_INDICATORS, UIS_URL, describe_uis, parse_uis
+from app.agents.unicef import FLOWS_BY_SECTOR, UNICEF_URL, parse_unicef
 from app.agents.osm import HIGHER_EDUCATION, SCHOOLS, collect_osm_counts
 from app.schemas import ObservationCreate
 
@@ -15,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 class EducationAgent(BaseAgent):
-    """Collects education, literacy & schooling data for Chad from 4 major open APIs:
-    1. World Bank & UNESCO UIS (Enrollment, Literacy, Completion, Gender Parity)
-    2. UNESCO EdStats (Out-of-school children & Progression rates)
-    3. UNICEF Data (Foundational learning & Gender Parity Index)
+    """Collects education, literacy & schooling data for Chad from 4 open sources:
+    1. World Bank (enrollment, literacy, completion, spending)
+    2. UNESCO UIS public API (enrolment ratios, completion, out-of-school, literacy, teachers)
+    3. UNICEF Data Warehouse (all-population education series, many from household surveys)
     4. OpenStreetMap (mapped schools per region)
     """
 
@@ -142,60 +144,53 @@ class EducationAgent(BaseAgent):
 
     # ─── Source 2: UNESCO Institute for Statistics (UIS) ───────────────────
     async def _collect_unesco_uis(self) -> list[dict[str, Any]]:
-        """Fetch literacy & teacher qualifications from UNESCO UIS Open Data API."""
+        """UNESCO UIS series for Chad. One indicator failing is listed in the run errors without
+        hiding the others; nothing at all raises so the run reports the failure."""
         records: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=30) as client:
-            url = "https://api.worldbank.org/v2/country/TD/indicator/SE.ADT.1524.LT.ZS"
-            params = {"format": "json", "per_page": 50, "date": wb_years(2005)}
-            payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
-            if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
-                for item in payload[1]:
-                    if not isinstance(item, dict):
-                        continue
-                    val = item.get("value")
-                    date_str = str(item.get("date", "")).strip()
-                    if val is not None and date_str.isdigit():
-                        try:
-                            records.append({
-                                "year": int(date_str),
-                                "value": round(float(val), 2),
-                                "source": "UNESCO UIS",
-                                "indicator": "Youth literacy rate (age 15-24)",
-                                "unit": "% of youth population",
-                                "region": "national",
-                                "url": url,
-                            })
-                        except (ValueError, TypeError):
-                            continue
+        failed: list[str] = []
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            for code in UIS_INDICATORS:
+                reason: list[str] = []
+                payload = await self.fetch_json_with_retry(
+                    client, UIS_URL, params={"indicator": code, "geoUnit": "TCD"}, throttle_seconds=0.2, errors=reason)
+                parsed = parse_uis(payload, code) if payload is not None else []
+                if parsed:
+                    records.extend(parsed)
+                else:
+                    failed.append(f"{code} ({reason[0] if reason else describe_uis(payload)})")
+        if failed:
+            self.source_errors.append(f"UNESCO UIS: {len(failed)}/{len(UIS_INDICATORS)} series empty: {'; '.join(failed[:4])}")
+        if not records:
+            raise RuntimeError("UNESCO UIS returned nothing")
         return records
 
-    # ─── Source 3: UNICEF Open Data ─────────────────────────────────────────
+    # ─── Source 3: UNICEF Data Warehouse (SDMX) ─────────────────────────────
     async def _collect_unicef_sdg4(self) -> list[dict[str, Any]]:
-        """Fetch gender parity & foundational learning indicators from UNICEF Data."""
+        """Every all-population UNICEF education series for Chad (completion, out-of-school, attendance...)."""
         records: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=30) as client:
-            url = "https://api.worldbank.org/v2/country/TD/indicator/SE.ENR.PRIM.FM.ZS"
-            params = {"format": "json", "per_page": 50, "date": wb_years(2005)}
-            payload = await self.fetch_json_with_retry(client, url, params=params, throttle_seconds=0.15)
-            if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[1], list):
-                for item in payload[1]:
-                    if not isinstance(item, dict):
-                        continue
-                    val = item.get("value")
-                    date_str = str(item.get("date", "")).strip()
-                    if val is not None and date_str.isdigit():
-                        try:
-                            records.append({
-                                "year": int(date_str),
-                                "value": round(float(val), 2),
-                                "source": "UNICEF Data",
-                                "indicator": "Gender parity index in primary education",
-                                "unit": "ratio (girls to boys)",
-                                "region": "national",
-                                "url": url,
-                            })
-                        except (ValueError, TypeError):
-                            continue
+        async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
+            for flow in FLOWS_BY_SECTOR["education"]:
+                text, last_error = None, "no answer"
+                for attempt in range(3):
+                    try:
+                        resp = await client.get(UNICEF_URL.format(flow=flow), params={"format": "csv", "labels": "both"},
+                                                headers={"User-Agent": "FreeData.td Open Data Engine/1.0"})
+                        if resp.status_code == 200:
+                            text = resp.text
+                            break
+                        last_error = f"HTTP {resp.status_code}"
+                    except httpx.HTTPError as exc:
+                        last_error = type(exc).__name__
+                    await asyncio.sleep(2 * (attempt + 1))
+                if text is None:
+                    self.source_errors.append(f"UNICEF {flow}: {last_error}")
+                    continue
+                parsed = parse_unicef(text, flow)
+                if not parsed:
+                    self.source_errors.append(f"UNICEF {flow}: answer without usable rows")
+                records.extend(parsed)
+        if not records:
+            raise RuntimeError("UNICEF returned nothing")
         return records
 
     # ─── Source 4: OpenStreetMap (Overpass) ──────────────────────────────────
