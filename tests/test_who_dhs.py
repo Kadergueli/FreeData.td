@@ -113,3 +113,8 @@ def test_gho_describes_why_a_series_is_empty():
     assert describe_rows({"value": []}) == "no data for Chad"
     text = describe_rows({"value": [{"Dim1": "X", "Dim2": "Y", "Dim3": None, "NumericValue": None}]})
     assert "1 rows but none usable" in text and "'X'" in text
+
+
+def test_gho_ignores_years_before_the_platform_starts():
+    rows = parse_gho({"value": [_gho(1944, 300.0), _gho(1959, 280.0), _gho(1960, 270.0), _gho(2020, 114.0)]}, "MDG_0000000007", NOW)
+    assert [r["year"] for r in rows] == [1960, 2020]

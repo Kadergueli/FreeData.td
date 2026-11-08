@@ -14,6 +14,7 @@ from typing import Any
 
 GHO_URL = "https://ghoapi.azureedge.net/api"
 SOURCE = "WHO GHO"
+FIRST_YEAR = 1960
 
 # code -> (indicator name, unit up to 40 characters). Checked against the live API for Chad (Nov 2026).
 GHO_INDICATORS: dict[str, tuple[str, str]] = {
@@ -79,7 +80,7 @@ def parse_gho(payload: Any, code: str, today: datetime | None = None) -> list[di
         value, year = row.get("NumericValue"), row.get("TimeDim")
         if not isinstance(value, (int, float)) or isinstance(value, bool) or not isinstance(year, int):
             continue
-        if year > last_year:                       # projections (e.g. tobacco to 2030) are not observations
+        if year > last_year or year < FIRST_YEAR:  # projections (tobacco to 2030) are not observations; the platform starts in 1960
             continue
         rank = (0 if not row.get("DataSourceDim") else 1, "".join(chr(255 - ord(c)) for c in str(row.get("Date") or "")))
         if year not in best or rank < best[year][0]:
