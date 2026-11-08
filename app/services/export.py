@@ -1,4 +1,5 @@
 import csv
+import importlib
 import json
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
@@ -6,8 +7,8 @@ from io import BytesIO, StringIO
 from typing import Any
 
 try:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
+    pa: Any = importlib.import_module("pyarrow")
+    pq: Any = importlib.import_module("pyarrow.parquet")
     _PYARROW_AVAILABLE = True
 except ImportError:
     # A missing/failed pyarrow install must never take down the WHOLE app -
