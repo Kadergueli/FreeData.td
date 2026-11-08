@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent, wb_years
+from app.agents.base import BaseAgent, source_terms, wb_years
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -59,15 +59,16 @@ class WorldBankSectorAgent(BaseAgent):
         val = float(record["value"])
         if not val.is_integer():
             val = round(val, 2)
+        licence, notes = source_terms(str(record["source"]), self.name)
         return ObservationCreate(
             sector=self.sector,
             indicator=str(record["indicator"]),
             value=val,
             unit=str(record.get("unit", "unit"))[:40],
-            reference_date=date(int(record["year"]), 1, 1),
+            reference_date=date(int(record["year"]), int(record.get("month", 1)), 1),
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license="CC BY 4.0",
-            notes=f"Automated harvest by {self.name} from {record['source']}.",
+            license=licence,
+            notes=notes,
         )

@@ -252,6 +252,19 @@ export const OFFICIAL_SOURCES = [
     desc_en: 'Mobile and broadband subscriptions, Internet users, fixed telephony, secure servers and the share of ICT goods and services in Chad\'s trade, since 2000.'
   },
   {
+    id: 'pink-sheet',
+    name: 'World Bank Commodity Price Data (Pink Sheet)',
+    org_fr: 'Groupe de la Banque Mondiale, Commodity Markets',
+    org_en: 'World Bank Group, Commodity Markets',
+    sector_fr: 'Commerce extérieur',
+    sector_en: 'Foreign Trade',
+    sectorId: 'trade',
+    license: 'CC BY 4.0 Open Data',
+    url: 'https://www.worldbank.org/en/research/commodity-markets',
+    desc_fr: 'Prix mondiaux mensuels depuis 2000 des produits qui comptent pour le Tchad : pétrole, coton, maïs, sorgho, riz, blé, arachide, huiles, sucre, viande, engrais et or.',
+    desc_en: 'Monthly world prices since 2000 for the products that matter to Chad: crude oil, cotton, maize, sorghum, rice, wheat, groundnuts, oils, sugar, meat, fertiliser and gold.'
+  },
+  {
     id: 'world-bank-trade',
     name: 'World Bank Trade (WITS, UN Comtrade)',
     org_fr: 'Groupe de la Banque Mondiale, données du système WITS et de la base UN Comtrade',

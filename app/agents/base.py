@@ -28,6 +28,7 @@ SOURCE_TERMS: dict[str, tuple[str, str]] = {
     "WFP": ("CC BY-IGO 3.0", "Source: World Food Programme (WFP), via the Humanitarian Data Exchange."),
     "WHO GHO": ("CC BY-NC-SA 3.0 IGO", "Source: World Health Organization, Global Health Observatory (who.int/data/gho). Non-commercial licence."),
     "DHS Program": ("DHS Program terms of use", "Source: The DHS Program (ICF), aggregated survey indicators. Terms: https://dhsprogram.com/data/terms-of-use.cfm"),
+    "World Bank Pink Sheet": ("CC BY 4.0", "Source: World Bank Commodity Price Data (The Pink Sheet), monthly nominal US dollar prices."),
     "UNHCR": ("CC BY 4.0", "UNHCR Refugee Population Statistics Database (api.unhcr.org). Terms: https://www.unhcr.org/terms-use-datasets"),
 }
 
