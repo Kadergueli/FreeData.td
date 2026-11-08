@@ -11,6 +11,7 @@ import asyncio
 from app.agents.base import BaseAgent, source_terms, wb_years
 from app.agents.dhs import DHS_INDICATORS, DHS_URL, MAX_PAGES, PAGE, parse_dhs
 from app.agents.osm import HOSPITALS, PHARMACIES, WATER_POINTS, collect_osm_counts
+from app.agents.unicef import collect_unicef
 from app.agents.who_gho import GHO_INDICATORS, GHO_URL, describe_rows, parse_gho
 from app.schemas import ObservationCreate
 
@@ -19,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 class HealthAgent(BaseAgent):
     """Collects public health indicators for Chad: World Bank (WDI), WHO Global Health Observatory
-    (OData API, checked live in Nov 2026), DHS Program survey indicators by region, and
-    OpenStreetMap health facilities."""
+    (OData API, checked live in Nov 2026), DHS Program survey indicators by region, UNICEF
+    nutrition and immunisation, and OpenStreetMap health facilities."""
 
     sector = "health"
     name = "HealthAgent"
@@ -84,11 +85,14 @@ class HealthAgent(BaseAgent):
         if source == "dhs":
             return await self._collect_dhs()
 
+        if source == "unicef":
+            return await self._collect_unicef()
+
         if source in ("all", "auto"):
-            names = ("world-bank", "who-gho", "dhs", "open-street-map")
+            names = ("world-bank", "who-gho", "dhs", "unicef", "open-street-map")
             results = await asyncio.gather(
                 self._collect_world_bank(), self._collect_who_gho(), self._collect_dhs(),
-                self._collect_open_street_map(), return_exceptions=True)
+                self._collect_unicef(), self._collect_open_street_map(), return_exceptions=True)
             combined: list[dict[str, Any]] = []
             for name, res in zip(names, results):
                 if isinstance(res, list):
@@ -98,7 +102,7 @@ class HealthAgent(BaseAgent):
                     self.note_source_failure(name, res)
             return combined
 
-        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'who-gho', 'dhs', 'open-street-map', 'demo'.")
+        raise ValueError(f"Unknown source '{source}'. Supported: 'all', 'world-bank', 'who-gho', 'dhs', 'unicef', 'open-street-map', 'demo'.")
 
     async def _collect_who_gho(self) -> list[dict[str, Any]]:
         """WHO Global Health Observatory series for Chad. One indicator failing is listed in the run
@@ -121,6 +125,10 @@ class HealthAgent(BaseAgent):
         if not records:
             raise RuntimeError("WHO GHO returned nothing")
         return records
+
+    async def _collect_unicef(self) -> list[dict[str, Any]]:
+        """UNICEF nutrition (stunting, wasting, breastfeeding...) and immunisation series for Chad."""
+        return await collect_unicef("health", self.source_errors)
 
     async def _collect_dhs(self) -> list[dict[str, Any]]:
         """DHS Program survey indicators for Chad: national and by region (surveys 1997, 2004, 2014)."""

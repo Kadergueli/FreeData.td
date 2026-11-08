@@ -34,7 +34,7 @@ def test_every_sector_lists_exactly_the_sources_its_agent_accepts(tmp_path):
 
 def test_catalogue_gives_a_label_to_every_source():
     cat = source_catalogue()
-    assert [s["id"] for s in cat["health"]] == ["world-bank", "who-gho", "dhs", "open-street-map"]
+    assert [s["id"] for s in cat["health"]] == ["world-bank", "who-gho", "dhs", "unicef", "open-street-map"]
     assert all(s["label"] for sources in cat.values() for s in sources)
 
 

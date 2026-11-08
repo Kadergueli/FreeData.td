@@ -91,3 +91,21 @@ def test_unicef_collect_retries_then_reports(monkeypatch, tmp_path):
     monkeypatch.setattr(edu.asyncio, "sleep", no_sleep)
     recs = asyncio.run(EducationAgent(ObservationRepository(database_path=tmp_path / 'e.db'))._collect_unicef_sdg4())
     assert calls["n"] == 2 and len(recs) == 3
+
+
+def test_health_collects_unicef_nutrition_and_immunisation(monkeypatch, tmp_path):
+    from app.agents import unicef as uni
+    from app.agents.health import HealthAgent
+
+    asked: list[str] = []
+
+    def handler(request):
+        asked.append(request.url.path)
+        return httpx.Response(200, text=CSV)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(uni.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    agent = HealthAgent(ObservationRepository(database_path=tmp_path / "h.db"))
+    recs = asyncio.run(agent._collect_unicef())
+    assert len(asked) == 2 and "NUTRITION" in asked[0] and "IMMUNISATION" in asked[1]
+    assert recs and all(r["source"] == "UNICEF Data" for r in recs)

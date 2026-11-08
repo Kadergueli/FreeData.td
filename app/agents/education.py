@@ -9,7 +9,7 @@ import httpx
 
 from app.agents.base import BaseAgent, source_terms, wb_years
 from app.agents.unesco_uis import UIS_INDICATORS, UIS_URL, describe_uis, parse_uis
-from app.agents.unicef import FLOWS_BY_SECTOR, UNICEF_URL, parse_unicef
+from app.agents.unicef import collect_unicef
 from app.agents.osm import HIGHER_EDUCATION, SCHOOLS, collect_osm_counts
 from app.schemas import ObservationCreate
 
@@ -167,31 +167,7 @@ class EducationAgent(BaseAgent):
     # ─── Source 3: UNICEF Data Warehouse (SDMX) ─────────────────────────────
     async def _collect_unicef_sdg4(self) -> list[dict[str, Any]]:
         """Every all-population UNICEF education series for Chad (completion, out-of-school, attendance...)."""
-        records: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
-            for flow in FLOWS_BY_SECTOR["education"]:
-                text, last_error = None, "no answer"
-                for attempt in range(3):
-                    try:
-                        resp = await client.get(UNICEF_URL.format(flow=flow), params={"format": "csv", "labels": "both"},
-                                                headers={"User-Agent": "FreeData.td Open Data Engine/1.0"})
-                        if resp.status_code == 200:
-                            text = resp.text
-                            break
-                        last_error = f"HTTP {resp.status_code}"
-                    except httpx.HTTPError as exc:
-                        last_error = type(exc).__name__
-                    await asyncio.sleep(2 * (attempt + 1))
-                if text is None:
-                    self.source_errors.append(f"UNICEF {flow}: {last_error}")
-                    continue
-                parsed = parse_unicef(text, flow)
-                if not parsed:
-                    self.source_errors.append(f"UNICEF {flow}: answer without usable rows")
-                records.extend(parsed)
-        if not records:
-            raise RuntimeError("UNICEF returned nothing")
-        return records
+        return await collect_unicef("education", self.source_errors)
 
     # ─── Source 4: OpenStreetMap (Overpass) ──────────────────────────────────
     async def _collect_open_street_map(self) -> list[dict[str, Any]]:
