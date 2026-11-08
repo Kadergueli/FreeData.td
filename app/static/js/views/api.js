@@ -17,6 +17,7 @@ import { escapeHtml } from '../sanitize.js';
 let selectedFormat = 'JSON';
 let selectedSector = 'all';
 let selectedRegion = 'all';
+let selectedSnippetLang = 'curl';
 let _downloading = false;
 
 const FORMATS = ['JSON', 'CSV', 'XML', 'PARQUET'];
@@ -162,24 +163,87 @@ async function downloadExport() {
   }
 }
 
-function exampleBlock() {
+function getEndpointItems() {
   const origin = window.location.origin;
-  const lines = [
-    `curl "${origin}/api/v1/observations?sector=health&limit=50"`,
-    `curl "${origin}/api/v1/observations?q=riz&region=Lac"`,
-    `curl "${origin}/api/v1/stats"`,
-    `curl -O -J "${origin}/api/v1/export/csv?sector=agriculture"`,
-    `curl -O -J "${origin}/api/v1/export/csv?sector=markets&full=true"   # every row, no limit`,
-    `curl -i "${origin}/api/v1/observations?sector=markets&limit=5000&offset=0"   # X-Next-Offset gives the next page`,
+  return [
+    {
+      method: 'GET',
+      path: '/api/v1/observations?sector=health&limit=50',
+      desc: t('api.ep_obs_desc'),
+      curl: `curl "${origin}/api/v1/observations?sector=health&limit=50"`,
+    },
+    {
+      method: 'GET',
+      path: '/api/v1/observations?q=riz&region=Lac',
+      desc: t('api.ep_search_desc'),
+      curl: `curl "${origin}/api/v1/observations?q=riz&region=Lac"`,
+    },
+    {
+      method: 'GET',
+      path: '/api/v1/stats',
+      desc: t('api.ep_stats_desc'),
+      curl: `curl "${origin}/api/v1/stats"`,
+    },
+    {
+      method: 'GET',
+      path: '/api/v1/export/csv?sector=agriculture',
+      desc: t('api.ep_csv_desc'),
+      curl: `curl -O -J "${origin}/api/v1/export/csv?sector=agriculture"`,
+    },
+    {
+      method: 'GET',
+      path: '/api/v1/export/csv?sector=markets&full=true',
+      desc: t('api.ep_full_desc'),
+      curl: `curl -O -J "${origin}/api/v1/export/csv?sector=markets&full=true"   ${t('api.cmt_full')}`,
+    },
+    {
+      method: 'GET',
+      path: '/api/v1/observations?sector=markets&limit=5000&offset=0',
+      desc: t('api.ep_page_desc'),
+      curl: `curl -i "${origin}/api/v1/observations?sector=markets&limit=5000&offset=0"   ${t('api.cmt_page')}`,
+    },
   ];
-  return lines;
+}
+
+function exampleBlock(lang = selectedSnippetLang) {
+  const origin = window.location.origin;
+  if (lang === 'python') {
+    return [
+      `import pandas as pd`,
+      `import requests`,
+      ``,
+      t('api.cmt_py_csv'),
+      `df = pd.read_csv("${origin}/api/v1/export/csv?sector=markets&full=true")`,
+      `print(df.head())`,
+      ``,
+      t('api.cmt_py_json'),
+      `res = requests.get("${origin}/api/v1/observations", params={"sector": "health", "limit": 50})`,
+      `data = res.json()`,
+    ];
+  }
+  if (lang === 'js') {
+    return [
+      t('api.cmt_js_fetch'),
+      `const res = await fetch("${origin}/api/v1/observations?sector=health&limit=50");`,
+      `const observations = await res.json();`,
+      `console.table(observations.slice(0, 10));`,
+    ];
+  }
+  return getEndpointItems().map(item => item.curl);
 }
 
 export const ApiView = {
   render() {
+    selectedSnippetLang = 'curl';
     const docs = t('api.docs');
     const docList = Array.isArray(docs) ? docs : [];
-    const examples = exampleBlock();
+    const examples = exampleBlock('curl');
+    const endpoints = getEndpointItems();
+    const snippetTabs = [
+      { id: 'curl', label: t('api.tab_curl') },
+      { id: 'python', label: t('api.tab_python') },
+      { id: 'js', label: t('api.tab_js') },
+    ];
 
     return `
       <div class="flex justify-between items-start mb-6 page-head">
@@ -201,8 +265,38 @@ export const ApiView = {
       <p class="mono-sm text-muted mb-4">${t('api.access_desc')}</p>
 
       <div class="card card--transparent mb-6" style="padding:16px;">
-        <div class="flex justify-between items-center mb-2">
-          <span class="mono-xs text-muted fw-700">${t('api.examples_label')}</span>
+        <div class="mono-xs text-muted fw-700 uppercase mb-2">${t('api.endpoints_label')}</div>
+        <div class="flex flex-col gap-2 mb-4" id="api-endpoint-list">
+          ${endpoints.map((ep, idx) => `
+            <div class="flex justify-between items-center flex-wrap gap-2" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;">
+              <div class="flex items-center gap-2 flex-wrap" style="min-width:0;flex:1;">
+                <span class="badge badge--cyan mono-xs fw-700" style="padding:2px 6px;">${escapeHtml(ep.method)}</span>
+                <code class="mono-xs fw-700" style="color:var(--text);word-break:break-all;">${escapeHtml(ep.path)}</code>
+                <span class="mono-xs text-muted">— ${escapeHtml(ep.desc)}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <a class="btn btn-ghost mono-xs" href="${escapeHtml(ep.path)}" target="_blank" rel="noopener noreferrer" style="padding:3px 8px;text-decoration:none;">
+                  <i data-lucide="external-link" style="width:12px;height:12px;"></i> ${t('api.test_live')}
+                </a>
+                <button type="button" class="btn btn-ghost mono-xs btn-copy-single" data-idx="${idx}" style="padding:3px 8px;">
+                  <i data-lucide="copy" style="width:12px;height:12px;"></i> <span>${t('api.copy')}</span>
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="flex justify-between items-center flex-wrap gap-2 mb-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="mono-xs text-muted fw-700">${t('api.examples_label')}</span>
+            <div class="flex gap-1" id="api-snippet-tabs">
+              ${snippetTabs.map(tab => `
+                <button type="button" class="btn ${tab.id === selectedSnippetLang ? 'btn-cyan' : 'btn-ghost'} api-lang-tab mono-xs" data-lang="${tab.id}" aria-pressed="${tab.id === selectedSnippetLang}" style="padding:3px 10px;">
+                  ${escapeHtml(tab.label)}
+                </button>
+              `).join('')}
+            </div>
+          </div>
           <button type="button" class="btn btn-ghost mono-xs" id="btn-copy-examples" style="padding:4px 10px;">
             <i data-lucide="copy" style="width:14px;height:14px;"></i> <span id="copy-status">${t('api.copy')}</span>
           </button>
@@ -320,6 +414,34 @@ export const ApiView = {
 
     document.getElementById('btn-generate-archive')?.addEventListener('click', downloadExport);
     document.getElementById('btn-full-archive')?.addEventListener('click', downloadFull);
+
+    document.querySelectorAll('.api-lang-tab').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        selectedSnippetLang = e.currentTarget.getAttribute('data-lang') || 'curl';
+        setActive('.api-lang-tab', e.currentTarget);
+        const pre = document.getElementById('api-examples');
+        if (pre) pre.textContent = exampleBlock(selectedSnippetLang).join('\n');
+      });
+    });
+
+    const endpoints = getEndpointItems();
+    document.querySelectorAll('.btn-copy-single').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const idx = Number(e.currentTarget.getAttribute('data-idx'));
+        const item = endpoints[idx];
+        const labelSpan = e.currentTarget.querySelector('span');
+        if (!item) return;
+        try {
+          await navigator.clipboard.writeText(item.curl);
+          if (labelSpan) {
+            labelSpan.textContent = t('common.copied');
+            setTimeout(() => { labelSpan.textContent = t('api.copy'); }, 2000);
+          }
+        } catch (_) {
+          showToast(t('api.copy_failed'), 'error');
+        }
+      });
+    });
 
     document.getElementById('btn-copy-examples')?.addEventListener('click', async () => {
       const text = document.getElementById('api-examples')?.textContent || '';

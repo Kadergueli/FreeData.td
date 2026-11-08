@@ -145,13 +145,20 @@ export async function initChartMais(rows = null) {
 
 /* ── Data density by region (bar) ── expects { regionName: { total, validated } } */
 export async function initChartDensity(density = null) {
-  const labels = density && typeof density === 'object' ? Object.keys(density) : [];
-  const totals = labels.map(k => Number((typeof density[k] === 'object' ? density[k].total : density[k]) || 0));
+  const rawEntries = density && typeof density === 'object'
+    ? Object.entries(density).map(([k, v]) => [k, Number((typeof v === 'object' ? v.total : v) || 0)])
+    : [];
+  // Sort highest count first so the compact scrollable viewport immediately shows the top regions
+  rawEntries.sort((a, b) => b[1] - a[1]);
+  const labels = rawEntries.map(e => e[0]);
+  const totals = rawEntries.map(e => e[1]);
 
-  // Region names never fit under 23 vertical bars on a phone (they overlapped): draw
-  // horizontal bars and give the chart a height proportional to the number of regions.
+  // Give the inner canvas container a sleek height per region while #density-scroll-wrapper
+  // caps the on-screen card height to 220px by default (expandable on click).
   const box = document.getElementById('chart-density');
-  if (box && box.parentElement && labels.length) box.parentElement.style.height = `${Math.max(150, labels.length * 26 + 30)}px`;
+  if (box && box.parentElement && labels.length) {
+    box.parentElement.style.height = `${Math.max(140, labels.length * 22 + 24)}px`;
+  }
 
   await draw('density', 'chart-density', labels.length > 0, () => ({
     type: 'bar',
@@ -161,8 +168,9 @@ export async function initChartDensity(density = null) {
         label: t('insights.density_series'),
         data: totals,
         backgroundColor: '#2563eb',
-        barPercentage: 0.8,
-        categoryPercentage: 0.8,
+        borderRadius: 4,
+        barPercentage: 0.75,
+        categoryPercentage: 0.82,
       }],
     },
     options: {

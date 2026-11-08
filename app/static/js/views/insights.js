@@ -58,6 +58,22 @@ async function updateInsightsDensityChart(sector = 'all') {
   }
   if (req !== _densityReq) return; // a newer tab click superseded this response
   if (note) note.textContent = sampled ? t('insights.density_sample').replace('{n}', DENSITY_SAMPLE) : t('insights.density_desc');
+
+  const summaryBadge = document.getElementById('density-summary-badge');
+  const toggleBtn = document.getElementById('btn-toggle-density-height');
+  const entries = density ? Object.values(density) : [];
+  const regCount = entries.length;
+  const obsTotal = entries.reduce((acc, item) => acc + Number(item.total || 0), 0);
+  if (summaryBadge) {
+    summaryBadge.textContent = regCount
+      ? `${regCount} ${t('insights.density_regions')} · ${obsTotal.toLocaleString()} ${t('insights.ds.obs_suffix')}`
+      : '';
+    summaryBadge.style.display = regCount ? '' : 'none';
+  }
+  if (toggleBtn) {
+    toggleBtn.style.display = regCount > 8 ? '' : 'none';
+  }
+
   await initChartDensity(density);
 }
 
@@ -434,13 +450,22 @@ export const InsightsView = {
         ).join('')}
       </div>
 
-      <!-- Density Chart -->
+      <!-- Density Chart (compact 220px scrollable viewport + expand/collapse toggle) -->
       <div class="card mb-6" style="padding:16px;border-color:var(--border-strong);">
-        <h4 class="mono-sm uppercase mb-4 text-cyan flex items-center gap-2">
-          <i data-lucide="bar-chart-3" style="width:16px;height:16px;"></i> ${t('insights.density_title')}
-        </h4>
-        <div class="chart-container" style="height:150px;margin-bottom:16px;">
-          <canvas id="chart-density"></canvas>
+        <div class="flex justify-between items-center gap-2 mb-3" style="flex-wrap:wrap;">
+          <h4 class="mono-sm uppercase text-cyan flex items-center gap-2" style="margin:0;">
+            <i data-lucide="bar-chart-3" style="width:16px;height:16px;"></i> ${t('insights.density_title')}
+            <span class="badge mono-xs" id="density-summary-badge" style="display:none;background:var(--surface);color:var(--text-muted);border-color:var(--border);font-weight:600;"></span>
+          </h4>
+          <button type="button" class="btn btn-ghost mono-xs flex items-center gap-1" id="btn-toggle-density-height" data-expanded="false" style="display:none;padding:4px 10px;border-radius:6px;">
+            <i data-lucide="maximize-2" style="width:12px;height:12px;"></i>
+            <span id="density-toggle-label">${t('insights.density_expand')}</span>
+          </button>
+        </div>
+        <div id="density-scroll-wrapper" style="max-height:220px;overflow-y:auto;padding-right:4px;margin-bottom:10px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface);">
+          <div class="chart-container" style="height:150px;">
+            <canvas id="chart-density"></canvas>
+          </div>
         </div>
         <p class="mono-xs text-muted" id="density-note">${t('insights.density_desc')}</p>
       </div>
@@ -485,6 +510,22 @@ export const InsightsView = {
 
   async init() {
     if (window.lucide) window.lucide.createIcons();
+
+    // Wire up Density Chart compact/expanded viewport toggle
+    const toggleDensityBtn = document.getElementById('btn-toggle-density-height');
+    const densityScrollWrapper = document.getElementById('density-scroll-wrapper');
+    const densityToggleLabel = document.getElementById('density-toggle-label');
+    if (toggleDensityBtn && densityScrollWrapper) {
+      toggleDensityBtn.addEventListener('click', () => {
+        const expanded = toggleDensityBtn.getAttribute('data-expanded') === 'true';
+        const next = !expanded;
+        toggleDensityBtn.setAttribute('data-expanded', String(next));
+        densityScrollWrapper.style.maxHeight = next ? 'none' : '220px';
+        if (densityToggleLabel) {
+          densityToggleLabel.textContent = next ? t('insights.density_collapse') : t('insights.density_expand');
+        }
+      });
+    }
 
     // Wire up Reports Library collapsible toggle
     const toggleLibrary = document.getElementById('toggle-reports-library');
