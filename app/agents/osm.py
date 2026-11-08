@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 OVERPASS_URLS = (
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
 )
 
 # ISO 3166-2 code -> region name, spelled like the rest of the platform (no accents).

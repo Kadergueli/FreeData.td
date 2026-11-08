@@ -45,12 +45,23 @@ GHO_INDICATORS: dict[str, tuple[str, str]] = {
 }
 
 
-def _all_population(row: dict[str, Any]) -> bool:
-    """True for the row that covers everybody (no breakdown, or both sexes / total of the area)."""
-    if row.get("Dim2") or row.get("Dim3"):
+def _all_population(row: dict[str, Any], strict: bool = True) -> bool:
+    """True for the row that covers everybody (no breakdown, or both sexes / total of the area).
+    Not strict: a second breakdown (age group, wealth...) is tolerated, for series that only exist with one."""
+    if strict and (row.get("Dim2") or row.get("Dim3")):
         return False
     dim1 = row.get("Dim1")
     return dim1 in (None, "") or str(dim1).endswith(("_BTSX", "_TOTL"))
+
+
+def describe_rows(payload: Any) -> str:
+    """Why a series gave nothing, for the run report: how many rows and which breakdowns they carry."""
+    rows = payload.get("value") if isinstance(payload, dict) else None
+    if not isinstance(rows, list) or not rows:
+        return "no data for Chad"
+    seen = {k: sorted({str(r.get(k)) for r in rows if isinstance(r, dict)})[:3] for k in ("Dim1", "Dim2", "Dim3")}
+    bad = sum(1 for r in rows if isinstance(r, dict) and not isinstance(r.get("NumericValue"), (int, float)))
+    return f"{len(rows)} rows but none usable (no value: {bad}; Dim1 {seen['Dim1']}, Dim2 {seen['Dim2']}, Dim3 {seen['Dim3']})"
 
 
 def parse_gho(payload: Any, code: str, today: datetime | None = None) -> list[dict[str, Any]]:
@@ -59,9 +70,11 @@ def parse_gho(payload: Any, code: str, today: datetime | None = None) -> list[di
         return []
     name, unit = GHO_INDICATORS[code]
     last_year = (today or datetime.now(UTC)).year
+    rows = [r for r in payload["value"] if isinstance(r, dict)]
+    strict = any(_all_population(r) for r in rows)      # no clean all-population row at all: accept a second breakdown
     best: dict[int, tuple[tuple[int, str], dict[str, Any]]] = {}
-    for row in payload["value"]:
-        if not isinstance(row, dict) or not _all_population(row):
+    for row in rows:
+        if not _all_population(row, strict):
             continue
         value, year = row.get("NumericValue"), row.get("TimeDim")
         if not isinstance(value, (int, float)) or isinstance(value, bool) or not isinstance(year, int):

@@ -11,7 +11,7 @@ import asyncio
 from app.agents.base import BaseAgent, source_terms, wb_years
 from app.agents.dhs import DHS_INDICATORS, DHS_URL, MAX_PAGES, PAGE, parse_dhs
 from app.agents.osm import HOSPITALS, PHARMACIES, WATER_POINTS, collect_osm_counts
-from app.agents.who_gho import GHO_INDICATORS, GHO_URL, parse_gho
+from app.agents.who_gho import GHO_INDICATORS, GHO_URL, describe_rows, parse_gho
 from app.schemas import ObservationCreate
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ class HealthAgent(BaseAgent):
                 if parsed:
                     records.extend(parsed)
                 else:
-                    failed.append(f"{code} ({reason[0] if reason else 'no data for Chad'})")
+                    failed.append(f"{code} ({reason[0] if reason else describe_rows(payload)})")
         if failed:
             self.source_errors.append(f"WHO GHO: {len(failed)}/{len(GHO_INDICATORS)} series empty: {'; '.join(failed[:4])}")
         if not records:

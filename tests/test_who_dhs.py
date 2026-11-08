@@ -100,3 +100,16 @@ def test_who_gho_with_no_answer_fails_loudly(monkeypatch, tmp_path):
     monkeypatch.setattr(BaseAgent, "fetch_json_with_retry", staticmethod(nothing))
     with pytest.raises(RuntimeError, match="WHO GHO returned nothing"):
         asyncio.run(HealthAgent(ObservationRepository(database_path=tmp_path / "h.db"))._collect_who_gho())
+
+
+def test_gho_accepts_a_second_breakdown_when_no_clean_row_exists():
+    rows = [{**_gho(2020, 10.0), "Dim2": "AGEGROUP_YEARS18-PLUS"}, {**_gho(2020, 11.0, dim1="SEX_FMLE"), "Dim2": "AGEGROUP_YEARS18-PLUS"}]
+    got = parse_gho({"value": rows}, "WHOSIS_000001", NOW)
+    assert [(r["year"], r["value"]) for r in got] == [(2020, 10.0)]
+
+
+def test_gho_describes_why_a_series_is_empty():
+    from app.agents.who_gho import describe_rows
+    assert describe_rows({"value": []}) == "no data for Chad"
+    text = describe_rows({"value": [{"Dim1": "X", "Dim2": "Y", "Dim3": None, "NumericValue": None}]})
+    assert "1 rows but none usable" in text and "'X'" in text
