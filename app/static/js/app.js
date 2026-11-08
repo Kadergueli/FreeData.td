@@ -1,7 +1,7 @@
 import { initRouter, rerenderCurrent } from './router.js';
 import { t, setLang, getLang } from './i18n.js';
 
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !navigator.webdriver) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
   });

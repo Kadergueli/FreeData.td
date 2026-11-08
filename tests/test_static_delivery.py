@@ -2,6 +2,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.storage import SECTOR_IDS
 
 client = TestClient(app)
 
@@ -56,11 +57,11 @@ def test_favicon_and_discoverability_endpoints():
 
     jsonld = client.get("/api/v1/catalog.jsonld").json()
     assert jsonld["@type"] == "DataCatalog"
-    assert len(jsonld["dataset"]) == 9
+    assert len(jsonld["dataset"]) == len(SECTOR_IDS)
 
     dcat = client.get("/api/v1/catalog.dcat.json").json()
     assert dcat["@type"] == "dcat:Catalog"
-    assert len(dcat["dcat:dataset"]) == 9
+    assert len(dcat["dcat:dataset"]) == len(SECTOR_IDS)
 
 
 def test_public_read_endpoints_emit_cdn_cache_control_and_health_is_no_store():

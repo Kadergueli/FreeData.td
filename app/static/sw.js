@@ -28,8 +28,8 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  // Never cache authenticated admin endpoints or live export streams in the Service Worker
-  if (url.pathname.startsWith('/api/v1/admin') || url.pathname.startsWith('/api/v1/export/')) {
+  // Never cache live API responses in the Service Worker
+  if (url.pathname.startsWith('/api/')) {
     return;
   }
 

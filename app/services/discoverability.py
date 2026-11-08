@@ -219,6 +219,24 @@ SECTOR_METADATA: dict[str, dict[str, Any]] = {
         "keywords": ["Tchad", "Chad", "démographie", "population", "INSEED", "UNHCR", "recensement"],
         "theme": "http://publications.europa.eu/resource/authority/data-theme/SOCI",
     },
+    "telecom": {
+        "title": "Télécommunications & Numérique au Tchad (Chad Telecom & Digital Dataset)",
+        "description": (
+            "Abonnements mobiles, accès à Internet, bande passante et connectivité numérique "
+            "au Tchad (UIT/ITU, Banque mondiale WDI)."
+        ),
+        "keywords": ["Tchad", "Chad", "télécoms", "internet", "mobile", "numérique", "ITU", "World Bank"],
+        "theme": "http://publications.europa.eu/resource/authority/data-theme/TECH",
+    },
+    "trade": {
+        "title": "Commerce Extérieur & Cours Mondiaux au Tchad (Chad Trade & Commodities Dataset)",
+        "description": (
+            "Exportations, importations, balance commerciale et cours mondiaux des matières premières "
+            "pertinentes pour le Tchad (Banque mondiale WDI, World Bank Pink Sheet, UN Comtrade)."
+        ),
+        "keywords": ["Tchad", "Chad", "commerce", "exportations", "importations", "matières premières", "World Bank"],
+        "theme": "http://publications.europa.eu/resource/authority/data-theme/ECON",
+    },
 }
 
 
