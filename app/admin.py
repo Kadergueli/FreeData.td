@@ -23,6 +23,8 @@ from app.config import settings
 from app.security import rate_limiter
 from app.services.admin_store import AdminStore
 from app.services.cadence import cadence_days
+from app.services.harvest_runs import latest_by_sector
+from app.services.sources import source_catalogue
 from app.services.data_admin import DataAdminStore
 from app.services.quarantine import STATUSES as QUARANTINE_STATUSES
 from app.services.quarantine import QuarantineStore
@@ -263,6 +265,8 @@ def audit_log(limit: int = Query(default=100, ge=1, le=500), admin: AdminUser = 
 
 class RunRequest(BaseModel):
     sectors: list[str] | None = None  # None / empty = every sector
+    # {sector: [source, ...]}: collect only those sources (each one on its own, so its result is visible).
+    sources: dict[str, list[str]] | None = None
 
 
 @router.get("/collections")
@@ -275,6 +279,9 @@ def collections(limit: int = Query(default=30, ge=1, le=100), admin: AdminUser =
         raise HTTPException(status_code=503, detail="Harvest history could not be read from the database.") from exc
     return {
         "sector_ids": list(SECTOR_IDS),
+        "catalogue": source_catalogue(),
+        "cadence_days": {sec: cadence_days(sec) for sec in SECTOR_IDS},
+        "latest": latest_by_sector(runs),
         "job_running": status["job_running"],
         "current_run": status.get("current_run"),
         "next_run": status.get("next_run"),
@@ -285,14 +292,17 @@ def collections(limit: int = Query(default=30, ge=1, le=100), admin: AdminUser =
 @router.post("/collections/run", status_code=202)
 async def run_collection(body: RunRequest | None = None, admin: AdminUser = Depends(require_admin)) -> dict:
     sectors = list(dict.fromkeys(body.sectors)) if body and body.sectors else None
+    sources = {k: list(dict.fromkeys(v)) for k, v in body.sources.items()} if body and body.sources else None
+    if sources:
+        sectors = [sec for sec in SECTOR_IDS if sec in sources]
     try:
-        started = scheduler_service.start_background_job(sectors, trigger="admin", triggered_by=admin.email)
+        started = scheduler_service.start_background_job(sectors, trigger="admin", triggered_by=admin.email, sources=sources)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if started:
         await asyncio.to_thread(
             _store().log, admin.email, "harvest_run", ",".join(sectors) if sectors else "all",
-            {"sectors": sectors or list(SECTOR_IDS)},
+            {"sectors": sectors or list(SECTOR_IDS), **({"sources": sources} if sources else {})},
         )
         _cache_set("admin_overview", None)
     return {"status": "started" if started else "already_running"}

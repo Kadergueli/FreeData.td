@@ -42,11 +42,46 @@ def summarize_results(sectors: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             if errors:
                 summary[name]["errors"] = errors
                 problems += 1
+            if isinstance(res.get("sources"), dict):       # an administrator picked sources: keep each one's result
+                summary[name]["sources"] = {
+                    str(src)[:40]: {k: (str(v)[:300] if k == "error" else ([str(e)[:200] for e in v][:5] if k == "errors" else int(v or 0)))
+                                    for k, v in (r or {}).items() if k in ("stored", "received", "error", "errors")}
+                    for src, r in res["sources"].items()
+                }
+                if any("error" in (r or {}) for r in res["sources"].values()) and "errors" not in summary[name]:
+                    summary[name]["errors"] = [f"{src}: {str(r['error'])[:200]}" for src, r in res["sources"].items() if "error" in (r or {})][:5]
+                    problems += 1
     if not summary:
         return "completed", summary
     if failures == len(summary):
         return "failed", summary
     return ("partial" if problems else "completed"), summary
+
+
+def latest_by_sector(runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """For the admin screen: per sector, how its last collection went, and per source how the last run of
+    THAT source went (a source collected on its own keeps its own line even after a later full run).
+
+    {sector: {"started_at", "status": ok|partial|failed, "stored", "errors": [...],
+              "sources": {source: {"started_at", "status", "stored", "errors"?}}}}
+    `runs` newest first, as list_runs returns them. A run still 'running' is ignored."""
+    out: dict[str, dict[str, Any]] = {}
+    for run in runs:
+        if run.get("status") == "running":
+            continue
+        for sec, res in ((run.get("results") or {}).items()):
+            if not isinstance(res, dict):
+                continue
+            status = "failed" if res.get("error") else ("partial" if res.get("errors") else "ok")
+            entry = out.setdefault(sec, {})
+            if "started_at" not in entry:
+                entry.update({"started_at": run.get("started_at"), "status": status, "stored": int(res.get("stored") or 0),
+                              "errors": [str(res["error"])] if res.get("error") else list(res.get("errors") or []), "sources": {}})
+            for src, r in (res.get("sources") or {}).items():
+                if src not in entry["sources"] and isinstance(r, dict):
+                    entry["sources"][src] = {"started_at": run.get("started_at"), "status": "failed" if r.get("error") else ("partial" if r.get("errors") else "ok"),
+                                             "stored": int(r.get("stored") or 0), "errors": [str(r["error"])] if r.get("error") else list(r.get("errors") or [])}
+    return out
 
 
 class HarvestRunStore:

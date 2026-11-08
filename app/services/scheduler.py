@@ -20,9 +20,18 @@ from app.agents import (
 )
 from app.services.cadence import split_due
 from app.services.harvest_runs import HarvestRunStore, summarize_results
+from app.services.sources import validate_sources
 from app.services.storage import SECTOR_IDS, ObservationRepository
 
 logger = logging.getLogger(__name__)
+
+def agent_classes() -> dict[str, Any]:
+    """Sector -> agent class, read from this module's names at call time (tests replace them)."""
+    return {
+        "agriculture": AgricultureAgent, "environment": EnvironmentAgent, "markets": MarketsAgent,
+        "economy": EconomyAgent, "health": HealthAgent, "energy": EnergyAgent, "transport": TransportAgent,
+        "education": EducationAgent, "demography": DemographyAgent, "telecom": TelecomAgent, "trade": TradeAgent,
+    }
 
 # Safety net: one sector that never answers must not keep the whole harvest "running" for ever
 # (and block every later run). The slowest legitimate sector (FEWS NET prices) takes ~2 minutes.
@@ -46,6 +55,7 @@ class AutonomousHarvesterScheduler:
         self.history = HarvestRunStore(self.repository)
         # Set by the caller for the run about to start (read once inside the job lock).
         self._next_sectors: list[str] | None = None
+        self._next_sources: dict[str, list[str]] = {}
         self._next_skipped: dict[str, str] = {}
         self.current_run: dict[str, Any] | None = None
 
@@ -90,20 +100,21 @@ class AutonomousHarvesterScheduler:
 
     def start_background_job(
         self, sectors: list[str] | None = None, trigger: str = "api", triggered_by: str | None = None,
-        only_due: bool = False,
+        only_due: bool = False, sources: dict[str, list[str]] | None = None,
     ) -> bool:
         """Start a harvest (all sectors, or the given ones) without waiting for it (an HTTP
         request would time out long before 8 sectors finish). Returns False when one is
         already running."""
         self._validate_sectors(sectors)
+        validate_sources(sources)
         if self._job_running or (self._bg_task is not None and not self._bg_task.done()):
             return False
-        self._bg_task = asyncio.create_task(self.run_harvest_job(sectors, trigger, triggered_by, only_due))
+        self._bg_task = asyncio.create_task(self.run_harvest_job(sectors, trigger, triggered_by, only_due, sources))
         return True
 
     async def run_harvest_job(
         self, sectors: list[str] | None = None, trigger: str = "api", triggered_by: str | None = None,
-        only_due: bool = False,
+        only_due: bool = False, sources: dict[str, list[str]] | None = None,
     ) -> dict[str, Any]:
         """Public entry-point — skips if a job is already in progress.
 
@@ -111,6 +122,9 @@ class AutonomousHarvesterScheduler:
         they were collected recently are left out; automatic runs use it, administrators
         do not."""
         self._validate_sectors(sectors)
+        validate_sources(sources)
+        if sources:      # sources given: only those sectors, each from only the listed sources
+            sectors = [s for s in SECTOR_IDS if s in sources]
         if self._job_running:
             logger.warning("Harvest job skipped because another job is already running.")
             return {
@@ -134,6 +148,7 @@ class AutonomousHarvesterScheduler:
 
             self._job_running = True
             self._next_sectors = list(sectors) if sectors else None
+            self._next_sources = {k: list(v) for k, v in (sources or {}).items()}
             self._next_skipped = {}
             if only_due:
                 candidates = self._next_sectors if self._next_sectors is not None else list(SECTOR_IDS)
@@ -174,26 +189,17 @@ class AutonomousHarvesterScheduler:
         total_stored = 0
         agent_results = {}
 
-        agents = [
-            ("agriculture", AgricultureAgent(self.repository)),
-            ("environment", EnvironmentAgent(self.repository)),
-            ("markets", MarketsAgent(self.repository)),
-            ("economy", EconomyAgent(self.repository)),
-            ("health", HealthAgent(self.repository)),
-            ("energy", EnergyAgent(self.repository)),
-            ("transport", TransportAgent(self.repository)),
-            ("education", EducationAgent(self.repository)),
-            ("demography", DemographyAgent(self.repository)),
-            ("telecom", TelecomAgent(self.repository)),
-            ("trade", TradeAgent(self.repository)),
-        ]
-
         wanted = self._next_sectors
-        for sec_name, agent in agents:
+        for sec_name, agent_class in agent_classes().items():
             if wanted is not None and sec_name not in wanted:
                 continue
+            picked = self._next_sources.get(sec_name)
             try:
-                res = await asyncio.wait_for(agent.run(source="all"), timeout=SECTOR_TIMEOUT_SECONDS)
+                if picked:
+                    agent_results[sec_name] = await self._run_sources(sec_name, agent_class, picked)
+                    total_stored += int(agent_results[sec_name].get("stored") or 0)
+                    continue
+                res = await asyncio.wait_for(agent_class(self.repository).run(source="all"), timeout=SECTOR_TIMEOUT_SECONDS)
                 agent_results[sec_name] = res.model_dump(mode="json")
                 total_stored += res.stored
             except asyncio.TimeoutError:
@@ -215,6 +221,36 @@ class AutonomousHarvesterScheduler:
         }
         logger.info("Scheduled harvest completed: %d total records stored.", total_stored)
         return self.last_result
+
+    async def _run_sources(self, sector: str, agent_class: Any, picked: list[str]) -> dict[str, Any]:
+        """Collect one sector from the listed sources only, one after the other, each with its own
+        agent and its own result, so the admin sees which source worked and which did not."""
+        total = {"received": 0, "accepted": 0, "rejected": 0, "stored": 0, "held": 0}
+        by_source: dict[str, dict[str, Any]] = {}
+        errors: list[str] = []
+        for src in picked:
+            try:
+                res = (await asyncio.wait_for(agent_class(self.repository).run(source=src),
+                                              timeout=SECTOR_TIMEOUT_SECONDS)).model_dump(mode="json")
+                entry = {k: int(res.get(k) or 0) for k in total}
+                if res.get("errors"):
+                    entry["errors"] = [str(e)[:300] for e in res["errors"]][:5]
+                    errors.extend(f"{src}: {e}" for e in entry["errors"])
+                for k in total:
+                    total[k] += entry[k]
+            except asyncio.TimeoutError:
+                entry = {"error": f"stopped after {SECTOR_TIMEOUT_SECONDS // 60} minutes without finishing"}
+                errors.append(f"{src}: {entry['error']}")
+            except Exception as exc:
+                logger.error("Error collecting %s/%s: %s", sector, src, exc)
+                entry = {"error": str(exc)[:300]}
+                errors.append(f"{src}: {entry['error']}")
+            by_source[src] = entry
+        result: dict[str, Any] = {"agent": agent_class.__name__, "source": ",".join(picked), **total,
+                                  "errors": errors, "sources": by_source}
+        if all("error" in e for e in by_source.values()):    # nothing worked at all: the sector failed
+            result["error"] = "; ".join(errors)[:300]
+        return result
 
     def get_public_status(self) -> dict[str, Any]:
         """Status safe for unauthenticated visitors: counts and ok/failed flags only. Raw error

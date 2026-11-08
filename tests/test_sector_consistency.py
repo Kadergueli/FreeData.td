@@ -27,9 +27,7 @@ def test_schema_cadence_and_scheduler_cover_every_sector():
     allowed = set(typing.get_args(ObservationCreate.model_fields["sector"].annotation))
     assert allowed == set(SECTOR_IDS)
     assert set(SECTOR_CADENCE_DAYS) == set(SECTOR_IDS)
-    src = Path(sched_mod.__file__).read_text(encoding="utf-8")
-    for sector in SECTOR_IDS:
-        assert f'("{sector}", ' in src, f"{sector} is not run by the scheduler"
+    assert set(sched_mod.agent_classes()) == set(SECTOR_IDS), "a sector is not run by the scheduler"
 
 
 @pytest.mark.parametrize("sector", SECTOR_IDS)

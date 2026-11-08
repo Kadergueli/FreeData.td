@@ -53,6 +53,8 @@ def last_success(runs: list[dict[str, Any]], sector: str) -> datetime | None:
         res = (run.get("results") or {}).get(sector)
         if not isinstance(res, dict) or res.get("error"):
             continue
+        if res.get("sources"):          # an administrator collected only some sources: the sector is not up to date
+            continue
         if res.get("errors") and not res.get("stored"):
             continue
         started = _parse(run.get("started_at"))

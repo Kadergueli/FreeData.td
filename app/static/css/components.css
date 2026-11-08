@@ -883,3 +883,25 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
   .ds-table .ds-corr-row .ds-interp { flex: 1 1 100%; max-width: none !important; margin-top: 2px; }
 }
 @media (max-width: 640px) { #audit-logs-list { min-height: 0 !important; } }
+
+
+/* ── Admin: collections by sector and source ── */
+.coll-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: var(--space-4, 16px); }
+.coll-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.coll-card[data-status="failed"] { border-left: 3px solid var(--red); }
+.coll-card[data-status="partial"] { border-left: 3px solid var(--amber); }
+.coll-card[data-status="ok"] { border-left: 3px solid var(--green); }
+.coll-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.coll-pick { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.coll-meta { line-height: 1.6; }
+.coll-title { letter-spacing: 0.05em; margin-bottom: -4px; }
+.coll-srcs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.coll-src { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.coll-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 6px; }
+.coll-src-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.coll-src-err { display: block; color: var(--red); font-size: 11px; line-height: 1.4; margin-top: 2px; }
+.coll-src .btn { padding: 4px 8px; flex: none; }
+.coll-problems { font-size: 12px; color: var(--red); }
+.coll-problems summary { cursor: pointer; color: var(--text-muted); }
+.coll-problems ul { margin: 6px 0 0; padding-left: 16px; overflow-wrap: anywhere; }
+.coll-card > .admin-run-one { align-self: flex-start; margin-top: auto; }

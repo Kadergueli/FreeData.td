@@ -20,7 +20,17 @@ OVERVIEW = {
 }
 
 SECTORS = ["agriculture", "environment", "markets", "transport", "education", "economy", "health", "energy"]
+CATALOGUE = {
+    "agriculture": [{"id": "world-bank", "label": "World Bank"}, {"id": "open-meteo", "label": "Open-Meteo"}],
+    "health": [{"id": "world-bank", "label": "World Bank"}, {"id": "who-gho", "label": "WHO GHO"},
+               {"id": "dhs", "label": "DHS Program"}, {"id": "open-street-map", "label": "OpenStreetMap"}],
+    "energy": [{"id": "world-bank", "label": "World Bank"}],
+}
+LATEST = {"health": {"started_at": "2026-10-23T03:00:00", "status": "partial", "stored": 120, "errors": ["x"], "sources": {
+    "who-gho": {"started_at": "2026-10-23T03:00:00", "status": "partial", "stored": 120, "errors": ["WHO GHO: 3/25 series empty <b>x</b>"]},
+    "dhs": {"started_at": "2026-10-23T03:00:00", "status": "failed", "stored": 0, "errors": ["DHS Program returned nothing"]}}}}
 COLLECTIONS = {
+    "catalogue": CATALOGUE, "latest": LATEST, "cadence_days": {"health": 30, "energy": 30},
     "sector_ids": SECTORS, "job_running": False, "current_run": None, "next_run": None,
     "runs": [
         {"id": 3, "started_at": "2026-10-23T03:00:00", "trigger": "api", "triggered_by": None, "status": "partial",
@@ -347,6 +357,57 @@ def test_already_running_reply_is_explained(probe):
     probe.page.wait_for_selector("#admin-run-all")
     probe.page.click("#admin-run-all")
     probe.page.wait_for_selector("#admin-runs-table")
+
+
+def test_each_sector_card_lists_its_sources_with_their_last_result(probe):
+    _mock(probe.page)
+    _open_collections(probe)
+    probe.page.wait_for_selector('.coll-card[data-sector="health"]')
+    card = probe.page.locator('.coll-card[data-sector="health"]')
+    assert card.get_attribute("data-status") == "partial"
+    assert card.locator(".coll-src").count() == 4
+    assert card.locator('.coll-src[data-source="dhs"]').get_attribute("data-source-status") == "failed"
+    assert "DHS Program returned nothing" in card.inner_text() and "<b>" in card.inner_text()   # shown, never interpreted
+    assert card.locator("b").count() == 0
+    assert probe.page.locator('.coll-card[data-sector="energy"]').get_attribute("data-status") == "never"
+    assert "admin." not in probe.page.inner_text("#admin-run-sectors") and probe.page_errors == []
+
+
+def test_run_one_source_sends_that_source_only(probe):
+    calls = _mock(probe.page)
+    _open_collections(probe)
+    probe.page.wait_for_selector('.admin-run-source[data-sector="health"][data-source="who-gho"]')
+    probe.page.click('.admin-run-source[data-sector="health"][data-source="who-gho"]')
+    probe.page.wait_for_selector("#admin-runs-table")
+    assert calls.bodies == [{"sources": {"health": ["who-gho"]}}]
+
+
+def test_run_one_sector_from_its_card(probe):
+    calls = _mock(probe.page)
+    _open_collections(probe)
+    probe.page.wait_for_selector('.admin-run-one[data-sector="energy"]')
+    probe.page.click('.admin-run-one[data-sector="energy"]')
+    probe.page.wait_for_selector("#admin-runs-table")
+    assert calls.bodies == [{"sectors": ["energy"]}]
+
+
+def test_history_lists_one_line_per_source_when_sources_were_picked(probe):
+    picked = {"id": 5, "started_at": "2026-11-08T10:00:00", "trigger": "admin", "triggered_by": "me@x.org", "status": "partial",
+              "sectors": ["health"], "total_stored": 20, "results": {"health": {"stored": 20, "sources": {
+                  "who-gho": {"stored": 20}, "dhs": {"stored": 0, "error": "DHS Program returned nothing"}}}}}
+    _mock(probe.page, collections=dict(COLLECTIONS, runs=[picked]))
+    _open_collections(probe)
+    probe.page.wait_for_selector("#admin-runs-table")
+    text = probe.page.inner_text("#admin-runs-table")
+    assert "WHO GHO" in text and "DHS Program" in text and "DHS Program returned nothing" in text
+
+
+def test_collections_screen_has_no_horizontal_scroll_on_a_phone(probe):
+    probe.page.set_viewport_size({"width": 390, "height": 800})
+    _mock(probe.page)
+    _open_collections(probe)
+    probe.page.wait_for_selector(".coll-grid")
+    assert probe.page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
 
 
 # ── Patch C: quality / quarantine ───────────────────────────────────────────

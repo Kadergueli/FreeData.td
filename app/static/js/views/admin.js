@@ -225,11 +225,68 @@ const RUN_STYLE = {
   failed: 'var(--red)', interrupted: 'var(--red)', skipped: 'var(--text-muted)',
 };
 
-function runDetails(r) {
+function sourceLine(sec, src, v, catalogue) {
+  const label = ((catalogue[sec] || []).find(x => x.id === src) || {}).label || src;
+  const bad = v.error || (v.errors && v.errors.length);
+  const msg = [v.error, ...(v.errors || [])].filter(Boolean).join(' ; ');
+  return `${bad ? '✗' : '✓'} ${sectorName(sec)} › ${label} · ${Number(v.stored || 0).toLocaleString()}${msg ? ` · ${msg}` : ''}`;
+}
+
+function runDetails(r, catalogue = {}) {
   const res = r.results || {};
-  const lines = Object.entries(res).filter(([, v]) => v && (v.error || (v.errors && v.errors.length) || v.held > 0))
-    .map(([sec, v]) => `${sectorName(sec)}: ${[v.error, ...(v.errors || []), v.held > 0 ? t('admin.run_held').replace('{n}', v.held) : null].filter(Boolean).join(' ; ')}`);
-  return lines.length ? `<div class="mono-xs text-muted" style="margin-top:4px;max-width:520px;white-space:normal;">${lines.map(escapeHtml).join('<br>')}</div>` : '';
+  const lines = [];
+  for (const [sec, v] of Object.entries(res)) {
+    if (!v) continue;
+    if (v.sources && Object.keys(v.sources).length) {      // an administrator ran chosen sources: one line each
+      for (const [src, sv] of Object.entries(v.sources)) lines.push(sourceLine(sec, src, sv || {}, catalogue));
+      if (v.held > 0) lines.push(`${sectorName(sec)}: ${t('admin.run_held').replace('{n}', v.held)}`);
+      continue;
+    }
+    if (v.error || (v.errors && v.errors.length) || v.held > 0) {
+      lines.push(`${sectorName(sec)}: ${[v.error, ...(v.errors || []), v.held > 0 ? t('admin.run_held').replace('{n}', v.held) : null].filter(Boolean).join(' ; ')}`);
+    }
+  }
+  return lines.length ? `<div class="mono-xs text-muted" style="margin-top:4px;max-width:560px;white-space:normal;">${lines.map(escapeHtml).join('<br>')}</div>` : '';
+}
+
+const SEC_STATUS_COLOR = { ok: 'var(--green)', partial: 'var(--amber)', failed: 'var(--red)', never: 'var(--text-muted)' };
+
+function sectorCard(id, c, running) {
+  const cat = (c.catalogue && c.catalogue[id]) || [];
+  const last = (c.latest && c.latest[id]) || null;
+  const status = last ? last.status : 'never';
+  const color = SEC_STATUS_COLOR[status];
+  const days = c.cadence_days && c.cadence_days[id];
+  const dis = running ? 'disabled' : '';
+  const sources = cat.map(src => {
+    const sl = last && last.sources && last.sources[src.id];
+    const sColor = sl ? SEC_STATUS_COLOR[sl.status] : 'var(--border-strong, #ced4da)';
+    const msg = sl && sl.errors && sl.errors.length ? sl.errors.join(' ; ') : '';
+    return `<li class="coll-src" data-source="${escapeHtml(src.id)}"${sl ? ` data-source-status="${sl.status}"` : ''}>
+      <span class="coll-dot" style="background:${sColor};" aria-hidden="true"></span>
+      <span class="coll-src-name">${escapeHtml(src.label)}${sl ? `<span class="text-muted"> · ${Number(sl.stored).toLocaleString()}</span>` : ''}
+        ${msg ? `<span class="coll-src-err" title="${escapeHtml(msg)}">${escapeHtml(msg.length > 140 ? msg.slice(0, 140) + '…' : msg)}</span>` : ''}</span>
+      <button class="btn btn-ghost admin-run-source" type="button" data-sector="${escapeHtml(id)}" data-source="${escapeHtml(src.id)}"
+        title="${escapeHtml(t('admin.src_run'))}" aria-label="${escapeHtml(t('admin.src_run'))} : ${escapeHtml(src.label)}" ${dis}>
+        <i data-lucide="play" style="width:12px;height:12px;"></i> ${t('admin.src_run_short')}</button></li>`;
+  }).join('');
+  const problems = last && last.errors && last.errors.length && !cat.some(src => last.sources && last.sources[src.id])
+    ? `<details class="coll-problems"><summary>${t('admin.problem_details')}</summary><ul>${last.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></details>` : '';
+  return `<div class="card coll-card" data-sector="${escapeHtml(id)}" data-status="${status}">
+    <div class="coll-head">
+      <label class="coll-pick"><input type="checkbox" class="admin-run-sector" value="${escapeHtml(id)}" ${dis}>
+        <span class="fw-600">${escapeHtml(sectorName(id))}</span></label>
+      <span class="badge" style="color:${color};border:1px solid ${color};background:transparent;">${t(`admin.sec_status.${status}`)}</span>
+    </div>
+    <div class="coll-meta mono-xs text-muted">
+      ${last ? `${t('admin.last_collect')} ${fmtDateTime(last.started_at)} · ${Number(last.stored).toLocaleString()} ${t('admin.records')}` : t('admin.never_run')}
+      ${days ? `<br>${t('admin.rhythm')} ${t('admin.every_days').replace('{n}', days)}` : ''}
+    </div>
+    ${cat.length ? `<div class="coll-title mono-xs text-muted uppercase">${t('admin.sources_title')}</div><ul class="coll-srcs">${sources}</ul>` : ''}
+    ${problems}
+    <button class="btn btn-ghost mono-xs admin-run-one" type="button" data-sector="${escapeHtml(id)}" ${dis}>
+      <i data-lucide="play" style="width:12px;height:12px;"></i> ${t('admin.sector_run')}</button>
+  </div>`;
 }
 
 async function loadCollections(panel) {
@@ -237,13 +294,9 @@ async function loadCollections(panel) {
   const running = !!c.job_running;
   const cur = c.current_run;
   panel.innerHTML = `
-    <div class="card mb-4" style="padding:16px;">
+    <div class="card mb-4 coll-toolbar" style="padding:16px;">
       <h4 class="mono-sm uppercase mb-2">${t('admin.run_title')}</h4>
       <p class="mono-xs text-muted mb-3">${t('admin.run_desc')}</p>
-      <div class="flex gap-3 flex-wrap mb-3" id="admin-run-sectors">
-        ${c.sector_ids.map(id => `<label class="mono-xs flex items-center gap-1" style="cursor:pointer;">
-          <input type="checkbox" class="admin-run-sector" value="${escapeHtml(id)}" ${running ? 'disabled' : ''}> ${escapeHtml(sectorName(id))}</label>`).join('')}
-      </div>
       <div class="flex gap-2 flex-wrap items-center">
         <button class="btn btn-cyan mono-sm" id="admin-run-selected" type="button" ${running ? 'disabled' : ''}>${t('admin.run_selected')}</button>
         <button class="btn btn-ghost mono-sm" id="admin-run-all" type="button" ${running ? 'disabled' : ''}>${t('admin.run_all')}</button>
@@ -252,6 +305,7 @@ async function loadCollections(panel) {
       </div>
       <p class="mono-xs mt-2" id="admin-run-msg" role="status"></p>
     </div>
+    <div class="coll-grid mb-4" id="admin-run-sectors">${c.sector_ids.map(id => sectorCard(id, c, running)).join('')}</div>
     <div class="card" style="padding:16px;">
       <h4 class="mono-sm uppercase mb-3">${t('admin.history_title')}</h4>
       ${c.runs.length ? `<div style="overflow-x:auto;"><table class="ds-table" id="admin-runs-table"><thead><tr>
@@ -268,7 +322,7 @@ async function loadCollections(panel) {
           return `<tr data-run-status="${escapeHtml(r.status)}">
             <td class="mono-xs" style="padding:8px 10px;white-space:nowrap;">${fmtDateTime(r.started_at)}</td>
             <td class="mono-xs" style="padding:8px 10px;">${escapeHtml(trig)}${r.triggered_by ? `<div class="text-muted">${escapeHtml(r.triggered_by)}</div>` : ''}</td>
-            <td class="mono-xs" style="padding:8px 10px;">${escapeHtml(secTxt)}${runDetails(r)}</td>
+            <td class="mono-xs" style="padding:8px 10px;">${escapeHtml(secTxt)}${runDetails(r, c.catalogue || {})}</td>
             <td style="padding:8px 10px;"><span class="badge" style="color:${color};border-color:${color};background:transparent;">${t(`admin.run_status.${r.status}`)}</span></td>
             <td class="mono-xs" style="padding:8px 10px;text-align:right;">${Number(r.total_stored || 0).toLocaleString()}</td></tr>`;
         }).join('')}</tbody></table></div>` : `<p class="mono-sm text-muted" id="admin-no-runs">${t('admin.no_runs')}</p>`}
@@ -276,9 +330,9 @@ async function loadCollections(panel) {
   if (window.lucide) window.lucide.createIcons();
 
   const msg = document.getElementById('admin-run-msg');
-  const start = async (sectors) => {
+  const start = async (sectors, sources) => {
     try {
-      const r = await adminFetch('/collections/run', { method: 'POST', body: { sectors } });
+      const r = await adminFetch('/collections/run', { method: 'POST', body: sources ? { sources } : { sectors } });
       msg.textContent = r.status === 'started' ? t('admin.run_started') : t('admin.run_already');
     } catch (err) {
       if (err.status === 401 || err.status === 403) { handlePanelError(err); return; }
@@ -288,6 +342,8 @@ async function loadCollections(panel) {
     renderPanel();
   };
   document.getElementById('admin-run-all')?.addEventListener('click', () => start(null));
+  document.querySelectorAll('.admin-run-source').forEach(b => b.addEventListener('click', () => start(null, { [b.dataset.sector]: [b.dataset.source] })));
+  document.querySelectorAll('.admin-run-one').forEach(b => b.addEventListener('click', () => start([b.dataset.sector])));
   document.getElementById('admin-run-selected')?.addEventListener('click', () => {
     const picked = [...document.querySelectorAll('.admin-run-sector:checked')].map(i => i.value);
     if (!picked.length) { msg.textContent = t('admin.run_pick'); return; }
