@@ -338,6 +338,7 @@ def test_a_failure_already_reported_by_the_collector_is_not_repeated(monkeypatch
     monkeypatch.setattr(agent, "_collect_world_bank", ok)
     monkeypatch.setattr(agent, "_collect_who_gho", ok)
     monkeypatch.setattr(agent, "_collect_dhs", ok)
+    monkeypatch.setattr(agent, "_collect_unicef", ok)
     monkeypatch.setattr(agent, "_collect_open_street_map", boom)
     run(agent.collect("all"))
     assert agent.source_errors == ["OpenStreetMap: 5/23 queries did not answer"]
