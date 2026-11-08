@@ -1,0 +1,14 @@
+{
+  "_note": "Besoins indicatifs par culture, forme trapèze [min absolu, optimum min, optimum max, max absolu]. Valeurs de départ à VÉRIFIER une par une contre FAO EcoCrop avant publication (verified=false tant que ce n'est pas fait).",
+  "crops": {
+    "millet":    {"fr": "Mil",           "en": "Pearl millet", "rain_mm": [200, 350, 800, 1200],  "temp_mean_c": [15, 25, 32, 38], "ph": [4.5, 5.5, 7.5, 8.5], "cycle_days": [70, 120],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
+    "sorghum":   {"fr": "Sorgho",        "en": "Sorghum",      "rain_mm": [300, 450, 900, 1500],  "temp_mean_c": [15, 22, 30, 38], "ph": [5.0, 5.5, 7.5, 8.5], "cycle_days": [90, 140],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
+    "maize":     {"fr": "Maïs",          "en": "Maize",        "rain_mm": [500, 600, 1200, 2000], "temp_mean_c": [14, 18, 27, 35], "ph": [5.0, 5.5, 7.5, 8.0], "cycle_days": [80, 140],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
+    "groundnut": {"fr": "Arachide",      "en": "Groundnut",    "rain_mm": [400, 600, 1100, 1800], "temp_mean_c": [15, 22, 28, 36], "ph": [4.5, 5.5, 7.0, 8.0], "cycle_days": [90, 140],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
+    "cotton":    {"fr": "Coton",         "en": "Cotton",       "rain_mm": [500, 700, 1200, 1800], "temp_mean_c": [16, 22, 30, 38], "ph": [5.0, 5.5, 8.0, 8.5], "cycle_days": [150, 200], "source": "FAO EcoCrop (à vérifier)", "verified": false},
+    "sesame":    {"fr": "Sésame",        "en": "Sesame",       "rain_mm": [300, 500, 900, 1500],  "temp_mean_c": [18, 24, 30, 38], "ph": [5.0, 5.5, 7.5, 8.0], "cycle_days": [90, 120],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
+    "rice":      {"fr": "Riz pluvial",   "en": "Upland rice",  "rain_mm": [800, 1000, 1800, 3000],"temp_mean_c": [16, 22, 30, 38], "ph": [4.5, 5.5, 7.0, 8.0], "cycle_days": [100, 150], "source": "FAO EcoCrop (à vérifier)", "verified": false},
+    "cowpea":    {"fr": "Niébé",         "en": "Cowpea",       "rain_mm": [300, 500, 900, 1500],  "temp_mean_c": [15, 24, 30, 38], "ph": [4.5, 5.5, 7.5, 8.5], "cycle_days": [60, 120],  "source": "FAO EcoCrop (à vérifier)", "verified": false},
+    "cassava":   {"fr": "Manioc",        "en": "Cassava",      "rain_mm": [600, 1000, 1500, 3000],"temp_mean_c": [18, 25, 29, 35], "ph": [4.5, 5.5, 7.5, 8.5], "cycle_days": [240, 360], "source": "FAO EcoCrop (à vérifier)", "verified": false}
+  }
+}

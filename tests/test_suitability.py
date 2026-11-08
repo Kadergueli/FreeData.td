@@ -1,0 +1,52 @@
+import pytest
+
+from app.crops.engine import assess, load_crops, rank, trapezoid, verdict_for
+
+MOUNDOU = {"rain_mm": 1100, "temp_mean_c": 27, "ph": 6.0}
+ABECHE = {"rain_mm": 500, "temp_mean_c": 29, "ph": 7.0}
+FAYA = {"rain_mm": 5, "temp_mean_c": 29, "ph": 8.0}
+
+
+def test_trapezoid_shape():
+    assert trapezoid(5, 0, 2, 8, 10) == 1.0
+    assert trapezoid(1, 0, 2, 8, 10) == pytest.approx(0.5)
+    assert trapezoid(9, 0, 2, 8, 10) == pytest.approx(0.5)
+    assert trapezoid(0, 0, 2, 8, 10) == 0.0 and trapezoid(10, 0, 2, 8, 10) == 0.0
+
+
+def test_known_cases():
+    assert assess("cotton", MOUNDOU)["verdict"] in ("very_suitable", "suitable")
+    assert assess("rice", FAYA)["verdict"] == "unsuitable"
+    assert assess("millet", ABECHE)["verdict"] in ("very_suitable", "suitable")
+    assert assess("cotton", ABECHE)["verdict"] == "unsuitable"
+
+
+def test_limiting_factor_decides():
+    r = assess("cotton", ABECHE)
+    assert r["limiting"] == "rain_mm"
+    assert r["score"] == r["factors"]["rain_mm"]["score"]
+
+
+def test_missing_factor_is_reported_not_guessed():
+    r = assess("millet", {"rain_mm": 500, "temp_mean_c": 29})
+    assert r["unknown"] == ["ph"] and r["confidence"] == pytest.approx(0.67)
+    assert assess("millet", {})["verdict"] == "unknown"
+
+
+def test_unknown_crop_and_ranking():
+    with pytest.raises(KeyError):
+        assess("banana", MOUNDOU)
+    ranked = rank(FAYA)
+    assert [r["score"] for r in ranked] == sorted((r["score"] for r in ranked), reverse=True)
+
+
+def test_every_crop_is_well_formed_and_flagged():
+    for cid, c in load_crops().items():
+        for key in ("rain_mm", "temp_mean_c", "ph"):
+            a, b, c2, d = c[key]
+            assert a < b <= c2 < d, (cid, key)
+        assert c["verified"] is False and c["source"]
+
+
+def test_verdict_thresholds():
+    assert [verdict_for(s) for s in (0.9, 0.7, 0.5, 0.1)] == ["very_suitable", "suitable", "marginal", "unsuitable"]
