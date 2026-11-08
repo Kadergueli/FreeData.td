@@ -87,27 +87,52 @@ function renderLogin(message = '') {
 
 /* ── Dashboard shell ─────────────────────────────────────────────────────── */
 
+const TAB_GROUPS = [
+  ['admin.grp_monitor', [['overview', 'layout-dashboard'], ['collections', 'download-cloud']]],
+  ['admin.grp_data', [['quality', 'badge-check'], ['data', 'database'], ['reports', 'file-text']]],
+  ['admin.grp_assist', [['assistant', 'message-square']]],
+  ['admin.grp_admin', [['team', 'users'], ['audit', 'scroll-text']]],
+];
+
+function tabButton(id, icon) {
+  const on = id === _tab;
+  return `<button type="button" class="admin-tab adm-tab${on ? ' is-active' : ''}" data-tab="${id}" aria-pressed="${on}"${on ? ' aria-current="page"' : ''}>
+    <i data-lucide="${icon}" class="adm-tab-icon"></i><span>${t('admin.tab_' + id)}</span></button>`;
+}
+
+function renderTabHead() {
+  const head = document.getElementById('admin-head');
+  if (!head) return;
+  head.innerHTML = `<h3 class="adm-head-title">${t('admin.tab_' + _tab)}</h3>
+    <p class="adm-head-desc">${t('admin.desc_' + _tab)}</p>`;
+}
+
 function renderDashboard() {
-  const tabs = [['overview', 'admin.tab_overview'], ['collections', 'admin.tab_collections'], ['quality', 'admin.tab_quality'], ['data', 'admin.tab_data'], ['reports', 'admin.tab_reports'], ['team', 'admin.tab_team'], ['assistant', 'admin.tab_assistant'], ['audit', 'admin.tab_audit']];
   root().innerHTML = `
-    <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
+    <div class="adm-top">
       <div>
         <div class="mono-xs text-cyan fw-700 mb-1 flex items-center gap-1 uppercase">
           <i data-lucide="shield-check" style="width:14px;height:14px;"></i> ${t('admin.restricted')}
         </div>
         <h2 class="hero-title uppercase" style="font-size:24px;">${t('admin.title')}</h2>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         <span class="mono-xs text-muted" id="admin-who">${escapeHtml(_me.email)}</span>
         <span class="badge badge--cyan mono-xs">${escapeHtml(_me.role.toUpperCase())}</span>
         <button class="btn btn-ghost mono-xs" id="admin-signout" type="button">${t('admin.sign_out')}</button>
       </div>
     </div>
-    <div class="flex gap-2 mb-4 flex-wrap" id="admin-tabs">
-      ${tabs.map(([id, key]) => `<button type="button" class="btn ${id === _tab ? 'btn-cyan' : 'btn-ghost'} admin-tab mono-sm" data-tab="${id}" aria-pressed="${id === _tab}">${t(key)}</button>`).join('')}
-    </div>
-    <div id="admin-panel"></div>`;
+    <div class="adm-shell">
+      <nav class="adm-nav" id="admin-tabs" aria-label="${t('admin.title')}">
+        ${TAB_GROUPS.map(([g, items]) => `<div class="adm-group"><div class="adm-group-label">${t(g)}</div>${items.map(([id, ic]) => tabButton(id, ic)).join('')}</div>`).join('')}
+      </nav>
+      <section class="adm-main">
+        <header class="adm-head" id="admin-head"></header>
+        <div id="admin-panel"></div>
+      </section>
+    </div>`;
   if (window.lucide) window.lucide.createIcons();
+  renderTabHead();
 
   document.getElementById('admin-signout').addEventListener('click', () => { signOut(); _me = null; renderLogin(); });
   document.querySelectorAll('.admin-tab').forEach(btn => btn.addEventListener('click', () => {
@@ -115,9 +140,11 @@ function renderDashboard() {
     clearTimeout(_pollTimer);
     document.querySelectorAll('.admin-tab').forEach(b => {
       const on = b === btn;
-      b.classList.toggle('btn-cyan', on); b.classList.toggle('btn-ghost', !on);
+      b.classList.toggle('is-active', on);
       b.setAttribute('aria-pressed', String(on));
+      if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
+    renderTabHead();
     renderPanel();
   }));
   renderPanel();

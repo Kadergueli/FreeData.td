@@ -905,3 +905,27 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
 .coll-problems summary { cursor: pointer; color: var(--text-muted); }
 .coll-problems ul { margin: 6px 0 0; padding-left: 16px; overflow-wrap: anywhere; }
 .coll-card > .admin-run-one { align-self: flex-start; margin-top: auto; }
+
+/* ── Admin shell ─────────────────────────────────────────────────────────── */
+.adm-top { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+.adm-shell { display:grid; grid-template-columns:200px minmax(0,1fr); gap:24px; align-items:start; }
+.adm-nav { position:sticky; top:12px; display:flex; flex-direction:column; gap:16px; }
+.adm-group { display:flex; flex-direction:column; gap:2px; }
+.adm-group-label { font-size:11px; color:var(--text-muted); padding:0 10px 4px; letter-spacing:.04em; }
+.adm-tab { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:9px 10px; border:0; border-left:2px solid transparent; border-radius:4px; background:transparent; color:var(--text-muted); font:inherit; font-size:14px; cursor:pointer; }
+.adm-tab:hover { background:var(--surface-hover); color:var(--text); }
+.adm-tab:focus-visible { outline:2px solid var(--cyan); outline-offset:1px; }
+.adm-tab.is-active { background:var(--surface-hover); color:var(--text); border-left-color:var(--cyan); font-weight:600; }
+.adm-tab-icon { width:16px; height:16px; flex:none; }
+.adm-main { min-width:0; }
+.adm-head { margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+.adm-head-title { font-size:20px; margin:0 0 4px; }
+.adm-head-desc { margin:0; font-size:14px; color:var(--text-muted); max-width:70ch; }
+@media (max-width: 899px) {
+  .adm-shell { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .adm-nav { position:static; flex-direction:row; overflow-x:auto; gap:4px; padding-bottom:4px; border-bottom:1px solid var(--border); }
+  .adm-group { flex-direction:row; gap:4px; }
+  .adm-group-label { display:none; }
+  .adm-tab { width:auto; white-space:nowrap; border-left:0; border-bottom:2px solid transparent; border-radius:4px 4px 0 0; }
+  .adm-tab.is-active { border-bottom-color:var(--cyan); }
+}
