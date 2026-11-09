@@ -1,7 +1,8 @@
 """Aptitude culturale : compare les besoins d'une culture aux conditions d'un lieu.
 
-Méthode FAO (EcoCrop) : chaque facteur donne un score 0..1 par trapèze, et le
-facteur le plus limitant décide du verdict global (loi du minimum, Liebig).
+Méthode FAO (EcoCrop) : chaque facteur donne un score 0..1 par trapèze. Parmi les facteurs de
+climat (pluie, température, durée de saison), le plus limitant décide (loi du minimum, Liebig) ;
+le pH du sol retire ensuite au plus 40 % du score.
 Fonction pure : aucune base de données ni réseau, donc testable seule.
 """
 from __future__ import annotations
@@ -15,6 +16,12 @@ REQUIREMENTS_FILE = Path(__file__).with_name("requirements.json")
 
 # facteur du site -> clé de la table des besoins
 FACTORS = {"rain_mm": "rain_mm", "temp_mean_c": "temp_mean_c", "ph": "ph"}
+# Facteur facultatif : la saison des pluies doit couvrir le cycle de la culture (min de cycle_days).
+# Compté seulement quand le lieu le fournit ; ne change pas `confidence`, calculée sur FACTORS.
+SEASON = "season_days"
+# Le pH du sol (une valeur par région, modifiable par amendement) retire au plus 40 % du score climatique.
+# Choix de modélisation de FreeData.td, pas une règle FAO : à calibrer avec des rendements réels.
+SOIL_MAX_PENALTY = 0.4
 
 # (seuil minimum du score global, verdict), du meilleur au pire
 VERDICTS = [(0.8, "very_suitable"), (0.6, "suitable"), (0.4, "marginal"), (0.0, "unsuitable")]
@@ -44,7 +51,7 @@ def verdict_for(score: float) -> str:
 
 
 def assess(crop_id: str, site: dict[str, float | None]) -> dict[str, Any]:
-    """Évalue une culture sur un site.
+    """Évalue une culture sur un site : le climat décide (facteur le plus limitant), le sol module.
 
     `site` contient les facteurs connus (rain_mm, temp_mean_c, ph). Un facteur
     absent ou None est ignoré et listé dans `unknown` : on ne devine jamais.
@@ -63,20 +70,32 @@ def assess(crop_id: str, site: dict[str, float | None]) -> dict[str, Any]:
             continue
         factors[factor] = {"value": float(value), "score": round(trapezoid(float(value), *crop[key]), 3)}
 
+    if site.get(SEASON) is not None:
+        factors[SEASON] = {"value": float(site[SEASON]),
+                           "score": round(min(1.0, float(site[SEASON]) / crop["cycle_days"][0]), 3)}
+
     if not factors:
         return {"crop": crop_id, "score": None, "verdict": "unknown", "limiting": None,
                 "factors": {}, "unknown": unknown, "confidence": 0.0, "verified": crop["verified"]}
 
-    limiting = min(factors, key=lambda f: factors[f]["score"])
-    score = factors[limiting]["score"]
+    core = [f for f in factors if f != "ph"]  # climat : pluie, température, saison
+    if not core:
+        return {"crop": crop_id, "score": None, "verdict": "unknown", "limiting": None, "factors": factors,
+                "unknown": unknown, "confidence": 0.0, "verified": crop["verified"]}
+    limiting = min(core, key=lambda f: factors[f]["score"])
+    climate_score = factors[limiting]["score"]
+    # Le sol module le résultat sans le bloquer : un pH hors optimum retire au plus SOIL_MAX_PENALTY du score.
+    ph_score = factors["ph"]["score"] if "ph" in factors else 1.0
+    score = round(climate_score * (1 - SOIL_MAX_PENALTY * (1 - ph_score)), 3)
     return {
         "crop": crop_id,
         "score": score,
+        "climate_score": climate_score,
         "verdict": verdict_for(score),
         "limiting": limiting,
         "factors": factors,
         "unknown": unknown,
-        "confidence": round(len(factors) / len(FACTORS), 2),
+        "confidence": round(min(1.0, len([f for f in factors if f in FACTORS]) / len(FACTORS)), 2),
         "verified": crop["verified"],
     }
 

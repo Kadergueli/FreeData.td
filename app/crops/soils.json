@@ -1,0 +1,167 @@
+{
+  "_note": "SoilGrids 2.0 (ISRIC, CC BY 4.0), moyenne pondérée 0-30 cm. Valeur du point central de la région, ou médiane des points voisins (approx_distance_km) quand le centre est masqué (ville, eau). pH en eau ; argile et sable en % ; carbone organique en g/kg (calculé sur 5-30 cm : la couche 0-5 cm a échoué à la lecture).",
+  "source": "SoilGrids 2.0, https://www.isric.org/explore/soilgrids",
+  "regions": {
+    "N'Djamena (N'Djamena)": {
+      "ph": 6.73,
+      "clay_pct": 39.73,
+      "sand_pct": 31.02,
+      "organic_carbon_g_kg": 6.07,
+      "approx_distance_km": 11
+    },
+    "Moundou (Logone Occidental)": {
+      "ph": 6.08,
+      "clay_pct": 26.3,
+      "sand_pct": 49.34,
+      "organic_carbon_g_kg": 8.1,
+      "approx_distance_km": 11
+    },
+    "Doba (Logone Oriental)": {
+      "ph": 6.6,
+      "clay_pct": 18.95,
+      "sand_pct": 58.3,
+      "organic_carbon_g_kg": 7.6,
+      "approx_distance_km": 0
+    },
+    "Sarh (Moyen-Chari)": {
+      "ph": 6.33,
+      "clay_pct": 26.96,
+      "sand_pct": 43.61,
+      "organic_carbon_g_kg": 7.46,
+      "approx_distance_km": 11
+    },
+    "Koumra (Mandoul)": {
+      "ph": 6.35,
+      "clay_pct": 24.88,
+      "sand_pct": 50.93,
+      "organic_carbon_g_kg": 7.98,
+      "approx_distance_km": 11
+    },
+    "Laï (Tandjilé)": {
+      "ph": 6.28,
+      "clay_pct": 25.94,
+      "sand_pct": 47.33,
+      "organic_carbon_g_kg": 7.34,
+      "approx_distance_km": 11
+    },
+    "Bongor (Mayo-Kebbi Est)": {
+      "ph": 6.5,
+      "clay_pct": 23.07,
+      "sand_pct": 50.67,
+      "organic_carbon_g_kg": 6.06,
+      "approx_distance_km": 11
+    },
+    "Pala (Mayo-Kebbi Ouest)": {
+      "ph": 6.5,
+      "clay_pct": 18.95,
+      "sand_pct": 60.35,
+      "organic_carbon_g_kg": 6.2,
+      "approx_distance_km": 0
+    },
+    "Abéché (Ouaddaï)": {
+      "ph": 7.47,
+      "clay_pct": 28.57,
+      "sand_pct": 39.74,
+      "organic_carbon_g_kg": 5.06,
+      "approx_distance_km": 11
+    },
+    "Biltine (Wadi Fira)": {
+      "ph": 7.6,
+      "clay_pct": 27.15,
+      "sand_pct": 52.02,
+      "organic_carbon_g_kg": 3.9,
+      "approx_distance_km": 0
+    },
+    "Goz Beïda (Sila)": {
+      "ph": 6.95,
+      "clay_pct": 27.83,
+      "sand_pct": 45.7,
+      "organic_carbon_g_kg": 9.08,
+      "approx_distance_km": 0
+    },
+    "Am Timan (Salamat)": {
+      "ph": 6.3,
+      "clay_pct": 34.6,
+      "sand_pct": 32.7,
+      "organic_carbon_g_kg": 6.4,
+      "approx_distance_km": 0
+    },
+    "Mongo (Guéra)": {
+      "ph": 6.88,
+      "clay_pct": 29.27,
+      "sand_pct": 37.02,
+      "organic_carbon_g_kg": 8.8,
+      "approx_distance_km": 0
+    },
+    "Ati (Batha)": {
+      "ph": 6.93,
+      "clay_pct": 35.63,
+      "sand_pct": 30.42,
+      "organic_carbon_g_kg": 6.28,
+      "approx_distance_km": 0
+    },
+    "Mao (Kanem)": {
+      "ph": 7.58,
+      "clay_pct": 23.35,
+      "sand_pct": 58.85,
+      "organic_carbon_g_kg": 4.2,
+      "approx_distance_km": 0
+    },
+    "Moussoro (Barh El Gazel)": {
+      "ph": 7.4,
+      "clay_pct": 30.97,
+      "sand_pct": 43.1,
+      "organic_carbon_g_kg": 6.14,
+      "approx_distance_km": 0
+    },
+    "Bol (Lac)": {
+      "ph": 7.2,
+      "clay_pct": 44.35,
+      "sand_pct": 32.68,
+      "organic_carbon_g_kg": 5.32,
+      "approx_distance_km": 0
+    },
+    "Massakory (Hadjer-Lamis)": {
+      "ph": 7.38,
+      "clay_pct": 40.47,
+      "sand_pct": 37.7,
+      "organic_carbon_g_kg": 7.04,
+      "approx_distance_km": 0
+    },
+    "Massenya (Chari-Baguirmi)": {
+      "ph": 6.8,
+      "clay_pct": 36.33,
+      "sand_pct": 28.63,
+      "organic_carbon_g_kg": 5.68,
+      "approx_distance_km": 0
+    },
+    "Faya-Largeau (Borkou)": {
+      "ph": 8.13,
+      "clay_pct": 17.83,
+      "sand_pct": 53.4,
+      "organic_carbon_g_kg": 4.06,
+      "approx_distance_km": 0
+    },
+    "Am-Djarass (Ennedi Est)": {
+      "ph": 8.18,
+      "clay_pct": 22.38,
+      "sand_pct": 56.32,
+      "organic_carbon_g_kg": 2.66,
+      "approx_distance_km": 0
+    },
+    "Fada (Ennedi Ouest)": {
+      "ph": 8.3,
+      "clay_pct": 19.47,
+      "sand_pct": 49.8,
+      "organic_carbon_g_kg": 3.48,
+      "approx_distance_km": 0
+    },
+    "Bardaï (Tibesti)": {
+      "ph": 8.3,
+      "clay_pct": 22.33,
+      "sand_pct": 43.22,
+      "organic_carbon_g_kg": 6.08,
+      "approx_distance_km": 0
+    }
+  }
+}
