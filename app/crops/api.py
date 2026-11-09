@@ -23,7 +23,8 @@ def _site_or_error(region: str) -> dict[str, Any]:
 
 def _public(result: dict[str, Any]) -> dict[str, Any]:
     crop = load_crops()[result["crop"]]
-    return {**result, "name_fr": crop["fr"], "name_en": crop["en"]}
+    requirements = {k: crop[k] for k in ("rain_mm", "temp_mean_c", "ph", "cycle_days")}
+    return {**result, "name_fr": crop["fr"], "name_en": crop["en"], "requirements": requirements}
 
 
 @router.get("")

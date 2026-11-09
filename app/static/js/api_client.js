@@ -149,6 +149,22 @@ export async function fetchRegions() {
   }
 }
 
+export async function fetchCrops() {
+  try {
+    return await requestJson(`${BASE_URL}/crops`);
+  } catch (err) {
+    console.error('fetchCrops error:', err);
+    return null;
+  }
+}
+
+/** Suitability of one crop (or, without `crop`, of every crop ranked) for a region. Throws the server's message. */
+export async function fetchSuitability(region, crop = null) {
+  const qs = new URLSearchParams({ region });
+  if (crop) qs.set('crop', crop);
+  return requestJson(`${BASE_URL}/crops/suitability?${qs.toString()}`);
+}
+
 export async function fetchCrossSector() {
   try {
     return await requestJson(`${BASE_URL}/insights/cross-sector`);

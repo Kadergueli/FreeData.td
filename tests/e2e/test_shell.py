@@ -12,7 +12,7 @@ def test_home_loads_each_api_once(probe):
 def test_nav_tabs_are_links_with_aria_current(probe):
     probe.goto()
     tabs = probe.page.locator("#desktop-nav a.nav-tab")
-    assert tabs.count() == 7
+    assert tabs.count() == 8
     assert probe.page.locator("#desktop-nav a.nav-tab[aria-current=page]").count() == 1
     assert probe.page.get_attribute("#desktop-nav a[data-route=data]", "href") == "#/data"
 
@@ -60,7 +60,7 @@ def test_missing_chart_library_never_blanks_the_app(probe_no_chart_cdn):
     p.goto("#/data")
     p.page.wait_for_selector("#obs-list-container .obs-item")
     # The page works, the chart area explains itself.
-    assert p.page.locator("#desktop-nav a.nav-tab").count() == 7
+    assert p.page.locator("#desktop-nav a.nav-tab").count() == 8
     p.page.wait_for_selector("#chart-section-card .chart-empty")
     assert p.page_errors == []
 

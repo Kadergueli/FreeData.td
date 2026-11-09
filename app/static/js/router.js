@@ -3,6 +3,7 @@ import { SectorsView } from './views/sectors.js';
 import { DataView } from './views/data.js';
 import { SourcesView } from './views/sources.js';
 import { InsightsView } from './views/insights.js';
+import { CropsView } from './views/crops.js';
 import { ApiView } from './views/api.js';
 import { StatusView } from './views/status.js';
 import { TermsView } from './views/terms.js';
@@ -15,6 +16,7 @@ const routes = [
   { id: 'sectors', navKey: 'nav.explorer', view: SectorsView },
   { id: 'data', navKey: 'nav.repository', view: DataView },
   { id: 'sources', navKey: 'nav.sources', view: SourcesView },
+  { id: 'crops', navKey: 'nav.crops', view: CropsView },
   { id: 'insights', navKey: 'nav.insights', view: InsightsView },
   { id: 'api', navKey: 'nav.api', view: ApiView },
   { id: 'status', navKey: 'nav.status', view: StatusView },

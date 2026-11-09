@@ -86,6 +86,7 @@ def test_api_known_cases(data):
     r = client.get("/api/v1/crops/suitability", params={"region": "abeche", "crop": "millet"})
     assert r.json()["results"][0]["verdict"] in ("very_suitable", "suitable")
     assert r.json()["results"][0]["name_fr"] == "Mil"
+    assert len(r.json()["results"][0]["requirements"]["rain_mm"]) == 4
     r = client.get("/api/v1/crops/suitability", params={"region": "faya", "crop": "rice"})
     assert r.json()["results"][0]["verdict"] == "unsuitable"
 
