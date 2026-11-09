@@ -115,3 +115,31 @@ def test_unicef_names_fit_the_database_column():
     long_name = "x" * 150
     csv_text = HEADER + f"\nTCD,Chad,ED_LONG,{long_name},_T,Total,_T,Total,_T,Total,PCNT,Percent,2019,1.5"
     assert len(parse_unicef(csv_text, "EDUCATION")[0]["indicator"]) <= 100
+
+
+def _row(code, year, age, value, prio="1", extra=""):
+    return (f"TCD,Chad,{code},{code} name,_T,Total,_T,Total,_T,Total,PCNT,Percent,{year},{value},{age},{prio},C{extra}")
+
+
+H2 = HEADER + ",AGE,DATA_SOURCE_PRIORITY,REPORTING_LVL"
+
+
+def test_unicef_prefers_all_ages_row_and_skips_ambiguous_age_groups():
+    text = "\n".join([
+        H2,
+        _row("NT_STUNT", 2022, "M6T11", 18.9), _row("NT_STUNT", 2022, "_T", 31.92), _row("NT_STUNT", 2022, "M12T23", 36.9),
+        _row("IM_DTP3", 2024, "M12T23", 68),                                  # one age group only: accepted
+        _row("NT_SPLIT", 2021, "M0T5", 16.2), _row("NT_SPLIT", 2021, "M6T11", 1.4),  # several ages, no total: skipped
+    ])
+    got = {r["indicator"]: r["value"] for r in parse_unicef(text, "NUTRITION")}
+    assert got == {"NT_STUNT name": 31.92, "IM_DTP3 name": 68.0}
+
+
+def test_unicef_drops_targets_future_years_and_non_national_levels_and_ranks_sources():
+    text = "\n".join([
+        H2,
+        _row("TRGT_2030_NT_X", 2030, "_T", 12), _row("NT_FUT", 2099, "_T", 5),
+        _row("NT_SUB", 2019, "_T", 40).replace(",C", ",S"),
+        _row("NT_TWO", 2019, "_T", 10, prio="3"), _row("NT_TWO", 2019, "_T", 20, prio="1"),
+    ])
+    assert {r["indicator"]: r["value"] for r in parse_unicef(text, "NUTRITION")} == {"NT_TWO name": 20.0}

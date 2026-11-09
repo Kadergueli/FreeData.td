@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -26,12 +27,38 @@ MAX_NAME = 100  # the indicator column of the database holds 100 characters
 FLOWS_BY_SECTOR: dict[str, tuple[str, ...]] = {"education": ("EDUCATION",), "health": ("NUTRITION", "IMMUNISATION")}
 
 # Columns that split a figure into groups: a row is "all population" when each of them is total or absent.
-BREAKDOWNS = ("SEX", "WEALTH_QUINTILE", "RESIDENCE", "MATERNAL_EDU_LVL")
+BREAKDOWNS = ("SEX", "WEALTH_QUINTILE", "RESIDENCE", "MATERNAL_EDU_LVL", "HEAD_OF_HOUSE")
 TOTAL = ("_T", "")
+NATIONAL_LEVELS = ("C", "_T", "")  # REPORTING_LVL: "C" is the country level
 
 
 def is_total(row: dict[str, str]) -> bool:
+    if (row.get("REPORTING_LVL") or "").strip() not in NATIONAL_LEVELS:
+        return False
     return all((row.get(col) or "").strip() in TOTAL for col in BREAKDOWNS)
+
+
+def _priority(row: dict[str, str]) -> float:
+    try:
+        return float(row.get("DATA_SOURCE_PRIORITY") or 99)
+    except ValueError:
+        return 99.0
+
+
+def _pick(rows: list[dict[str, str]]) -> dict[str, str] | None:
+    """The row that stands for the whole population of one indicator and year.
+
+    A survey publishes the same figure for many age groups. The all-ages row (AGE=_T) is the figure for
+    the whole group the indicator describes; without it, a single age group is accepted (the indicator is
+    defined for that group, e.g. DTP3 at 12-23 months), and several different ones are ambiguous: skipped
+    rather than guessed. Several surveys in one year: the best data-source priority, then the first.
+    """
+    all_ages = [r for r in rows if (r.get("AGE") or "").strip() in TOTAL]
+    if all_ages:
+        return min(all_ages, key=_priority)
+    if len({(r.get("AGE") or "").strip() for r in rows}) == 1:
+        return min(rows, key=_priority)
+    return None
 
 
 def parse_unicef(text: str, flow: str) -> list[dict[str, Any]]:
@@ -39,24 +66,29 @@ def parse_unicef(text: str, flow: str) -> list[dict[str, Any]]:
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames or not {"INDICATOR", "TIME_PERIOD", "OBS_VALUE"} <= set(reader.fieldnames):
         return []
-    seen: set[tuple[str, int]] = set()
-    records: list[dict[str, Any]] = []
+    last_year = datetime.now(UTC).year
+    groups: dict[tuple[str, int], list[dict[str, str]]] = {}
     for row in reader:
         if not is_total(row):
             continue
         code = (row.get("INDICATOR") or "").strip()
-        period = (row.get("TIME_PERIOD") or "").strip()
         try:
-            year, value = int(period[:4]), float(row["OBS_VALUE"])
+            year = int((row.get("TIME_PERIOD") or "").strip()[:4])
+            float(row["OBS_VALUE"])
         except (ValueError, TypeError, KeyError):
             continue
-        if not code or year < FIRST_YEAR or (code, year) in seen:
+        # TRGT_* rows are targets for a future year, not measurements.
+        if code and FIRST_YEAR <= year <= last_year and not code.startswith("TRGT_"):
+            groups.setdefault((code, year), []).append(row)
+    records: list[dict[str, Any]] = []
+    for (code, year), rows in groups.items():
+        row = _pick(rows)
+        if row is None:
             continue
-        seen.add((code, year))
         name = (row.get("Indicator") or code).strip()[:MAX_NAME]
         unit = (row.get("Unit of measure") or row.get("UNIT_MEASURE") or "value").strip()[:40]
-        records.append({"year": year, "value": round(value, 2), "source": SOURCE, "indicator": name, "unit": unit,
-                        "region": "national", "url": UNICEF_URL.format(flow=flow)})
+        records.append({"year": year, "value": round(float(row["OBS_VALUE"]), 2), "source": SOURCE, "indicator": name,
+                        "unit": unit, "region": "national", "url": UNICEF_URL.format(flow=flow)})
     return records
 
 
