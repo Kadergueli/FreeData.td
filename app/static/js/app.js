@@ -41,6 +41,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeMenu();
+    if (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+      e.preventDefault();
+      window.location.hash = '#/admin';
+    }
   });
 
   // Navigation itself is handled by the <a href="#/..."> links + the router's

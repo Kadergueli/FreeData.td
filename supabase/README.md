@@ -10,7 +10,9 @@ A new project needs these files, in this order (all are idempotent unless noted)
 6. `quarantine_setup.sql` — rows held for review.
 7. `data_admin_setup.sql` — archive of deleted observations.
 8. `freshness_setup.sql` — the `source_freshness()` function behind the Status page (server-only).
-9. `maintenance/*.sql` — dated, one-off fixes already applied in production (widened columns,
+9. `aggregates_setup.sql` — server-side aggregation functions for exact region and catalog counts across >1,000 rows.
+10. `assistant_log_setup.sql` — anonymized query log and per-number daily rate limits for the web & WhatsApp assistant.
+11. `maintenance/*.sql` — dated, one-off fixes already applied in production (widened columns,
    revoked RPC, cleanup). Run those whose date is after your project's creation.
 
 Every table has row-level security enabled **with no policy**: only the server (service-role key)

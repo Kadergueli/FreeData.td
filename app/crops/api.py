@@ -34,7 +34,10 @@ def crops() -> dict[str, Any]:
 
 
 @router.get("/suitability")
-def suitability(region: str = Query(..., min_length=2), crop: str | None = Query(None)) -> dict[str, Any]:
+def suitability(
+    region: str = Query(..., min_length=2, max_length=100),
+    crop: str | None = Query(None, max_length=40),
+) -> dict[str, Any]:
     """Aptitude d'une culture (`crop`) pour une région, ou de toutes les cultures classées si `crop` est omis."""
     data = _site_or_error(region)
     if crop is not None and crop not in load_crops():

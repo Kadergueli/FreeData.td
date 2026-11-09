@@ -1,13 +1,4 @@
-"""Sols du Tchad pour FreeData.td : pH, argile, sable, carbone organique pour les 23 regions.
 
-SoilGrids (ISRIC, CC BY 4.0) : l'API REST renvoie des valeurs vides pour le Tchad, donc on lit
-directement les cartes (COG) a distance, uniquement aux 23 points : quelques Ko telecharges, pas les cartes entieres.
-
-Installation (une fois) :   .venv\Scripts\pip install rasterio pyproj
-  -> si rasterio ne s'installe pas (Python trop recent), lance ce fichier dans Google Colab (colab.research.google.com),
-     puis telecharge soils.json avec le menu Fichiers.
-Usage :   .venv\Scripts\python app\crops\soils_chad.py   (Duree : 2 a 10 minutes. Cree app/crops/soils.json et affiche un tableau.)
-"""
 import importlib
 import json
 from pathlib import Path
@@ -17,7 +8,7 @@ from typing import Any
 try:
     rasterio: Any = importlib.import_module("rasterio")
     Transformer: Any = importlib.import_module("pyproj").Transformer
-except ModuleNotFoundError:
+except ImportError:
     rasterio = None
     Transformer = None
 
@@ -44,28 +35,51 @@ REGIONS = {
 }
 
 
+# SoilGrids masque les villes, les plans d'eau et les zones batiies : si le point central est vide,
+# on regarde autour (anneau de 0,1 degre = environ 11 km, puis 0,2 degre = environ 22 km).
+RINGS = [(0.0, 0), (0.1, 8), (0.2, 8)]
+DIRS = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+
+
+def candidates(lat, lon):
+    """(lat, lon, anneau) : le centre, puis les 8 voisins de chaque anneau."""
+    pts = [(lat, lon, 0)]
+    for ring, (step, n) in enumerate(RINGS[1:], start=1):
+        pts += [(lat + dy * step, lon + dx * step, ring) for dx, dy in DIRS[:n]]
+    return pts
+
+
+def median(values):
+    values = sorted(values)
+    mid = len(values) // 2
+    return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+
+
 def main() -> int:
-    if rasterio is None or Transformer is None:
-        print(
-            "Erreur : rasterio et pyproj sont requis.\n"
-            "Installez-les avec : .venv\\Scripts\\pip install rasterio pyproj",
-            file=sys.stderr,
-        )
-        return 1
     to_igh = Transformer.from_crs("EPSG:4326", IGH, always_xy=True)
-    points = {name: to_igh.transform(lon, lat) for name, (lat, lon) in REGIONS.items()}
+    cands = {name: candidates(lat, lon) for name, (lat, lon) in REGIONS.items()}
+    flat = [(name, c) for name, cs in cands.items() for c in cs]
+    xy = [to_igh.transform(c[1], c[0]) for _, c in flat]
     values = {name: {} for name in REGIONS}  # name -> prop -> [(epaisseur, valeur)]
+    ring_used = {name: 0 for name in REGIONS}
     for prop, div in PROPS.items():
         for depth, thick in DEPTHS.items():
             url = f"/vsicurl/{BASE}/{prop}/{prop}_{depth}_mean.vrt"
             print(f"Lecture {prop} {depth} ...", flush=True)
             try:
                 with rasterio.open(url) as src:
-                    for (name, xy), val in zip(points.items(), src.sample(list(points.values()))):
+                    found = {name: {} for name in REGIONS}  # name -> anneau -> [valeurs]
+                    for (name, c), val in zip(flat, src.sample(xy)):
                         raw = float(val[0])
                         if (src.nodata is not None and raw == src.nodata) or raw < 0:
                             continue
-                        values[name].setdefault(prop, []).append((thick, raw / div))
+                        found[name].setdefault(c[2], []).append(raw / div)
+                    for name, by_ring in found.items():
+                        if not by_ring:
+                            continue
+                        ring = min(by_ring)  # l'anneau le plus proche qui a des valeurs
+                        values[name].setdefault(prop, []).append((thick, median(by_ring[ring])))
+                        ring_used[name] = max(ring_used[name], ring)
             except Exception as exc:  # une couche qui echoue ne bloque pas les autres
                 print(f"  ECHEC {prop} {depth}: {exc}")
     out, missing = {}, []
@@ -77,17 +91,19 @@ def main() -> int:
         if len(row) < len(PROPS):
             missing.append(name)
         out[name] = {"ph": row.get("phh2o"), "clay_pct": row.get("clay"), "sand_pct": row.get("sand"),
-                     "organic_carbon_g_kg": row.get("soc")}
-    doc = {"_note": "SoilGrids 2.0 (ISRIC, CC BY 4.0), moyenne ponderee 0-30 cm au point central de chaque region. "
+                     "organic_carbon_g_kg": row.get("soc"),
+                     "approx_distance_km": [0, 11, 22][ring_used[name]] if props else None}
+    doc = {"_note": "SoilGrids 2.0 (ISRIC, CC BY 4.0), moyenne ponderee 0-30 cm. Valeur du point central de la region, "
+                    "ou mediane des points voisins (approx_distance_km) quand le centre est masque (ville, eau). "
                     "pH en eau ; argile et sable en % (g/100g) ; carbone organique en g/kg.",
            "source": "SoilGrids 2.0, https://www.isric.org/explore/soilgrids", "regions": out}
     out_path = Path(__file__).resolve().parent / "soils.json"
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, ensure_ascii=False, indent=2)
-    print(f"\n{'Region':34} {'pH':>5} {'argile%':>8} {'sable%':>7} {'C org g/kg':>11}")
+    print(f"\n{'Region':34} {'pH':>5} {'argile%':>8} {'sable%':>7} {'C org':>7} {'distance km':>12}")
     for name, r in out.items():
-        print(f"{name:34} {r['ph']!s:>5} {r['clay_pct']!s:>8} {r['sand_pct']!s:>7} {r['organic_carbon_g_kg']!s:>11}")
-    print(f"\n{out_path} ecrit. Regions incompletes : {len(missing)}")
+        print(f"{name:34} {r['ph']!s:>5} {r['clay_pct']!s:>8} {r['sand_pct']!s:>7} {r['organic_carbon_g_kg']!s:>7} {r['approx_distance_km']!s:>12}")
+    print(f"\nsoils.json ecrit. Regions encore incompletes : {len(missing)}")
     return 0
 
 

@@ -1,70 +1,68 @@
-# Charte Ethique FreeData.td
+# FreeData.td Data Ethics Charter
 
-> "Des données responsables pour un Tchad mieux compris."
+> *"Responsible open data for a better-understood Chad."*
 
-## Principe 1 — Souveraineté des données
+## Principle 1 — Data Sovereignty & Openness
 
-ChadData ne collecte que des données déjà publiques, publiées sous licence
-ouverte par des organisations internationales reconnues.
+FreeData.td only collects and aggregates data that is already publicly released under open licenses by recognized national and international institutions.
 
-- Aucune donnée privée ou personnelle n'est collectée
-- Chaque source est documentée avec sa licence explicite
-- Aucune donnée ne sera revendue à des tiers
+- No private or personally identifiable information (PII) is collected or published.
+- Every dataset and observation explicitly documents its upstream source and license.
+- Data is never sold or monetized; public read access remains free and keyless.
 
-## Principe 2 — Transparence totale
+## Principle 2 — Full Transparency & Provenance
 
-Chaque dataset publié est accompagné d'une fiche de métadonnées complète.
+Every published dataset and observation carries complete provenance metadata:
 
-- Source originale
-- Date de collecte
-- Méthode de traitement appliquée
-- Taux de complétude
-- Limitations connues
-- Licence applicable
+- Original upstream organization and API/portal URL
+- Reference date and collection timestamp
+- Validation, normalization, and quality rules applied
+- Completeness and freshness indicators
+- Known limitations and supervisor review notes
+- Applicable open license (`CC BY 4.0`, `INSEED Open Licence Agreement`, etc.)
 
-## Principe 3 — Ne pas nuire (Do No Harm)
+## Principle 3 — Do No Harm
 
-FreeData.td s'engage à ne publier aucune donnée susceptible de stigmatiser
-des communautés, des régions ou des groupes ethniques.
+FreeData.td commits to never publishing data that could stigmatize communities, regions, or social groups:
 
-- Pas de données désagrégées par ethnie ou religion
-- Les données sensibles sont présentées avec contexte obligatoire
-- Un processus de revue est appliqué avant toute publication sensible
+- No data is disaggregated by ethnicity or religion.
+- Sensitive socioeconomic indicators are accompanied by historical and methodological context.
+- Out-of-domain or anomalous values are held in quarantine (`table_quarantine`) for human supervisor review prior to publication.
+- Phone numbers on the WhatsApp assistant channel are never stored in plain text (only an irreversible salted HMAC hash truncated to 16 hex characters is used for daily rate limiting).
 
-## Principe 4 — Représentation équitable
+## Principle 4 — Fair & Balanced Representation
 
-Le Tchad n'est pas qu'un pays de crises.FreeData.td présente les données
-dans leur complexité réelle — défis ET dynamiques positives.
+Chad is not defined solely by crises. FreeData.td presents socioeconomic indicators in their full complexity — reflecting structural challenges alongside positive regional dynamics and development potential.
 
-- Chaque indicateur difficile est accompagné de son contexte historique
-- Aucune visualisation ne sera construite pour renforcer des narratifs négatifs
+- Difficult indicators are contextualized with long-term historical series.
+- Visualizations and analytical summaries remain objective, reproducible, and grounded in verified measurements.
 
-## Principe 5 — Durabilité
+## Principle 5 — Sustainability & Open Source
 
-FreeData.td est conçu pour survivre à son créateur.
+FreeData.td is engineered to be maintainable, auditable, and long-lived:
 
-- Code source intégralement documenté
-- Guide de contribution ouvert à tous
-- Licence MIT — tout développeur peut reprendre le projet
+- Fully documented source code and SQL schemas
+- Open contribution workflow with automated CI, security scanning, and end-to-end browser tests
+- **MIT License** for the software codebase — any developer or institution can inspect, audit, or extend the platform
 
-## Principe 6 — Attribution
+## Principle 6 — Attribution
 
-- Les utilisateurs doivent citer ChadData dans leurs travaux
-- FreeData.td cite systématiquement toutes ses sources originales
-- La propriété des données reste aux organisations sources
+- Users of the platform are asked to cite **FreeData.td** and the original upstream data providers in their research, reports, or applications.
+- FreeData.td systematically attributes every observation to its original source organization.
+- Ownership of upstream statistics remains with their respective producing institutions.
 
-## Ce que FreeData.td ne fera jamais
+## What FreeData.td Will Never Do
 
-- Collecter des données personnelles sans consentement
-- Vendre des données à des tiers
-- Publier des données désagrégées par ethnie ou religion
-- Permettre l'utilisation des données pour de la surveillance
-- Modifier les données sources sans le documenter
+- Collect personal data without consent or store plain-text phone numbers
+- Sell data or restrict public read access behind paywalls
+- Publish data disaggregated by ethnicity or religion
+- Allow the platform to be used for individual surveillance
+- Alter source values without recording an explicit audit trail and public note
 
-## Format de citation
+## Citation Format
 
-```
-Kadergueli, O. M. (2025). ChadData: An Open AI-Powered Data
+```text
+Kadergueli, O. M. (2026). FreeData.td: An Open AI-Powered Socioeconomic Data
 Infrastructure for Chad. GitHub.
-https://github.com/kadergueli/FreeData.td — CC BY 4.0
+https://github.com/Kadergueli/FreeData.td — CC BY 4.0
 ```

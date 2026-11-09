@@ -8,3 +8,4 @@ data/raw/*.json
 data/exports/*.csv
 .pytest-tmp/
 data/raw/*.xml
+probe_*.py

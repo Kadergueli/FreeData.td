@@ -52,6 +52,8 @@ def admin_configured() -> bool:
 
 def verify_access_token(token: str) -> str | None:
     """Ask Supabase Auth who owns this access token. Returns the confirmed e-mail or None."""
+    if len(token) > 4096:
+        return None
     key = hashlib.sha256(token.encode()).hexdigest()
     now = time.monotonic()
     hit = _TOKEN_CACHE.get(key)
@@ -71,9 +73,11 @@ def verify_access_token(token: str) -> str | None:
     except Exception as exc:
         logger.warning("Supabase Auth verification failed: %s", exc)
         raise HTTPException(status_code=503, detail="Authentication service unreachable.") from exc
-    if len(_TOKEN_CACHE) > 500:
-        _TOKEN_CACHE.clear()
-    _TOKEN_CACHE[key] = (now, email)
+    if email is not None:
+        if len(_TOKEN_CACHE) >= 500:
+            oldest_key = min(_TOKEN_CACHE, key=lambda k: _TOKEN_CACHE[k][0])
+            _TOKEN_CACHE.pop(oldest_key, None)
+        _TOKEN_CACHE[key] = (now, email)
     return email
 
 
@@ -86,6 +90,9 @@ def require_admin(request: Request) -> AdminUser:
     if not admin_configured():
         raise HTTPException(status_code=503, detail="Admin area is not configured on this server.")
     client = request.client.host if request.client else "unknown"
+    fail_bucket = f"admin-auth-fail:{client}"
+    if rate_limiter.blocked(fail_bucket, _FAILED_AUTH_PER_HOUR):
+        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
     auth = request.headers.get("Authorization", "")
     token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
     if not token:
@@ -93,7 +100,7 @@ def require_admin(request: Request) -> AdminUser:
 
     email = verify_access_token(token)
     if not email:
-        if not rate_limiter.allow(f"admin-auth-fail:{client}", _FAILED_AUTH_PER_HOUR):
+        if not rate_limiter.allow(fail_bucket, _FAILED_AUTH_PER_HOUR):
             raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
         raise HTTPException(status_code=401, detail="Invalid or expired session.")
 
@@ -101,7 +108,7 @@ def require_admin(request: Request) -> AdminUser:
         return AdminUser(email, "owner")
     role = _store().get_role(email)
     if not role:
-        if not rate_limiter.allow(f"admin-auth-fail:{client}", _FAILED_AUTH_PER_HOUR):
+        if not rate_limiter.allow(fail_bucket, _FAILED_AUTH_PER_HOUR):
             raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
         raise HTTPException(status_code=403, detail="This account is not an administrator.")
     return AdminUser(email, role)

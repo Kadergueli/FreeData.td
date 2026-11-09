@@ -2,122 +2,127 @@
 
 ## 1. Overview & Architecture
 
-The **FreeData.td Agent Ingestion Engine** is designed to autonomously collect, clean, validate, and store socio-economic datasets for Chad (Tchad) from 10 verified national and international public data providers.
+The **FreeData.td Agent Ingestion Engine** autonomously collects, cleans, validates, and stores socio-economic and environmental datasets for Chad (Tchad) across **11 sectors** from verified national and international public data providers.
 
-All sector agents inherit from `BaseAgent` (`app/agents/base.py`) and implement a standardized collection and data science lifecycle:
+All sector agents inherit from [`BaseAgent`](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/base.py) and follow a standardized collection, validation, quarantine, and storage lifecycle:
 
-```
-+-------------------------------------------------------------------------+
-|                              BASE AGENT                                 |
-| - HTTP Rate Limiting & Retry Backoff (`fetch_json_with_retry`)          |
-| - Data Science Rules (3*IQR Outlier Detection, Domain Flags)            |
-| - Defensive Parsing & Anti-Crash Exceptions Handling                   |
-+-------------------------------------------------------------------------+
-       |                  |                  |                  |
-+--------------+   +--------------+   +--------------+   +--------------+
-| Agriculture  |   |   Economy    |   |  Education   |   | Environment  |
-|    Agent     |   |    Agent     |   |    Agent     |   |    Agent     |
-+--------------+   +--------------+   +--------------+   +--------------+
-       |                  |
-+--------------+   +--------------+
-|   Markets    |   |  Transport   |
-|    Agent     |   |    Agent     |
-+--------------+   +--------------+
+```text
++-----------------------------------------------------------------------------------+
+|                                   BASE AGENT                                      |
+| - HTTP Rate Limiting & Exponential Backoff (`fetch_json_with_retry`)              |
+| - Data Science Rules (3*IQR Outlier Detection, Domain Bounds, Quarantine Routing) |
+| - Defensive Parsing, Source Freshness Tracking & Anti-Crash Isolation             |
++-----------------------------------------------------------------------------------+
+     |             |             |             |             |             |
++---------+   +---------+   +---------+   +---------+   +---------+   +---------+
+|  Agri   |   | Markets |   |  Envir  |   | Economy |   | Health  |   | Energy  |
++---------+   +---------+   +---------+   +---------+   +---------+   +---------+
+     |             |             |             |             |
++---------+   +---------+   +---------+   +---------+   +---------+
+|Transport|   |Education|   |Demograph|   | Telecom |   |  Trade  |
++---------+   +---------+   +---------+   +---------+   +---------+
 ```
 
 ---
 
 ## 2. Rate Limiting & API Courtesy Policy
 
-To ensure compliance with external public API terms of service and avoid IP bans or server overload, all network communications implement the following controls:
+To comply with external public API terms of service and prevent IP bans or upstream server overload, all network communications enforce strict controls:
 
 ### 2.1 Request Throttling & Spacing
 * Every HTTP GET query executed by `BaseAgent.fetch_json_with_retry` and `fetch_text_with_retry` introduces a minimum **0.15s to 0.20s delay** between consecutive requests.
-* Bulk iteration loops (e.g. World Bank indicator sweeps across 13 indicators) are executed sequentially with throttling rather than parallel flooding.
+* Regional sweeps (e.g., Open-Meteo, NASA POWER, or OpenStreetMap Overpass queries across the 23 Chadian provinces) execute sequentially with polite pauses.
 
 ### 2.2 HTTP 429 (Too Many Requests) & Exponential Backoff
-* When an external API responds with **HTTP 429**, the agent parses the `Retry-After` response header.
-* If `Retry-After` is specified, the agent sleeps for the exact duration requested by the remote server.
+* When an upstream API responds with **HTTP 429**, the agent inspects the `Retry-After` response header and waits the requested duration.
 * If no header is provided, an exponential backoff formula is applied:
   $$\text{Wait Time} = 2^{\text{attempt}} \text{ seconds}$$
-* Network failures or HTTP 5xx (Internal Server Errors) are retried up to 3 times before failing gracefully.
+* Transient network errors or HTTP 5xx responses are retried up to 3 times before recording a structured failure note in `source_errors`.
 
-### 2.3 User-Agent Identification
-All HTTP headers explicitly declare the platform identity and contact:
+### 2.3 Honest User-Agent & Anti-Bot Compliance
+All HTTP requests declare the platform identity:
 ```http
 User-Agent: FreeData.td Open Data Engine/1.0 (+https://freedata-td.onrender.com)
 ```
+When an upstream portal (such as INSEED's SDMX server behind Cloudflare) presents an anti-bot challenge, the agent **never** attempts to bypass it; it logs the block cleanly and relies on the documented administrator offline import workflow (`python -m app.cli probe-inseed` / `import-inseed`).
 
 ---
 
-## 3. Fault Tolerance & Anti-Crash Mechanisms
+## 3. Data Science Validation & Quarantine Pipeline
 
-Public data sources frequently update their API structures, rename JSON keys, return HTML error pages during maintenance, or report null values. The agent engine ensures **100% platform stability** through:
+Every collected observation passes through a 3-stage medallion pipeline (`table_raw` → `table_clean` → `table_public`) with automated quality gates:
 
-### 3.1 Defensive Parsing
-* All JSON payloads are validated using explicit type assertions (`isinstance(payload, list)`, `isinstance(data, dict)`).
-* Numerical field extractions use safe conversions:
-  ```python
-  try:
-      value = round(float(raw_val), 2)
-  except (ValueError, TypeError):
-      continue  # Skip invalid record without failing batch
-  ```
-* Unexpected nulls or missing fields cause the single record to be skipped while continuing the rest of the dataset ingestion.
-
-### 3.2 Error Isolation
-* In multi-source agents (e.g. `AgricultureAgent` fetching from World Bank, Open-Meteo, and NASA POWER simultaneously), each fetcher runs in an isolated `try...except` block.
-* If one remote API goes down or changes its schema, the remaining sources continue running and saving records.
-* The main background scheduler loop (`app/services/scheduler.py`) isolates each sector agent attempt, guaranteeing that a failure in one agent never stops or crashes the backend server.
+1. **Structural & Temporal Validation**: Verifies non-null numerical values, valid ISO dates, standardized units, and canonical regional names ([app/regions.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/regions.py)).
+2. **Domain Bound & Statistical Outlier Detection ($3 \times \text{IQR}$)**:
+   * Impossible domain values (e.g., percentages outside $[0, 100]$ where bounded, negative yields or prices, impossible temperatures) and statistical outliers exceeding $3 \times \text{IQR}$ are flagged `SUPERVISOR_REVIEW`.
+3. **Supervisor Quarantine ([app/services/quarantine.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/services/quarantine.py))**:
+   * Rows flagged `SUPERVISOR_REVIEW` are held in `table_quarantine` instead of being published blindly to `table_public`.
+   * Administrators review, approve, correct, or reject quarantined observations in `#/admin` (tab **Qualité**), with full audit logging in `table_admin_audit`.
 
 ---
 
-## 4. Anti-Deduplication & Storage Protection
+## 4. Deduplication & Storage Protection
 
-To prevent database bloat and redundant record accumulation over time:
-
-### 4.1 Unique Composite Index
-The database schema enforces a strict composite unique constraint on every observation:
+### 4.1 Unique Composite Key
+Both Supabase (`table_public`) and SQLite (`observations`) enforce a strict composite uniqueness constraint:
 $$\text{UNIQUE}(\text{sector}, \text{indicator}, \text{reference\_date}, \text{region}, \text{source})$$
 
-### 4.2 SQLite `ON CONFLICT` Upsert
-In SQLite mode, records are ingested using:
-```sql
-INSERT INTO observations (...) VALUES (...)
-ON CONFLICT(sector, indicator, reference_date, region, source) DO UPDATE SET
-  value=excluded.value,
-  unit=excluded.unit,
-  source_url=excluded.source_url,
-  collected_at=excluded.collected_at;
-```
-If an observation for the exact same date and indicator already exists, its value is updated cleanly without creating duplicate database rows.
-
-### 4.3 In-Memory Supabase Deduplication
-When writing to Supabase, `ObservationRepository._store_supabase_pipeline_batch` maintains a hash set `seen_rows` during payload construction to eliminate duplicate entries prior to batch insertion.
+### 4.2 Idempotent Upserts & Respect of Admin Decisions
+* Re-running a collector updates existing rows in place without creating duplicates.
+* Observations deleted or corrected by an administrator (`table_deleted_observations` via [app/services/data_admin.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/services/data_admin.py)) are respected on subsequent harvests unless the upstream provider publishes a revised value.
 
 ---
 
-## 5. Scheduling & Update Frequency Alignment
+## 5. Scheduling, Cadence & Keep-Alive (`app/services/cadence.py` & `scheduler.py`)
 
-Different data domains update at drastically different frequencies. The harvester schedule respects these cycles:
+Each sector is harvested according to the natural update rhythm of its upstream sources ([app/services/cadence.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/services/cadence.py)):
 
-| Sector / Source | Source Update Frequency | Agent Collection Strategy |
-|-----------------|-------------------------|---------------------------|
-| **Agro-Meteorology** (Open-Meteo) | Daily | 24-Hour Automated Harvest |
-| **Market Cereal Prices** (WFP / FAO) | Weekly / Monthly | 24-Hour Automated Harvest |
-| **Macroeconomics** (BEAC / World Bank) | Monthly / Annual | Cached TTL (Skips redundant requests if data is <7 days old) |
-| **Education & Literacy** (UNESCO / UNICEF) | Annual | Annual census sync with local fallback cache |
-| **Transport Infrastructure** (OSM per region) | Monthly | Periodic 24h background sync |
+| Sector | Cadence | Primary Upstream Sources |
+|---|---|---|
+| `agriculture` | Daily / Weekly | World Bank, Open-Meteo (23 regions), NASA POWER |
+| `markets` | Daily / Weekly | FEWS NET, WFP (HDX HAPI / CSV), FAOSTAT, World Bank, INSEED |
+| `environment` | Daily | Open-Meteo (23 regions), NASA POWER, NASA FIRMS, World Bank |
+| `economy` | Weekly / Monthly | World Bank (WDI), IMF (WEO DataMapper) |
+| `health` | Weekly / Monthly | WHO GHO, DHS Program (23 regions), UNICEF, OpenStreetMap, World Bank, INSEED |
+| `energy` | Monthly | World Bank (SE4ALL), NASA POWER (solar & wind across 23 regions) |
+| `transport` | Monthly | OurAirports (23 regions), Open-Meteo, World Bank |
+| `education` | Monthly | UNESCO UIS, UNICEF, OpenStreetMap (schools across 23 regions), World Bank, INSEED |
+| `demography` | Monthly | World Bank (WDI), UNHCR (refugees/IDPs), INSEED (RGPH census) |
+| `telecom` | Monthly | World Bank / ITU (Internet, mobile, broadband, ICT trade) |
+| `trade` | Monthly | World Bank (WDI), World Bank Commodity Markets (*Pink Sheet*) |
+
+In addition to harvesting, [`SchedulerService`](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/services/scheduler.py) runs a background `_keep_alive_loop` every **14 minutes** targeting `settings.target_keep_alive_url` so Render deployments never enter idle sleep after 15 minutes of inactivity.
 
 ---
 
-## 6. Summary of Agent Files & Responsibilities
+## 6. Inventory of Agent Modules (`app/agents/`)
 
-* [app/agents/base.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/base.py): Base class defining `fetch_json_with_retry`, `fetch_text_with_retry`, Data Science rules (3*IQR outliers, domain bounds), and normalization workflow.
-* [app/agents/agriculture.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/agriculture.py): Agriculture, livestock & agro-meteorology agent.
-* [app/agents/economy.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/economy.py): Macroeconomic, fiscal & debt metrics agent.
-* [app/agents/education.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/education.py): School enrollment, literacy & gender parity agent.
-* [app/agents/environment.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/environment.py): Weather, forest cover & NASA FIRMS active fire agent.
-* [app/agents/markets.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/markets.py): Consumer prices, trade volume & food index agent.
-* [app/agents/transport.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/transport.py): Road network, air departures & logistics quality agent.
-* [app/agents/analysis.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/analysis.py): Cross-sector statistical correlation & AI insights generator.
+### Sector Agents
+* [app/agents/base.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/base.py): Base class (`BaseAgent`) defining HTTP retry logic, Data Science validation rules, and pipeline orchestration.
+* [app/agents/wb_sector.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/wb_sector.py): Shared base class (`WorldBankSectorAgent`) for World Bank WDI sector collectors.
+* [app/agents/agriculture.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/agriculture.py): `AgricultureAgent` (`agriculture`).
+* [app/agents/markets.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/markets.py): `MarketsAgent` (`markets`).
+* [app/agents/environment.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/environment.py): `EnvironmentAgent` (`environment`).
+* [app/agents/economy.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/economy.py): `EconomyAgent` (`economy`).
+* [app/agents/health.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/health.py): `HealthAgent` (`health`).
+* [app/agents/energy.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/energy.py): `EnergyAgent` (`energy`).
+* [app/agents/transport.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/transport.py): `TransportAgent` (`transport`).
+* [app/agents/education.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/education.py): `EducationAgent` (`education`).
+* [app/agents/demography.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/demography.py): `DemographyAgent` (`demography`).
+* [app/agents/telecom.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/telecom.py): `TelecomAgent` (`telecom`).
+* [app/agents/trade.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/trade.py): `TradeAgent` (`trade`).
+
+### Specialized Source Connectors & Analytics
+* [app/agents/fews_prices.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/fews_prices.py): FEWS NET market price parser and collision resolver.
+* [app/agents/wfp_prices.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/wfp_prices.py): WFP market price connector (HDX HAPI + CSV fallback).
+* [app/agents/imf.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/imf.py): IMF World Economic Outlook (WEO) DataMapper parser.
+* [app/agents/who_gho.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/who_gho.py): WHO Global Health Observatory OData connector.
+* [app/agents/dhs.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/dhs.py): DHS Program subnational survey connector for Chad's provinces.
+* [app/agents/unicef.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/unicef.py): UNICEF SDMX connector (child health, nutrition, immunization, education).
+* [app/agents/unesco_uis.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/unesco_uis.py): UNESCO Institute for Statistics (UIS) connector.
+* [app/agents/osm.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/osm.py): OpenStreetMap Overpass regional infrastructure counter (schools, hospitals, pharmacies, water points).
+* [app/agents/airports.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/airports.py): OurAirports connector mapping Chadian airports and airstrips to the 23 provinces.
+* [app/agents/pink_sheet.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/pink_sheet.py): World Bank Commodity Markets (*Pink Sheet*) monthly workbook parser.
+* [app/agents/inseed.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/inseed.py): INSEED SDMX XML parser and dataset registry.
+* [app/agents/ds_insights.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/ds_insights.py): Cross-sector correlations, seasonal anomalies, spatial coverage, and freshness scoring.
+* [app/agents/analysis.py](file:///c:/Users/Meroo/Documents/Codex/2026-08-15/je/outputs/FreeDatatd-MVP/app/agents/analysis.py): AI study generator (Groq LLM + deterministic statistical fallback).
