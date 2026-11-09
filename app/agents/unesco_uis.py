@@ -14,10 +14,9 @@ UIS_URL = "https://api.uis.unesco.org/api/public/data/indicators"
 SOURCE = "UNESCO UIS"
 FIRST_YEAR = 1960
 
-# code -> (indicator name, unit). GER.1 and CR.1 are verified for Chad; the other codes follow UIS naming
-# and are reported by the run when UIS does not know them.
+# code -> (indicator name, unit). Verified by a real run for Chad (Nov 2026). Unknown codes (GER.02,
+# PTRHC.1, PTRHC.2) were removed; a code UIS does not know is reported by the run.
 UIS_INDICATORS: dict[str, tuple[str, str]] = {
-    "GER.02": ("Gross enrolment ratio, pre-primary (UIS)", "% of age group"),
     "GER.1": ("Gross enrolment ratio, primary (UIS)", "% of age group"),
     "GER.2": ("Gross enrolment ratio, lower secondary (UIS)", "% of age group"),
     "GER.3": ("Gross enrolment ratio, upper secondary (UIS)", "% of age group"),
@@ -29,8 +28,6 @@ UIS_INDICATORS: dict[str, tuple[str, str]] = {
     "LR.AG15T99": ("Adult literacy rate, 15+ (UIS)", "% of population 15+"),
     "LR.AG15T24": ("Youth literacy rate, 15-24 (UIS)", "% of population 15-24"),
     "XGDP.FSGOV": ("Government expenditure on education (UIS)", "% of GDP"),
-    "PTRHC.1": ("Pupil-teacher ratio, primary (UIS)", "pupils per teacher"),
-    "PTRHC.2": ("Pupil-teacher ratio, secondary (UIS)", "pupils per teacher"),
 }
 
 

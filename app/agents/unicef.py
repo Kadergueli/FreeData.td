@@ -19,6 +19,7 @@ import httpx
 UNICEF_URL = "https://sdmx.data.unicef.org/ws/public/sdmxapi/rest/data/UNICEF,{flow},1.0/TCD.."
 SOURCE = "UNICEF Data"
 FIRST_YEAR = 1960
+MAX_NAME = 100  # the indicator column of the database holds 100 characters
 
 # Dataflows collected, by sector. Verified to hold data for Chad (Nov 2026).
 # Health keeps nutrition and immunisation: mortality and water/sanitation already come from WHO and the World Bank.
@@ -52,7 +53,7 @@ def parse_unicef(text: str, flow: str) -> list[dict[str, Any]]:
         if not code or year < FIRST_YEAR or (code, year) in seen:
             continue
         seen.add((code, year))
-        name = (row.get("Indicator") or code).strip()[:120]
+        name = (row.get("Indicator") or code).strip()[:MAX_NAME]
         unit = (row.get("Unit of measure") or row.get("UNIT_MEASURE") or "value").strip()[:40]
         records.append({"year": year, "value": round(value, 2), "source": SOURCE, "indicator": name, "unit": unit,
                         "region": "national", "url": UNICEF_URL.format(flow=flow)})

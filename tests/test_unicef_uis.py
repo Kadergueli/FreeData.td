@@ -109,3 +109,9 @@ def test_health_collects_unicef_nutrition_and_immunisation(monkeypatch, tmp_path
     recs = asyncio.run(agent._collect_unicef())
     assert len(asked) == 2 and "NUTRITION" in asked[0] and "IMMUNISATION" in asked[1]
     assert recs and all(r["source"] == "UNICEF Data" for r in recs)
+
+
+def test_unicef_names_fit_the_database_column():
+    long_name = "x" * 150
+    csv_text = HEADER + f"\nTCD,Chad,ED_LONG,{long_name},_T,Total,_T,Total,_T,Total,PCNT,Percent,2019,1.5"
+    assert len(parse_unicef(csv_text, "EDUCATION")[0]["indicator"]) <= 100
