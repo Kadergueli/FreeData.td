@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from functools import lru_cache
 from pathlib import Path
@@ -29,8 +30,9 @@ def load_climate() -> dict[str, dict[str, Any]]:
 
 
 def _plain(text: str) -> str:
-    """Minuscules sans accents, pour qu'« abeche » trouve « Abéché (Ouaddaï) »."""
-    return "".join(c for c in unicodedata.normalize("NFD", text.casefold()) if unicodedata.category(c) != "Mn")
+    """Minuscules, sans accents ni ponctuation : « abeche » trouve « Abéché (Ouaddaï) », « ndjamena » trouve « N'Djamena »."""
+    folded = "".join(c for c in unicodedata.normalize("NFD", text.casefold()) if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", folded)
 
 
 def region_names() -> list[str]:

@@ -56,7 +56,14 @@ def test_find_region_ignores_accents_and_case(data):
     assert sites.find_region("abeche") == "Abéché (Ouaddaï)"
     assert sites.find_region("OUADDAI") == "Abéché (Ouaddaï)"
     assert sites.find_region("moundou") == "Moundou (Logone Occidental)"
+    assert sites.find_region("faya largeau") == "Faya-Largeau (Borkou)"
     assert sites.find_region("atlantis") is None and sites.find_region("  ") is None
+
+
+def test_find_region_ignores_apostrophes(monkeypatch):
+    monkeypatch.setattr(sites, "load_soils", lambda: {"N'Djamena (N'Djamena)": {"ph": 6.7}})
+    monkeypatch.setattr(sites, "load_climate", lambda: {})
+    assert sites.find_region("ndjamena") == "N'Djamena (N'Djamena)"
 
 
 def test_site_for_reports_what_is_missing(data, monkeypatch):
