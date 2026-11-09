@@ -50,3 +50,18 @@ def test_every_crop_is_well_formed_and_flagged():
 
 def test_verdict_thresholds():
     assert [verdict_for(s) for s in (0.9, 0.7, 0.5, 0.1)] == ["very_suitable", "suitable", "marginal", "unsuitable"]
+
+
+LAI = {"rain_mm": 931, "temp_mean_c": 27.4, "ph": 6.3, "season_days": 184}
+
+
+def test_rice_at_lai_is_unsuitable_rainfed_but_suitable_if_irrigated():
+    r = assess("rice", LAI)
+    assert r["verdict"] == "unsuitable" and r["limiting"] == "rain_mm"
+    assert r["if_irrigated"]["verdict"] == "very_suitable" and r["if_irrigated"]["limiting"] != "rain_mm"
+
+
+def test_irrigation_hint_only_when_water_is_the_limit():
+    assert "if_irrigated" not in assess("cotton", {"rain_mm": 1100, "temp_mean_c": 27, "ph": 6.5, "season_days": 180})
+    cold = assess("rice", {"rain_mm": 931, "temp_mean_c": 5, "ph": 6.3, "season_days": 184})
+    assert "if_irrigated" not in cold   # cold is not a water problem: irrigation would not help

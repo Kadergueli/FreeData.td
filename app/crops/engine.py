@@ -19,6 +19,7 @@ FACTORS = {"rain_mm": "rain_mm", "temp_mean_c": "temp_mean_c", "ph": "ph"}
 # Facteur facultatif : la saison des pluies doit couvrir le cycle de la culture (min de cycle_days).
 # Compté seulement quand le lieu le fournit ; ne change pas `confidence`, calculée sur FACTORS.
 SEASON = "season_days"
+WATER_FACTORS = frozenset({"rain_mm", SEASON})  # ce que l'irrigation ou une crue peut remplacer
 # Le pH du sol (une valeur par région, modifiable par amendement) retire au plus 40 % du score climatique.
 # Choix de modélisation de FreeData.td, pas une règle FAO : à calibrer avec des rendements réels.
 SOIL_MAX_PENALTY = 0.4
@@ -50,7 +51,7 @@ def verdict_for(score: float) -> str:
     return "unsuitable"
 
 
-def assess(crop_id: str, site: dict[str, float | None]) -> dict[str, Any]:
+def _assess(crop_id: str, site: dict[str, float | None], skip: frozenset[str] = frozenset()) -> dict[str, Any]:
     """Évalue une culture sur un site : le climat décide (facteur le plus limitant), le sol module.
 
     `site` contient les facteurs connus (rain_mm, temp_mean_c, ph). Un facteur
@@ -64,13 +65,15 @@ def assess(crop_id: str, site: dict[str, float | None]) -> dict[str, Any]:
     factors: dict[str, dict[str, float]] = {}
     unknown: list[str] = []
     for factor, key in FACTORS.items():
+        if factor in skip:
+            continue
         value = site.get(factor)
         if value is None:
             unknown.append(factor)
             continue
         factors[factor] = {"value": float(value), "score": round(trapezoid(float(value), *crop[key]), 3)}
 
-    if site.get(SEASON) is not None:
+    if SEASON not in skip and site.get(SEASON) is not None:
         factors[SEASON] = {"value": float(site[SEASON]),
                            "score": round(min(1.0, float(site[SEASON]) / crop["cycle_days"][0]), 3)}
 
@@ -98,6 +101,21 @@ def assess(crop_id: str, site: dict[str, float | None]) -> dict[str, Any]:
         "confidence": round(min(1.0, len([f for f in factors if f in FACTORS]) / len(FACTORS)), 2),
         "verified": crop["verified"],
     }
+
+
+def assess(crop_id: str, site: dict[str, float | None]) -> dict[str, Any]:
+    """Évalue une culture en pluvial, et ajoute `if_irrigated` quand l'eau de pluie est ce qui la limite.
+
+    Le résultat pluvial suppose que la pluie locale est la seule eau. Le riz de plaine inondable ou de périmètre
+    irrigué reçoit de l'eau d'ailleurs : `if_irrigated` donne le même calcul sans le facteur eau (pluie et
+    durée de saison), le reste (température, sol) restant en jeu. Il ne dit pas que l'eau est disponible.
+    """
+    result = _assess(crop_id, site)
+    if result["limiting"] in WATER_FACTORS:
+        wet = _assess(crop_id, site, skip=WATER_FACTORS)
+        if wet["score"] is not None and wet["score"] > (result["score"] or 0):
+            result["if_irrigated"] = {"score": wet["score"], "verdict": wet["verdict"], "limiting": wet["limiting"]}
+    return result
 
 
 def rank(site: dict[str, float | None]) -> list[dict[str, Any]]:

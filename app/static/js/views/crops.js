@@ -58,6 +58,13 @@ function seasonLine(site) {
   return `<p class="crop-season mono-xs text-muted"><strong>${escapeHtml(t('crops.season'))}</strong> · ${escapeHtml(text)}</p>`;
 }
 
+function irrigationNote(r) {
+  const w = r.if_irrigated;
+  if (!w) return '';
+  const text = t('crops.irrigated_hint').replace('{score}', pct(w.score)).replace('{verdict}', t(`crops.verdict.${w.verdict}`).toLowerCase());
+  return `<p class="crop-irrigated" id="crop-irrigated">${escapeHtml(text)}</p>`;
+}
+
 function detailHtml(data) {
   const r = data.results[0];
   return `<div class="card crop-result" id="crop-result">
@@ -73,6 +80,7 @@ function detailHtml(data) {
     </div>
     ${seasonLine(data.site)}
     <ul class="crop-factors">${factorRows(r)}</ul>
+    ${irrigationNote(r)}
     <p class="crop-note mono-xs text-muted">${escapeHtml(t('crops.soil_note'))}</p>
   </div>`;
 }
@@ -83,7 +91,7 @@ function rankingHtml(data) {
         <span class="crop-rank-name">${escapeHtml(cropName(r))}</span>
         ${bar(r.score)}
         <span class="crop-rank-score mono-xs">${escapeHtml(pct(r.score))}</span>
-        ${verdictBadge(r.verdict)}
+        ${verdictBadge(r.verdict)}${r.if_irrigated ? `<span class="badge badge--muted mono-xs" title="${escapeHtml(t('crops.irrigated_badge_title'))}">${escapeHtml(t('crops.irrigated_badge'))} ${escapeHtml(pct(r.if_irrigated.score))}</span>` : ''}
       </button>
     </li>`).join('');
   return `<div class="card crop-result" id="crop-result">

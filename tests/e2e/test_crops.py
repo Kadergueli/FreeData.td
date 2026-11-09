@@ -3,7 +3,8 @@ from __future__ import annotations
 
 
 CATALOGUE = {"crops": [{"id": "millet", "name_fr": "Mil", "name_en": "Pearl millet", "scientific_name": "Pennisetum glaucum"},
-                       {"id": "cotton", "name_fr": "Coton", "name_en": "Cotton", "scientific_name": "Gossypium hirsutum"}],
+                       {"id": "cotton", "name_fr": "Coton", "name_en": "Cotton", "scientific_name": "Gossypium hirsutum"},
+                       {"id": "rice", "name_fr": "Riz", "name_en": "Rice", "scientific_name": "Oryza sativa"}],
              "regions": ["Abéché (Ouaddaï)", "Moundou (Logone Occidental)"]}
 SITE = {"rain_mm": 357.0, "temp_mean_c": 27.93, "season_days": 92, "annual_rain_mm": 400.1, "wet_months": ["JUL", "AUG", "SEP"], "ph": 7.47}
 REQ = {"rain_mm": [200, 400, 900, 1700], "temp_mean_c": [12, 25, 35, 40], "ph": [4.5, 5, 6.5, 8.3], "cycle_days": [60, 120]}
@@ -23,7 +24,11 @@ def _mock(page, calls):
         calls.append(url)
         if "region=Atlantis" in url:
             return route.fulfill(status=404, json={"detail": "Unknown region 'Atlantis'"})
-        if "crop=millet" in url:
+        if "crop=rice" in url:
+            rice = _result("rice", "Riz", 0.0, "unsuitable", "rain_mm")
+            rice["if_irrigated"] = {"score": 1.0, "verdict": "very_suitable", "limiting": "temp_mean_c"}
+            data = [rice]
+        elif "crop=millet" in url:
             data = [_result("millet", "Mil", 0.62, "suitable", "rain_mm")]
         else:
             data = [_result("millet", "Mil", 0.62, "suitable", "rain_mm"), _result("cotton", "Coton", 0.0, "unsuitable", "rain_mm")]
@@ -74,3 +79,15 @@ def test_phone_width_has_no_horizontal_scroll(probe):
     probe.goto("#/crops")
     probe.page.wait_for_selector(".crop-rank-row")
     assert probe.page.evaluate("document.documentElement.scrollWidth <= 390")
+
+
+def test_irrigated_option_is_shown_when_rain_is_the_limit(probe):
+    _mock(probe.page, [])
+    probe.goto("#/crops?region=Abéché (Ouaddaï)&crop=rice")
+    probe.page.wait_for_selector("#crop-irrigated")
+    text = probe.page.inner_text("#crop-irrigated")
+    assert "100 %" in text and "irrigation" in text.lower()
+    probe.goto("#/crops?region=Abéché (Ouaddaï)&crop=millet")
+    probe.page.wait_for_selector("#crop-result")
+    assert probe.page.locator("#crop-irrigated").count() == 0
+    assert probe.page_errors == []
