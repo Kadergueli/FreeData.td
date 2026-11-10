@@ -70,4 +70,4 @@ def site_for(region: str) -> dict[str, Any]:
         site["ph"] = soil["ph"]
     else:
         missing.append("soil")
-    return {"region": region, "site": site, "soil": soil, "missing": missing}
+    return {"region": region, "site": site, "soil": soil, "missing": missing, "climate": climate}

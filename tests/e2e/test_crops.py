@@ -10,6 +10,10 @@ SITE = {"rain_mm": 357.0, "temp_mean_c": 27.93, "season_days": 92, "annual_rain_
 REQ = {"rain_mm": [200, 400, 900, 1700], "temp_mean_c": [12, 25, 35, 40], "ph": [4.5, 5, 6.5, 8.3], "cycle_days": [60, 120]}
 
 
+CALENDAR = [{"month": m, "score": 1.0 if m == 7 else (0.5 if m in (6, 8) else 0.0),
+             "verdict": "suitable" if m == 7 else ("marginal" if m in (6, 8) else "unsuitable"), "cycle_end": m + 2} for m in range(1, 13)]
+
+
 def _result(crop, name, score, verdict, limiting):
     return {"crop": crop, "name_fr": name, "name_en": name, "score": score, "verdict": verdict, "limiting": limiting,
             "requirements": REQ, "factors": {"rain_mm": {"value": 357.0, "score": 0.785}, "temp_mean_c": {"value": 27.93, "score": 1.0},
@@ -29,11 +33,22 @@ def _mock(page, calls):
             rice["if_irrigated"] = {"score": 1.0, "verdict": "very_suitable", "limiting": "temp_mean_c"}
             data = [rice]
         elif "crop=millet" in url:
-            data = [_result("millet", "Mil", 0.62, "suitable", "rain_mm")]
+            lang = "en" if "lang=en" in url else "fr"
+            summary = "Pearl millet in Abéché: suitable (62%)." if lang == "en" else "Mil à Abéché : verdict adapté (62 %)."
+            return route.fulfill(json={"region": "Abéché (Ouaddaï)", "site": SITE, "missing": [], "calendar": CALENDAR,
+                                       "summary": summary, "results": [_result("millet", "Mil", 0.62, "suitable", "rain_mm")]})
         else:
             data = [_result("millet", "Mil", 0.62, "suitable", "rain_mm"), _result("cotton", "Coton", 0.0, "unsuitable", "rain_mm")]
         route.fulfill(json={"region": "Abéché (Ouaddaï)", "site": SITE, "missing": [], "results": data})
     page.route("**/api/v1/crops/suitability*", suit)
+
+    def explain(route):
+        calls.append(route.request.method + " " + route.request.url)
+        mode = route.request.url
+        if "crop=cotton" in mode:   # the AI is unavailable for this one: the rule-based text comes back
+            return route.fulfill(json={"text": "Texte par règles.", "source": "template", "model": None, "reason": "no-key", "lang": "fr"})
+        route.fulfill(json={"text": "Note rédigée par IA.", "source": "ai", "model": "m", "lang": "fr"})
+    page.route("**/api/v1/crops/explain*", explain)
 
 
 def test_ranking_then_detail_and_url_keeps_the_choice(probe):
@@ -91,3 +106,53 @@ def test_irrigated_option_is_shown_when_rain_is_the_limit(probe):
     probe.page.wait_for_selector("#crop-result")
     assert probe.page.locator("#crop-irrigated").count() == 0
     assert probe.page_errors == []
+
+
+def test_calendar_summary_and_ai_note(probe):
+    calls: list[str] = []
+    _mock(probe.page, calls)
+    probe.goto("#/crops?region=Abéché (Ouaddaï)&crop=millet")
+    probe.page.wait_for_selector(".crop-cal")
+    assert probe.page.locator(".crop-cal-cell").count() == 12
+    assert probe.page.locator(".crop-cal-cell--good").count() == 1 and probe.page.locator(".crop-cal-cell--maybe").count() == 2
+    july = probe.page.get_attribute(".crop-cal-cell >> nth=6", "aria-label")
+    assert "juillet" in july and "favorable" in july
+    assert "verdict adapté" in probe.page.inner_text("#crop-summary-text")
+    probe.page.click("#crop-ai-btn")
+    probe.page.wait_for_selector("#crop-ai-out .crop-ai-note")
+    note = probe.page.inner_text("#crop-ai-out")
+    assert "Note rédigée par IA." in note and "Aucun chiffre ajouté" in note
+    assert probe.page.locator("#crop-ai-out .is-ai").count() == 1
+    assert any(c.startswith("POST ") and "lang=fr" in c and "crop=millet" in c for c in calls)
+    assert probe.page_errors == []
+
+
+def test_ai_fallback_is_labelled_and_errors_are_kept_local(probe):
+    calls: list[str] = []
+    _mock(probe.page, calls)
+    probe.goto("#/crops?region=Abéché (Ouaddaï)&crop=millet")
+    probe.page.wait_for_selector("#crop-ai-btn")
+    probe.page.route("**/api/v1/crops/explain*", lambda r: r.fulfill(
+        json={"text": "Texte par règles.", "source": "template", "model": None, "reason": "rate-limited", "lang": "fr"}))
+    probe.page.click("#crop-ai-btn")
+    probe.page.wait_for_selector("#crop-ai-out .crop-ai-note")
+    assert "limite" in probe.page.inner_text("#crop-ai-out") and probe.page.locator("#crop-ai-out .is-ai").count() == 0
+    probe.page.route("**/api/v1/crops/explain*", lambda r: r.fulfill(status=500, json={"detail": "boom"}))
+    probe.page.click("#crop-ai-btn")
+    probe.page.wait_for_selector("#crop-ai-out .alert--danger")
+    assert "reste valable" in probe.page.inner_text("#crop-ai-out")
+    assert probe.page.is_enabled("#crop-ai-btn") and "verdict adapté" in probe.page.inner_text("#crop-summary-text")
+
+
+def test_calendar_and_ai_follow_the_interface_language(probe):
+    calls: list[str] = []
+    _mock(probe.page, calls)
+    probe.page.add_init_script("localStorage.setItem('fd_lang', 'en')")
+    probe.goto("#/crops?region=Abéché (Ouaddaï)&crop=millet")
+    probe.page.wait_for_selector(".crop-cal")
+    assert "Rainfed sowing calendar" in probe.page.inner_text(".crop-calendar")
+    assert "favourable sowing" in probe.page.inner_text(".crop-cal-legend")
+    assert "July" in probe.page.get_attribute(".crop-cal-cell >> nth=6", "aria-label")
+    assert "Pearl millet in Abéché: suitable (62%)." in probe.page.inner_text("#crop-summary-text")
+    assert probe.page.inner_text("#crop-ai-btn") == "Write a note with AI"
+    assert any("lang=en" in c for c in calls)

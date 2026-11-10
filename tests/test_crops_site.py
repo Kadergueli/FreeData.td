@@ -115,3 +115,104 @@ def test_api_without_data_says_so(monkeypatch, tmp_path):
     from app.main import app
     assert TestClient(app).get("/api/v1/crops/suitability", params={"region": "moundou"}).status_code == 404
     sites.load_climate.cache_clear(); sites.load_soils.cache_clear()
+
+
+# ── Sowing calendar and explanations ──────────────────────────────────────────────────────────────
+
+def test_sowing_calendar_follows_the_rains():
+    from app.crops.calendar import good_months, sowing_calendar
+    from app.crops.engine import load_crops
+    cal = sowing_calendar(load_crops()["cotton"], SUD_RAIN, SUD_TEMP)
+    assert len(cal) == 12 and [c["month"] for c in cal] == list(range(1, 13))
+    assert good_months(cal) and all(4 <= m <= 8 for m in good_months(cal))
+    assert cal[0]["score"] == 0.0 and cal[11]["score"] == 0.0          # dry months: nothing to sow
+    desert = sowing_calendar(load_crops()["millet"], FAYA_RAIN, FAYA_TEMP)
+    assert good_months(desert) == []
+
+
+def test_runs_are_circular():
+    from app.crops.calendar import runs
+    assert runs([11, 12, 1, 2]) == [(11, 2)] and runs([3, 4, 8]) == [(3, 4), (8, 8)]
+    assert runs([]) == [] and runs(list(range(1, 13))) == [(1, 12)]
+
+
+def _facts_for(region, crop, lang):
+    from app.crops import explain
+    from app.crops.api import _facts
+    return explain, _facts(sites.site_for(sites.find_region(region)), crop, lang)
+
+
+def test_summary_is_professional_and_in_the_chosen_language(data):
+    explain, (facts, fr, _) = _facts_for("abeche", "millet", "fr")
+    assert "verdict adapté" in fr and "7,47" in fr and "juillet" in fr and "Indicatif" in fr and "." not in fr.split("pH du sol (")[1][:5]
+    explain, (facts, en, _) = _facts_for("abeche", "millet", "en")
+    assert "suitable (62%)" in en and "7.47" in en and "July" in en and "Indicative" in en
+    _, (_, strong, _) = _facts_for("moundou", "cotton", "en")
+    assert "climate meets the crop's needs" in strong and "April to July" in strong
+
+
+def test_ai_note_accepts_grounded_text_and_rejects_invented_numbers(data, monkeypatch):
+    import asyncio
+
+    import httpx
+
+    from app.config import settings
+    explain, (facts, baseline, _) = _facts_for("abeche", "millet", "en")
+    monkeypatch.setattr(settings, "groq_api_key", "test-key")
+
+    real = httpx.AsyncClient
+
+    def reply(text):
+        def handler(request):
+            return httpx.Response(200, json={"choices": [{"message": {"content": text}}]})
+        monkeypatch.setattr(explain.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+
+    reply("Millet is suitable in Abéché at 62%. Rainfall of 357 mm is the limit; sow in July.")
+    text, model = asyncio.run(explain.ai_note(facts, baseline, "en"))
+    assert text and "62%" in text
+    reply("Millet gives 3 tonnes per hectare here, with 357 mm of rain.")
+    assert asyncio.run(explain.ai_note(facts, baseline, "en")) == (None, "rejected")
+    monkeypatch.setattr(settings, "groq_api_key", None)
+    assert asyncio.run(explain.ai_note(facts, baseline, "en")) == (None, "no-key")
+
+
+def test_api_calendar_summary_and_explain_endpoint(data, monkeypatch):
+    from app.config import settings
+    from app.crops import explain
+    from app.main import app
+    explain._CACHE.clear()
+    client = TestClient(app)
+    body = client.get("/api/v1/crops/suitability", params={"region": "moundou", "crop": "cotton", "lang": "en"}).json()
+    assert len(body["calendar"]) == 12 and "Favourable rainfed sowing period" in body["summary"]
+    assert "calendar" not in client.get("/api/v1/crops/suitability", params={"region": "moundou"}).json()
+    assert client.get("/api/v1/crops/suitability", params={"region": "moundou", "crop": "cotton", "lang": "xx"}).status_code == 422
+
+    monkeypatch.setattr(settings, "groq_api_key", None)
+    r = client.post("/api/v1/crops/explain", params={"region": "moundou", "crop": "cotton", "lang": "fr"}).json()
+    assert r["source"] == "template" and r["reason"] == "no-key" and "semis" in r["text"]
+
+    monkeypatch.setattr(settings, "groq_api_key", "k")
+    calls = []
+
+    async def fake_ai(facts, baseline, lang):
+        calls.append(lang)
+        return f"Note IA {facts['score_pct']}", "fake-model"
+    monkeypatch.setattr(explain, "ai_note", fake_ai)
+    r = client.post("/api/v1/crops/explain", params={"region": "moundou", "crop": "cotton", "lang": "fr"}).json()
+    assert r == {"text": "Note IA 100", "source": "ai", "model": "fake-model", "lang": "fr"}
+    client.post("/api/v1/crops/explain", params={"region": "moundou", "crop": "cotton", "lang": "fr"})
+    assert calls == ["fr"]                                   # second call: served from the cache
+    assert client.post("/api/v1/crops/explain", params={"region": "atlantis", "crop": "cotton"}).status_code == 404
+    explain._CACHE.clear()
+
+
+def test_explain_falls_back_when_rate_limited(data, monkeypatch):
+    from app.config import settings
+    from app.crops import explain
+    from app.main import app
+    from app.security import rate_limiter
+    explain._CACHE.clear()
+    monkeypatch.setattr(settings, "groq_api_key", "k")
+    monkeypatch.setattr(rate_limiter, "allow", lambda *a, **k: False)
+    r = TestClient(app).post("/api/v1/crops/explain", params={"region": "moundou", "crop": "maize", "lang": "en"}).json()
+    assert r["source"] == "template" and r["reason"] == "rate-limited" and r["text"]

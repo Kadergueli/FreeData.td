@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     analysis_rate_limit_per_hour: int = 5
     # Ceiling for all visitors together: per-IP limits do not stop many IPs from running up the AI bill.
     analysis_global_limit_per_hour: int = 30
+    # AI-written crop notes: cheap and cached, so a looser limit than the studies. Past it the rule-based text is served.
+    crops_ai_rate_limit_per_hour: int = 20
+    crops_ai_global_limit_per_hour: int = 120
     collection_api_key: str | None = None
     collection_rate_limit_per_hour: int = 10
     # Reading the public API needs no key, but one client must not be able to drain the free-tier

@@ -5,7 +5,7 @@
  * The URL keeps the choice (#/crops?region=...&crop=...) without re-rendering the page.
  */
 
-import { fetchCrops, fetchSuitability } from '../api_client.js';
+import { explainCrop, fetchCrops, fetchSuitability } from '../api_client.js';
 import { buildHash } from '../router.js';
 import { getLang, t } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
@@ -58,6 +58,67 @@ function seasonLine(site) {
   return `<p class="crop-season mono-xs text-muted"><strong>${escapeHtml(t('crops.season'))}</strong> · ${escapeHtml(text)}</p>`;
 }
 
+const CAL_CLASS = { very_suitable: 'good', suitable: 'good', marginal: 'maybe', unsuitable: 'none', unknown: 'none' };
+
+/** Twelve month cells (January first). Meaning is in the text and the legend as well as in the colour. */
+function calendarHtml(calendar) {
+  if (!Array.isArray(calendar) || calendar.length !== 12) return '';
+  const lang = getLang();
+  const fmtShort = new Intl.DateTimeFormat(lang, { month: 'short' });
+  const fmtLong = new Intl.DateTimeFormat(lang, { month: 'long' });
+  const cells = calendar.map(c => {
+    const kind = CAL_CLASS[c.verdict] || 'none';
+    const date = new Date(2024, c.month - 1, 1);
+    const label = `${fmtLong.format(date)} — ${t(`crops.cal.${kind}`)}`;
+    const mark = kind === 'good' ? '●' : kind === 'maybe' ? '◐' : '–';
+    return `<li class="crop-cal-cell crop-cal-cell--${kind}" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+      <span class="crop-cal-month">${escapeHtml(fmtShort.format(date).replace('.', ''))}</span><span class="crop-cal-mark" aria-hidden="true">${mark}</span></li>`;
+  }).join('');
+  return `<section class="crop-calendar" aria-labelledby="crop-cal-title">
+    <h4 id="crop-cal-title" class="crop-sub-title">${escapeHtml(t('crops.cal.title'))}</h4>
+    <ol class="crop-cal">${cells}</ol>
+    <p class="crop-cal-legend mono-xs text-muted">
+      <span>● ${escapeHtml(t('crops.cal.good'))}</span> <span>◐ ${escapeHtml(t('crops.cal.maybe'))}</span> <span>– ${escapeHtml(t('crops.cal.none'))}</span>
+    </p>
+    <p class="mono-xs text-muted">${escapeHtml(t('crops.cal.note'))}</p>
+  </section>`;
+}
+
+function summaryHtml(data) {
+  if (!data.summary) return '';
+  return `<section class="crop-summary" aria-labelledby="crop-sum-title">
+    <h4 id="crop-sum-title" class="crop-sub-title">${escapeHtml(t('crops.summary_title'))}</h4>
+    <p id="crop-summary-text" class="crop-summary-text">${escapeHtml(data.summary)}</p>
+    <div class="crop-ai">
+      <button type="button" class="btn btn-ghost mono-xs" id="crop-ai-btn">${escapeHtml(t('crops.ai_button'))}</button>
+      <div id="crop-ai-out" aria-live="polite"></div>
+    </div>
+  </section>`;
+}
+
+async function writeAiNote(region, crop) {
+  const btn = document.getElementById('crop-ai-btn');
+  const out = document.getElementById('crop-ai-out');
+  if (!btn || !out) return;
+  const token = _token;
+  btn.disabled = true;
+  out.innerHTML = `<p class="mono-xs text-muted" role="status">${escapeHtml(t('crops.ai_loading'))}</p>`;
+  try {
+    const res = await explainCrop(region, crop, getLang());
+    if (token !== _token) return;
+    const isAi = res.source === 'ai';
+    const badge = isAi ? t('crops.ai_badge_ai') : t(res.reason === 'rate-limited' ? 'crops.ai_badge_limited' : 'crops.ai_badge_template');
+    out.innerHTML = `<div class="crop-ai-note${isAi ? ' is-ai' : ''}">
+      <p class="crop-ai-text">${escapeHtml(res.text)}</p>
+      <p class="mono-xs text-muted crop-ai-badge">${escapeHtml(badge)}</p></div>`;
+  } catch (err) {
+    if (token !== _token) return;
+    out.innerHTML = `<div class="alert alert--danger" role="alert">${escapeHtml(t('crops.ai_error'))}</div>`;
+  } finally {
+    if (token === _token) btn.disabled = false;
+  }
+}
+
 function irrigationNote(r) {
   const w = r.if_irrigated;
   if (!w) return '';
@@ -81,6 +142,8 @@ function detailHtml(data) {
     ${seasonLine(data.site)}
     <ul class="crop-factors">${factorRows(r)}</ul>
     ${irrigationNote(r)}
+    ${summaryHtml(data)}
+    ${calendarHtml(data.calendar)}
     <p class="crop-note mono-xs text-muted">${escapeHtml(t('crops.soil_note'))}</p>
   </div>`;
 }
@@ -111,9 +174,11 @@ async function refresh() {
   window.history.replaceState(null, '', buildHash('crops', { region, crop }));
   out.innerHTML = `<p class="mono-xs text-muted" role="status">${escapeHtml(t('crops.loading'))}</p>`;
   try {
-    const data = await fetchSuitability(region, crop || null);
+    const data = await fetchSuitability(region, crop || null, getLang());
     if (token !== _token) return;
     out.innerHTML = crop ? detailHtml(data) : rankingHtml(data);
+    const aiBtn = document.getElementById('crop-ai-btn');
+    if (aiBtn) aiBtn.addEventListener('click', () => writeAiNote(region, crop));
     out.querySelectorAll('.crop-rank-row').forEach(btn => btn.addEventListener('click', () => {
       document.getElementById('crop-crop').value = btn.dataset.crop;
       refresh();

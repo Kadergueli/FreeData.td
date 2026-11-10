@@ -971,3 +971,19 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
   .crop-rank-row .crop-bar { grid-column: 1 / -1; order: 3; }
   .crop-rank-row .crop-verdict { grid-column: 1 / -1; order: 4; justify-self: start; }
 }
+
+.crop-sub-title { margin: 22px 0 8px; font-size: 15px; }
+.crop-summary-text { margin: 0; line-height: 1.6; max-width: 72ch; }
+.crop-ai { margin-top: 12px; }
+.crop-ai-note { margin-top: 10px; padding: 12px 14px; border-left: 3px solid var(--border); background: var(--surface-hover); border-radius: 0 6px 6px 0; }
+.crop-ai-note.is-ai { border-left-color: var(--cyan); }
+.crop-ai-text { margin: 0 0 6px; line-height: 1.6; max-width: 72ch; }
+.crop-ai-badge { margin: 0; }
+.crop-cal { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; }
+.crop-cal-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
+.crop-cal-cell--good { background: color-mix(in srgb, var(--green) 22%, transparent); border-color: var(--green); }
+.crop-cal-cell--maybe { background: color-mix(in srgb, var(--amber) 18%, transparent); border-color: var(--amber); }
+.crop-cal-cell--none { color: var(--text-muted); }
+.crop-cal-month { font-weight: 600; text-transform: capitalize; }
+.crop-cal-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 4px; }
+@media (max-width: 640px) { .crop-cal { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

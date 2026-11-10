@@ -159,10 +159,16 @@ export async function fetchCrops() {
 }
 
 /** Suitability of one crop (or, without `crop`, of every crop ranked) for a region. Throws the server's message. */
-export async function fetchSuitability(region, crop = null) {
-  const qs = new URLSearchParams({ region });
+export async function fetchSuitability(region, crop = null, lang = 'fr') {
+  const qs = new URLSearchParams({ region, lang });
   if (crop) qs.set('crop', crop);
   return requestJson(`${BASE_URL}/crops/suitability?${qs.toString()}`);
+}
+
+/** AI-written note for one crop in one region (rule-based text when the AI is unavailable). Throws the server's message. */
+export async function explainCrop(region, crop, lang = 'fr') {
+  const qs = new URLSearchParams({ region, crop, lang });
+  return requestJson(`${BASE_URL}/crops/explain?${qs.toString()}`, { method: 'POST', timeout: 30000 });
 }
 
 export async function fetchCrossSector() {
