@@ -50,6 +50,13 @@ def _mock(page, calls):
         route.fulfill(json={"text": "Note rédigée par IA.", "source": "ai", "model": "m", "lang": "fr"})
     page.route("**/api/v1/crops/explain*", explain)
 
+    def cmap(route):
+        calls.append(route.request.url)
+        route.fulfill(json={"crop": "millet", "name_fr": "Mil", "name_en": "Pearl millet", "regions": [
+            {"region": "Abéché (Ouaddaï)", "lat": 13.82, "lon": 20.83, "score": 0.62, "verdict": "suitable", "limiting": "rain_mm", "if_irrigated": 0.78},
+            {"region": "Moundou (Logone Occidental)", "lat": 8.56, "lon": 16.08, "score": 0.95, "verdict": "very_suitable", "limiting": None, "if_irrigated": None}]})
+    page.route("**/api/v1/crops/map*", cmap)
+
 
 def test_ranking_then_detail_and_url_keeps_the_choice(probe):
     calls: list[str] = []
@@ -156,3 +163,24 @@ def test_calendar_and_ai_follow_the_interface_language(probe):
     assert "Pearl millet in Abéché: suitable (62%)." in probe.page.inner_text("#crop-summary-text")
     assert probe.page.inner_text("#crop-ai-btn") == "Write a note with AI"
     assert any("lang=en" in c for c in calls)
+
+
+def test_map_shows_one_dot_per_region_and_a_click_selects_the_region(probe):
+    calls: list[str] = []
+    _mock(probe.page, calls)
+    probe.goto("#/crops?region=Abéché (Ouaddaï)&crop=millet")
+    probe.page.wait_for_selector(".crop-map-dot")
+    assert probe.page.locator(".crop-map-dot").count() == 2
+    assert probe.page.locator(".crop-map-dot.is-selected").get_attribute("data-region") == "Abéché (Ouaddaï)"
+    assert "irrigué" in probe.page.locator(".crop-map-dot >> nth=0").get_attribute("aria-label")
+    assert any("/crops/map" in c and "crop=millet" in c for c in calls)
+    probe.page.locator(".crop-map-dot >> nth=1").dispatch_event("click")
+    probe.page.wait_for_function("document.getElementById('crop-region').value.startsWith(\"Moundou\")")
+    assert probe.page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_no_map_in_the_ranking_view(probe):
+    _mock(probe.page, [])
+    probe.goto("#/crops")
+    probe.page.wait_for_selector(".crop-rank-row")
+    assert probe.page.locator("#crop-map").count() == 0

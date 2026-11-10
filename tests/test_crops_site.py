@@ -102,11 +102,11 @@ def test_api_ranks_all_crops_and_rejects_bad_input(data):
     from app.main import app
     client = TestClient(app)
     ranked = client.get("/api/v1/crops/suitability", params={"region": "moundou"}).json()["results"]
-    assert len(ranked) == 9 and [x["score"] for x in ranked] == sorted((x["score"] for x in ranked), reverse=True)
+    assert len(ranked) == 20 and [x["score"] for x in ranked] == sorted((x["score"] for x in ranked), reverse=True)
     assert client.get("/api/v1/crops/suitability", params={"region": "atlantis"}).status_code == 404
     assert client.get("/api/v1/crops/suitability", params={"region": "moundou", "crop": "banana"}).status_code == 404
     listing = client.get("/api/v1/crops").json()
-    assert len(listing["crops"]) == 9 and "Abéché (Ouaddaï)" in listing["regions"]
+    assert len(listing["crops"]) == 20 and "Abéché (Ouaddaï)" in listing["regions"]
 
 
 def test_api_without_data_says_so(monkeypatch, tmp_path):
@@ -216,3 +216,23 @@ def test_explain_falls_back_when_rate_limited(data, monkeypatch):
     monkeypatch.setattr(rate_limiter, "allow", lambda *a, **k: False)
     r = TestClient(app).post("/api/v1/crops/explain", params={"region": "moundou", "crop": "maize", "lang": "en"}).json()
     assert r["source"] == "template" and r["reason"] == "rate-limited" and r["text"]
+
+
+def test_map_endpoint_has_one_row_per_region_with_coordinates():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    client = TestClient(app)
+    body = client.get("/api/v1/crops/map", params={"crop": "millet"}).json()
+    assert len(body["regions"]) == len(sites.region_names()) == 23
+    assert all(-5 < r["lat"] - 12 < 12 and 0 <= r["score"] <= 1 and r["verdict"] for r in body["regions"])
+    assert client.get("/api/v1/crops/map", params={"crop": "nope"}).status_code == 404
+    assert client.get("/api/v1/crops/map").status_code == 422
+
+
+def test_sorghum_carries_its_caveat_and_others_do_not():
+    client = TestClient(__import__("app.main", fromlist=["app"]).app)
+    one = client.get("/api/v1/crops/suitability", params={"region": "Moundou", "crop": "sorghum"}).json()["results"][0]
+    assert "700" in one["caveat"]["fr"] and "700" in one["caveat"]["en"]
+    assert client.get("/api/v1/crops/suitability", params={"region": "Moundou", "crop": "millet"}).json()["results"][0]["caveat"] is None

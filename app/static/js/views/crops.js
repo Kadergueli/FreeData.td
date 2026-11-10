@@ -5,13 +5,16 @@
  * The URL keeps the choice (#/crops?region=...&crop=...) without re-rendering the page.
  */
 
-import { explainCrop, fetchCrops, fetchSuitability } from '../api_client.js';
+import { explainCrop, fetchCropMap, fetchCrops, fetchSuitability } from '../api_client.js';
 import { buildHash } from '../router.js';
 import { getLang, t } from '../i18n.js';
 import { escapeHtml } from '../sanitize.js';
 
 const FACTOR_ORDER = ['rain_mm', 'temp_mean_c', 'season_days', 'ph'];
 let _catalog = null;
+// Outline of Chad as [lon, lat] (Natural Earth, public domain, simplified).
+const CHAD_OUTLINE = [[14.5,12.86],[14.6,13.33],[13.95,13.35],[13.96,14.0],[13.54,14.37],[13.97,15.68],[15.25,16.63],[15.3,17.93],[15.69,19.96],[15.9,20.39],[15.49,20.73],[15.47,21.05],[15.1,21.31],[14.85,22.86],[15.86,23.41],[19.85,21.5],[23.84,19.58],[23.89,15.61],[23.02,15.68],[22.57,14.94],[22.3,14.33],[22.51,14.09],[22.18,13.79],[22.3,13.37],[22.04,12.96],[21.94,12.59],[22.29,12.65],[22.5,12.26],[22.51,11.68],[22.88,11.38],[22.86,11.14],[22.23,10.97],[21.72,10.57],[21.0,9.48],[20.06,9.01],[19.09,9.07],[18.81,8.98],[18.91,8.63],[18.39,8.28],[17.96,7.89],[16.71,7.51],[16.46,7.73],[16.29,7.75],[16.11,7.5],[15.28,7.42],[15.44,7.69],[15.12,8.38],[14.98,8.8],[14.54,8.97],[13.95,9.55],[14.17,10.02],[14.63,9.92],[14.91,9.99],[15.47,9.98],[14.92,10.89],[14.96,11.56],[14.89,12.22],[14.5,12.86]];
+const MAP_VERDICTS = ['very_suitable', 'suitable', 'marginal', 'unsuitable'];
 let _token = 0; // a slow answer must never overwrite a newer one
 
 const pct = (x) => `${Math.round((x || 0) * 100)} %`;
@@ -126,6 +129,11 @@ function irrigationNote(r) {
   return `<p class="crop-irrigated" id="crop-irrigated">${escapeHtml(text)}</p>`;
 }
 
+function caveatNote(r) {
+  const text = r.caveat && (r.caveat[getLang()] || r.caveat.fr);
+  return text ? `<p class="crop-caveat mono-xs text-muted" id="crop-caveat">${escapeHtml(text)}</p>` : '';
+}
+
 function detailHtml(data) {
   const r = data.results[0];
   return `<div class="card crop-result" id="crop-result">
@@ -142,10 +150,57 @@ function detailHtml(data) {
     ${seasonLine(data.site)}
     <ul class="crop-factors">${factorRows(r)}</ul>
     ${irrigationNote(r)}
+    ${caveatNote(r)}
     ${summaryHtml(data)}
     ${calendarHtml(data.calendar)}
     <p class="crop-note mono-xs text-muted">${escapeHtml(t('crops.soil_note'))}</p>
   </div>`;
+}
+
+function mapHtml(map, selected) {
+  const [W, H] = [420, 560];
+  const lons = CHAD_OUTLINE.map(p => p[0]); const lats = CHAD_OUTLINE.map(p => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...lons), Math.max(...lons), Math.min(...lats), Math.max(...lats)];
+  const k = Math.min((W - 24) / (x1 - x0), (H - 24) / (y1 - y0));
+  const px = (lon) => 12 + (lon - x0) * k;
+  const py = (lat) => 12 + (y1 - lat) * k;
+  const path = CHAD_OUTLINE.map((p, i) => `${i ? 'L' : 'M'}${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`).join('') + 'Z';
+  const dots = map.regions.map(r => {
+    const irr = r.if_irrigated != null && r.if_irrigated > r.score + 0.05 ? ` · ${t('crops.map_irrigated')} ${pct(r.if_irrigated)}` : '';
+    const label = `${r.region} — ${pct(r.score)} (${t(`crops.verdict.${r.verdict}`)})${irr}`;
+    return `<circle class="crop-map-dot crop-map-dot--${escapeHtml(r.verdict)}${r.region === selected ? ' is-selected' : ''}" cx="${px(r.lon).toFixed(1)}" cy="${py(r.lat).toFixed(1)}" r="9"
+      tabindex="0" role="button" data-region="${escapeHtml(r.region)}" aria-label="${escapeHtml(label)}"><title>${escapeHtml(label)}</title></circle>`;
+  }).join('');
+  const legend = MAP_VERDICTS.map(v => `<li><span class="crop-map-key crop-map-dot--${v}"></span>${escapeHtml(t(`crops.verdict.${v}`))}</li>`).join('');
+  return `<div class="card crop-map" id="crop-map">
+    <h3 class="crop-sub-title">${escapeHtml(t('crops.map_title'))}</h3>
+    <svg class="crop-map-svg" viewBox="0 0 ${W} ${H}" role="group" aria-label="${escapeHtml(t('crops.map_title'))}">
+      <path class="crop-map-land" d="${path}"/>${dots}
+    </svg>
+    <ul class="crop-map-legend mono-xs">${legend}</ul>
+    <p class="crop-note mono-xs text-muted">${escapeHtml(t('crops.map_hint'))}</p>
+  </div>`;
+}
+
+async function loadMap(crop, region, token) {
+  const slot = document.getElementById('crop-map-slot');
+  if (!slot) return;
+  slot.innerHTML = `<p class="mono-xs text-muted" role="status">${escapeHtml(t('crops.map_loading'))}</p>`;
+  try {
+    const map = await fetchCropMap(crop);
+    if (token !== _token) return;
+    slot.innerHTML = mapHtml(map, region);
+    const pick = (el) => {
+      document.getElementById('crop-region').value = el.dataset.region;
+      refresh();
+    };
+    slot.querySelectorAll('.crop-map-dot').forEach(el => {
+      el.addEventListener('click', () => pick(el));
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(el); } });
+    });
+  } catch (err) {
+    if (token === _token) slot.innerHTML = `<p class="mono-xs text-muted" role="status">${escapeHtml(t('crops.map_error'))}</p>`;
+  }
 }
 
 function rankingHtml(data) {
@@ -176,7 +231,8 @@ async function refresh() {
   try {
     const data = await fetchSuitability(region, crop || null, getLang());
     if (token !== _token) return;
-    out.innerHTML = crop ? detailHtml(data) : rankingHtml(data);
+    out.innerHTML = crop ? `${detailHtml(data)}<div id="crop-map-slot"></div>` : rankingHtml(data);
+    if (crop) loadMap(crop, region, token);
     const aiBtn = document.getElementById('crop-ai-btn');
     if (aiBtn) aiBtn.addEventListener('click', () => writeAiNote(region, crop));
     out.querySelectorAll('.crop-rank-row').forEach(btn => btn.addEventListener('click', () => {

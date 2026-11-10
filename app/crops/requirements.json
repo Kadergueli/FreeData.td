@@ -1,5 +1,5 @@
 {
-  "_note": "Besoins par culture, forme trapèze [min absolu, optimum min, optimum max, max absolu]. Température = moyenne pendant le cycle ; pluie = cumul pendant le cycle (en zone sahélienne à une saison, proche du cumul de la saison des pluies). Source : FAO EcoCrop. Licence des données à confirmer avant diffusion (voir README du dépôt OpenCLIM/ecocrop).",
+  "_note": "Besoins par culture, forme trapèze [min absolu, optimum min, optimum max, max absolu]. Température = moyenne pendant le cycle ; pluie = cumul pendant le cycle (en zone sahélienne à une saison, proche du cumul de la saison des pluies). Source : FAO EcoCrop. Licence : la base EcoCrop n'est pas citée dans les conditions d'utilisation des bases de données de la FAO (CC BY 4.0 par défaut, sans usage pour promouvoir une entreprise ou un produit) ; le dépôt OpenCLIM/ecocrop ne précise la licence que pour son code (Open Government Licence). À confirmer auprès de la FAO avant toute diffusion commerciale. Toujours citer la FAO comme source.",
   "crops": {
     "millet": {
       "fr": "Mil",
@@ -74,7 +74,11 @@
         "wide"
       ],
       "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
-      "verified": true
+      "verified": true,
+      "caveat": {
+        "fr": "Dans la base FAO EcoCrop, la pluie maximale tolérée par le sorgho grain est de 700 mm. Or le sorgho est cultivé en zone soudanienne du Tchad, où la saison dépasse parfois ce seuil : un score faible lié à la pluie y est à lire avec prudence.",
+        "en": "In the FAO EcoCrop database, the maximum rainfall grain sorghum tolerates is 700 mm. Yet sorghum is grown in Chad's Sudanian zone, where the season sometimes exceeds that threshold: a low rain-driven score there should be read with caution."
+      }
     },
     "maize": {
       "fr": "Maïs",
@@ -338,6 +342,420 @@
         "light",
         "organic"
       ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "onion": {
+      "fr": "Oignon",
+      "en": "Onion",
+      "scientific_name": "Allium cepa",
+      "ecoport_code": 364,
+      "rain_mm": [
+        300,
+        350,
+        600,
+        2800
+      ],
+      "temp_mean_c": [
+        4,
+        12,
+        25,
+        30
+      ],
+      "ph": [
+        4.3,
+        6,
+        7,
+        8.3
+      ],
+      "cycle_days": [
+        85,
+        175
+      ],
+      "texture_optimal": [
+        "medium",
+        "organic"
+      ],
+      "texture_tolerated": [
+        "wide",
+        "organic"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "tomato": {
+      "fr": "Tomate",
+      "en": "Tomato",
+      "scientific_name": "Lycopersicon esculentum",
+      "ecoport_code": 1379,
+      "rain_mm": [
+        400,
+        600,
+        1300,
+        1800
+      ],
+      "temp_mean_c": [
+        7,
+        20,
+        27,
+        35
+      ],
+      "ph": [
+        5,
+        5.5,
+        6.8,
+        7.5
+      ],
+      "cycle_days": [
+        70,
+        150
+      ],
+      "texture_optimal": [
+        "medium",
+        "organic"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "okra": {
+      "fr": "Gombo",
+      "en": "Okra",
+      "scientific_name": "Abelmoschus esculentus",
+      "ecoport_code": 289,
+      "rain_mm": [
+        300,
+        600,
+        1200,
+        2500
+      ],
+      "temp_mean_c": [
+        12,
+        20,
+        30,
+        35
+      ],
+      "ph": [
+        4.5,
+        5.5,
+        7,
+        8.7
+      ],
+      "cycle_days": [
+        50,
+        180
+      ],
+      "texture_optimal": [
+        "heavy",
+        "medium",
+        "light",
+        "organic"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "sweet_potato": {
+      "fr": "Patate douce",
+      "en": "Sweet potato",
+      "scientific_name": "Ipomoea batatas",
+      "ecoport_code": 1265,
+      "rain_mm": [
+        350,
+        750,
+        2000,
+        5000
+      ],
+      "temp_mean_c": [
+        10,
+        18,
+        28,
+        38
+      ],
+      "ph": [
+        4,
+        5,
+        7,
+        8.7
+      ],
+      "cycle_days": [
+        80,
+        170
+      ],
+      "texture_optimal": [],
+      "texture_tolerated": [],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "wheat": {
+      "fr": "Blé",
+      "en": "Wheat",
+      "scientific_name": "Triticum aestivum",
+      "ecoport_code": 2114,
+      "rain_mm": [
+        300,
+        750,
+        900,
+        1600
+      ],
+      "temp_mean_c": [
+        5,
+        15,
+        23,
+        27
+      ],
+      "ph": [
+        5.5,
+        6,
+        7,
+        8.5
+      ],
+      "cycle_days": [
+        90,
+        250
+      ],
+      "texture_optimal": [
+        "medium",
+        "organic"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "bambara": {
+      "fr": "Voandzou (pois bambara)",
+      "en": "Bambara groundnut",
+      "scientific_name": "Vigna subterranea",
+      "ecoport_code": 10830,
+      "rain_mm": [
+        300,
+        750,
+        1400,
+        3000
+      ],
+      "temp_mean_c": [
+        16,
+        19,
+        30,
+        38
+      ],
+      "ph": [
+        4.3,
+        5,
+        6.5,
+        7
+      ],
+      "cycle_days": [
+        90,
+        180
+      ],
+      "texture_optimal": [
+        "light"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light",
+        "organic"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "pepper": {
+      "fr": "Piment",
+      "en": "Pepper",
+      "scientific_name": "Capsicum annuum",
+      "ecoport_code": 618,
+      "rain_mm": [
+        500,
+        600,
+        1250,
+        1700
+      ],
+      "temp_mean_c": [
+        8,
+        17,
+        30,
+        35
+      ],
+      "ph": [
+        4.5,
+        5.5,
+        6.8,
+        7
+      ],
+      "cycle_days": [
+        60,
+        180
+      ],
+      "texture_optimal": [
+        "medium",
+        "organic"
+      ],
+      "texture_tolerated": [
+        "medium",
+        "light"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "bean": {
+      "fr": "Haricot commun",
+      "en": "Common bean",
+      "scientific_name": "Phaseolus vulgaris",
+      "ecoport_code": 1668,
+      "rain_mm": [
+        300,
+        500,
+        2000,
+        4300
+      ],
+      "temp_mean_c": [
+        7,
+        16,
+        25,
+        32
+      ],
+      "ph": [
+        4,
+        5.5,
+        7.5,
+        9
+      ],
+      "cycle_days": [
+        50,
+        270
+      ],
+      "texture_optimal": [
+        "medium",
+        "organic"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "soybean": {
+      "fr": "Soja",
+      "en": "Soybean",
+      "scientific_name": "Glycine max",
+      "ecoport_code": 1150,
+      "rain_mm": [
+        450,
+        600,
+        1500,
+        1800
+      ],
+      "temp_mean_c": [
+        10,
+        20,
+        33,
+        38
+      ],
+      "ph": [
+        4.5,
+        5.5,
+        6.5,
+        8.4
+      ],
+      "cycle_days": [
+        75,
+        180
+      ],
+      "texture_optimal": [
+        "medium",
+        "organic"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "potato": {
+      "fr": "Pomme de terre",
+      "en": "Potato",
+      "scientific_name": "Solanum tuberosum",
+      "ecoport_code": 1971,
+      "rain_mm": [
+        250,
+        500,
+        800,
+        2000
+      ],
+      "temp_mean_c": [
+        7,
+        15,
+        25,
+        30
+      ],
+      "ph": [
+        4.2,
+        5,
+        6.2,
+        8.5
+      ],
+      "cycle_days": [
+        90,
+        160
+      ],
+      "texture_optimal": [
+        "medium",
+        "organic"
+      ],
+      "texture_tolerated": [
+        "heavy",
+        "medium",
+        "light"
+      ],
+      "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
+      "verified": true
+    },
+    "sugarcane": {
+      "fr": "Canne à sucre",
+      "en": "Sugarcane",
+      "scientific_name": "Saccharum officinarum",
+      "ecoport_code": 1884,
+      "rain_mm": [
+        1000,
+        1500,
+        2000,
+        5000
+      ],
+      "temp_mean_c": [
+        15,
+        24,
+        37,
+        41
+      ],
+      "ph": [
+        4.5,
+        5,
+        8,
+        9
+      ],
+      "cycle_days": [
+        210,
+        365
+      ],
+      "texture_optimal": [],
+      "texture_tolerated": [],
       "source": "FAO EcoCrop, via OpenCLIM/ecocrop EcoCrop_DB.csv",
       "verified": true
     }

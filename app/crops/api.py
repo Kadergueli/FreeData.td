@@ -9,7 +9,7 @@ from app.config import settings
 from app.crops import explain
 from app.crops.calendar import sowing_calendar
 from app.crops.engine import assess, load_crops, rank
-from app.crops.sites import find_region, region_names, site_for
+from app.crops.sites import find_region, region_coords, region_names, site_for
 from app.security import rate_limiter
 
 router = APIRouter(prefix="/api/v1/crops", tags=["crops"])
@@ -31,7 +31,8 @@ def _requirements(crop: dict[str, Any]) -> dict[str, Any]:
 
 def _public(result: dict[str, Any]) -> dict[str, Any]:
     crop = load_crops()[result["crop"]]
-    return {**result, "name_fr": crop["fr"], "name_en": crop["en"], "requirements": _requirements(crop)}
+    return {**result, "name_fr": crop["fr"], "name_en": crop["en"], "requirements": _requirements(crop),
+            "caveat": crop.get("caveat")}
 
 
 def _calendar(crop_id: str, data: dict[str, Any]) -> list[dict[str, Any]] | None:
@@ -83,6 +84,24 @@ def suitability(region: str = Query(..., min_length=2), crop: str | None = Query
     body["calendar"] = calendar
     body["summary"] = summary
     return body
+
+
+@router.get("/map")
+def suitability_map(crop: str = Query(...)) -> dict[str, Any]:
+    """Aptitude d'une culture pour chacune des régions (une ligne par région, avec ses coordonnées)."""
+    crop_id = _crop_or_error(crop)
+    rows = []
+    for name in region_names():
+        data = site_for(name)
+        coords = region_coords(name)
+        if not data["site"] or coords is None:
+            continue
+        r = assess(crop_id, data["site"])
+        rows.append({"region": name, "lat": coords["lat"], "lon": coords["lon"], "score": r["score"],
+                     "verdict": r["verdict"], "limiting": r["limiting"],
+                     "if_irrigated": (r.get("if_irrigated") or {}).get("score")})
+    c = load_crops()[crop_id]
+    return {"crop": crop_id, "name_fr": c["fr"], "name_en": c["en"], "regions": rows}
 
 
 @router.post("/explain")

@@ -71,3 +71,10 @@ def site_for(region: str) -> dict[str, Any]:
     else:
         missing.append("soil")
     return {"region": region, "site": site, "soil": soil, "missing": missing, "climate": climate}
+
+
+def region_coords(region: str) -> dict[str, float] | None:
+    """Latitude/longitude du point central d'une région (celui dont le climat et le sol ont été lus)."""
+    from app.agents.environment import EnvironmentAgent
+
+    return EnvironmentAgent.CHAD_REGIONS.get(region)

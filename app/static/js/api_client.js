@@ -165,6 +165,11 @@ export async function fetchSuitability(region, crop = null, lang = 'fr') {
   return requestJson(`${BASE_URL}/crops/suitability?${qs.toString()}`);
 }
 
+/** Suitability of one crop for every region (one row per region with its coordinates). Throws the server's message. */
+export async function fetchCropMap(crop) {
+  return requestJson(`${BASE_URL}/crops/map?${new URLSearchParams({ crop }).toString()}`);
+}
+
 /** AI-written note for one crop in one region (rule-based text when the AI is unavailable). Throws the server's message. */
 export async function explainCrop(region, crop, lang = 'fr') {
   const qs = new URLSearchParams({ region, crop, lang });
