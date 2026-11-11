@@ -36,6 +36,7 @@ from app.admin import admin_configured
 from app.admin import router as admin_router
 from app.whatsapp import router as whatsapp_router
 from app.crops.api import router as crops_router
+from app.licences import router as licences_router
 from app.config import settings
 from app.security import read_limit_exceeded, require_analysis_rate_limit, require_collection_access
 from app.services.discoverability import (
@@ -141,6 +142,7 @@ _CDN_CACHEABLE_PREFIXES = (
     "/api/v1/catalog",
     "/api/v1/regions",
     "/api/v1/crops",
+    "/api/v1/licences",
     "/api/v1/sources/freshness",
     "/api/v1/pipeline/audit",
     "/api/v1/insights/cross-sector",
@@ -176,6 +178,7 @@ repository = ObservationRepository()
 app.include_router(admin_router)
 app.include_router(whatsapp_router)
 app.include_router(crops_router)
+app.include_router(licences_router)
 STATIC_DIR = Path(__file__).parent / "static"
 DASHBOARD = STATIC_DIR / "index.html"
 
