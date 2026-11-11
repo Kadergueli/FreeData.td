@@ -143,3 +143,12 @@ def test_unicef_drops_targets_future_years_and_non_national_levels_and_ranks_sou
         _row("NT_TWO", 2019, "_T", 10, prio="3"), _row("NT_TWO", 2019, "_T", 20, prio="1"),
     ])
     assert {r["indicator"]: r["value"] for r in parse_unicef(text, "NUTRITION")} == {"NT_TWO name": 20.0}
+
+
+def test_uis_teacher_indicators_confirmed_on_the_live_api_are_collected():
+    from app.agents.unesco_uis import UIS_INDICATORS, parse_uis
+
+    assert {"FTP.1", "FTP.2T3", "FTP.1.QUALIFIED", "FTP.1.TRAINED", "GER.1.GPIA"} <= set(UIS_INDICATORS)
+    payload = {"records": [{"indicatorId": "FTP.1", "year": 2021, "value": 14.8}]}
+    row = parse_uis(payload, "FTP.1")[0]
+    assert row["unit"] == "% of teachers" and row["indicator"] == "Female teachers in primary education (UIS)"

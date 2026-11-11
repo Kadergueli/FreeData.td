@@ -28,6 +28,12 @@ UIS_INDICATORS: dict[str, tuple[str, str]] = {
     "LR.AG15T99": ("Adult literacy rate, 15+ (UIS)", "% of population 15+"),
     "LR.AG15T24": ("Youth literacy rate, 15-24 (UIS)", "% of population 15-24"),
     "XGDP.FSGOV": ("Government expenditure on education (UIS)", "% of GDP"),
+    # Codes confirmed on the live UIS API for Chad (rows available: GER.1.GPIA 46, FTP.1 33, FTP.2T3 23, QUALIFIED 7, TRAINED 5).
+    "GER.1.GPIA": ("Gender parity index of the gross enrolment ratio, primary (UIS)", "ratio"),
+    "FTP.1": ("Female teachers in primary education (UIS)", "% of teachers"),
+    "FTP.2T3": ("Female teachers in secondary education (UIS)", "% of teachers"),
+    "FTP.1.QUALIFIED": ("Primary teachers qualified to national standards (UIS)", "% of teachers"),
+    "FTP.1.TRAINED": ("Primary teachers trained to national standards (UIS)", "% of teachers"),
 }
 
 
