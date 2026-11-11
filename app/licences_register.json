@@ -160,26 +160,26 @@
     {
       "id": "open-meteo",
       "name": "Open-Meteo",
-      "licence": "CC BY 4.0 (données de l'API)",
-      "commercial_use": "conditional",
+      "licence": "CC BY 4.0 ; API gratuite réservée à un usage non commercial",
+      "commercial_use": "no",
       "share_alike": false,
       "attribution": "Lien obligatoire à côté de toute donnée affichée : « Weather data by Open-Meteo.com » (https://open-meteo.com/).",
-      "terms_url": "https://open-meteo.com/en/licence",
+      "terms_url": "https://open-meteo.com/en/terms",
       "verified_on": "2026-11-11",
-      "evidence": "Page Licence d'Open-Meteo lue le 2026-11-11 (texte fourni par l'utilisateur) : données de l'API en CC BY 4.0. Page Terms non lue.",
-      "notes": "La licence des données autorise l'usage commercial avec attribution ; les conditions d'accès à l'API gratuite (page Terms, offres payantes) restent à lire. Les données reposent sur des services nationaux (ex. Met Office en CC BY-SA) et sur Copernicus C3S (réanalyse) : citer Open-Meteo et conserver ces mentions."
+      "evidence": "Pages Licence et Terms d'Open-Meteo lues le 2026-11-11 (textes fournis par l'utilisateur).",
+      "notes": "API gratuite : usage non commercial uniquement (sites ou applications sans abonnement ni publicité, recherche publique, éducation), moins de 10 000 appels par jour, 5 000 par heure, 600 par minute, 300 000 par mois ; limites appliquées par adresse IP, parfois plus tôt depuis des hébergeurs comme Render. Usage commercial (abonnement, publicité, produit commercial) : abonnement payant (Standard, Professional ou Enterprise ; prix sur la page Pricing, non lue). Les données sont en CC BY 4.0 dans les deux cas. Si la plateforme reste sans abonnement ni publicité, l'usage actuel est conforme ; une offre payante qui s'appuie sur ces lignes ne l'est pas sans abonnement. Données issues de services nationaux (ex. Met Office en CC BY-SA) et de Copernicus : conserver les mentions."
     },
     {
       "id": "open-meteo-transport",
       "name": "Open-Meteo (transport)",
-      "licence": "CC BY 4.0 (données de l'API)",
-      "commercial_use": "conditional",
+      "licence": "CC BY 4.0 ; API gratuite réservée à un usage non commercial",
+      "commercial_use": "no",
       "share_alike": false,
       "attribution": "Lien obligatoire à côté de toute donnée affichée : « Weather data by Open-Meteo.com » (https://open-meteo.com/).",
-      "terms_url": "https://open-meteo.com/en/licence",
+      "terms_url": "https://open-meteo.com/en/terms",
       "verified_on": "2026-11-11",
-      "evidence": "Page Licence d'Open-Meteo lue le 2026-11-11 (texte fourni par l'utilisateur) : données de l'API en CC BY 4.0. Page Terms non lue.",
-      "notes": "La licence des données autorise l'usage commercial avec attribution ; les conditions d'accès à l'API gratuite (page Terms, offres payantes) restent à lire. Les données reposent sur des services nationaux (ex. Met Office en CC BY-SA) et sur Copernicus C3S (réanalyse) : citer Open-Meteo et conserver ces mentions."
+      "evidence": "Pages Licence et Terms d'Open-Meteo lues le 2026-11-11 (textes fournis par l'utilisateur).",
+      "notes": "API gratuite : usage non commercial uniquement (sites ou applications sans abonnement ni publicité, recherche publique, éducation), moins de 10 000 appels par jour, 5 000 par heure, 600 par minute, 300 000 par mois ; limites appliquées par adresse IP, parfois plus tôt depuis des hébergeurs comme Render. Usage commercial (abonnement, publicité, produit commercial) : abonnement payant (Standard, Professional ou Enterprise ; prix sur la page Pricing, non lue). Les données sont en CC BY 4.0 dans les deux cas. Si la plateforme reste sans abonnement ni publicité, l'usage actuel est conforme ; une offre payante qui s'appuie sur ces lignes ne l'est pas sans abonnement. Données issues de services nationaux (ex. Met Office en CC BY-SA) et de Copernicus : conserver les mentions."
     },
     {
       "id": "open-street-map",
