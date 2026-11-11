@@ -160,26 +160,26 @@
     {
       "id": "open-meteo",
       "name": "Open-Meteo",
-      "licence": "À vérifier",
-      "commercial_use": "unknown",
-      "share_alike": null,
-      "attribution": "Weather data by Open-Meteo.com.",
-      "terms_url": "https://open-meteo.com/en/terms",
-      "verified_on": null,
-      "evidence": "Page inaccessible depuis l'environnement de travail",
-      "notes": "À vérifier en priorité : l'API gratuite d'Open-Meteo peut être réservée à un usage non commercial. 106 000 lignes concernées."
+      "licence": "CC BY 4.0 (données de l'API)",
+      "commercial_use": "conditional",
+      "share_alike": false,
+      "attribution": "Lien obligatoire à côté de toute donnée affichée : « Weather data by Open-Meteo.com » (https://open-meteo.com/).",
+      "terms_url": "https://open-meteo.com/en/licence",
+      "verified_on": "2026-11-11",
+      "evidence": "Page Licence d'Open-Meteo lue le 2026-11-11 (texte fourni par l'utilisateur) : données de l'API en CC BY 4.0. Page Terms non lue.",
+      "notes": "La licence des données autorise l'usage commercial avec attribution ; les conditions d'accès à l'API gratuite (page Terms, offres payantes) restent à lire. Les données reposent sur des services nationaux (ex. Met Office en CC BY-SA) et sur Copernicus C3S (réanalyse) : citer Open-Meteo et conserver ces mentions."
     },
     {
       "id": "open-meteo-transport",
       "name": "Open-Meteo (transport)",
-      "licence": "À vérifier",
-      "commercial_use": "unknown",
-      "share_alike": null,
-      "attribution": "Weather data by Open-Meteo.com.",
-      "terms_url": "https://open-meteo.com/en/terms",
-      "verified_on": null,
-      "evidence": "Non vérifiée",
-      "notes": "Idem Open-Meteo."
+      "licence": "CC BY 4.0 (données de l'API)",
+      "commercial_use": "conditional",
+      "share_alike": false,
+      "attribution": "Lien obligatoire à côté de toute donnée affichée : « Weather data by Open-Meteo.com » (https://open-meteo.com/).",
+      "terms_url": "https://open-meteo.com/en/licence",
+      "verified_on": "2026-11-11",
+      "evidence": "Page Licence d'Open-Meteo lue le 2026-11-11 (texte fourni par l'utilisateur) : données de l'API en CC BY 4.0. Page Terms non lue.",
+      "notes": "La licence des données autorise l'usage commercial avec attribution ; les conditions d'accès à l'API gratuite (page Terms, offres payantes) restent à lire. Les données reposent sur des services nationaux (ex. Met Office en CC BY-SA) et sur Copernicus C3S (réanalyse) : citer Open-Meteo et conserver ces mentions."
     },
     {
       "id": "open-street-map",
