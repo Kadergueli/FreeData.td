@@ -1000,3 +1000,10 @@ a.mobile-nav-tab { display: block; text-decoration: none; }
 .crop-cal-month { font-weight: 600; text-transform: capitalize; }
 .crop-cal-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 4px; }
 @media (max-width: 640px) { .crop-cal { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+.adm-src > summary { list-style: none; }
+.adm-src > summary::-webkit-details-marker { display: none; }
+.adm-src-comm-ok { color: var(--green, #2e9e5b); border-color: currentColor; }
+.adm-src-comm-no { color: var(--red); border-color: currentColor; }
+.adm-src-comm-cond, .adm-src-comm-unk { color: var(--amber); border-color: currentColor; }
+.adm-src-warn { color: var(--red); border-color: currentColor; }

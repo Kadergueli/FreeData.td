@@ -74,6 +74,28 @@ TEAM = {"can_manage": True, "admins": [
     {"email": "helper@x.org", "role": "admin", "permanent": False, "added_by": "me@x.org"},
     {"email": "<b>evil</b>@x.org", "role": "admin", "permanent": False, "added_by": "me@x.org"}]}
 
+_POL = {"status": "active", "layer": "open", "limit_minute": None, "limit_hour": None, "limit_day": 10000,
+        "limit_month": None, "notes": None, "updated_by": None, "updated_at": None, "customised": False}
+SOURCES = {
+    "statuses": ["active", "paused", "planned", "retired"], "layers": ["open", "both"],
+    "summary": {"total": 3, "active": 2, "commercial_ready": 1, "to_check": 1},
+    "alternatives": [{"domain": "weather", "sources": ["open-meteo", "copernicus-era5"], "note": "x"}],
+    "sources": [
+        {"id": "open-meteo", "name": "Open-Meteo <b>x</b>", "licence": "CC BY 4.0 ; API gratuite non commerciale",
+         "commercial_use": "no", "share_alike": False, "attribution": "Weather data by Open-Meteo.com",
+         "terms_url": "https://open-meteo.com/en/terms", "verified_on": "2026-11-11", "evidence": "lu", "notes": "",
+         "commercial_safe": False, "policy": _POL, "warnings": [], "rows": 96358, "latest_reference": "2026-11-01"},
+        {"id": "copernicus-era5", "name": "Copernicus ERA5", "licence": "Licence to use Copernicus Products",
+         "commercial_use": "yes", "share_alike": False, "attribution": "Generated using Copernicus",
+         "terms_url": "https://apps.ecmwf.int/datasets/licences/copernicus/", "verified_on": "2026-11-12", "evidence": "lu",
+         "notes": "", "commercial_safe": True, "policy": {**_POL, "status": "planned", "layer": "both", "limit_day": None},
+         "warnings": [], "rows": 0, "latest_reference": None},
+        {"id": "dhs", "name": "DHS", "licence": "DHS terms", "commercial_use": "unknown", "share_alike": None,
+         "attribution": "x", "terms_url": "https://dhsprogram.com", "verified_on": None, "evidence": "-", "notes": "",
+         "commercial_safe": False, "policy": _POL, "warnings": ["active_unverified"], "rows": 10, "latest_reference": None},
+    ],
+}
+
 
 def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collections=None, run_reply=None,
           qitems=None, review_status=200, data=None, deleted=None, reports=None, team=None, mutate_status=200):
@@ -113,6 +135,12 @@ def _mock(page, *, me_status=200, overview=OVERVIEW, token_status=200, collectio
             route.fulfill(json={"items": DATA if data is None else data})
         elif path.startswith("/reports"):
             route.fulfill(json={"items": REPORTS if reports is None else reports})
+        elif path.startswith("/sources"):
+            if route.request.method == "PUT":
+                bodies.append(route.request.post_data_json)
+                route.fulfill(json={"status": "saved", "changes": ["layer"]})
+            else:
+                route.fulfill(json=SOURCES)
         elif path.startswith("/admins"):
             route.fulfill(json=TEAM if team is None else team)
         elif path.startswith("/quarantine/"):
@@ -654,3 +682,21 @@ def test_non_owner_sees_the_team_but_no_controls(probe):
     _mock(probe.page, team=dict(TEAM, can_manage=False))
     _open(probe, "team", "#admin-team-readonly")
     assert probe.page.locator("#admin-team-form").count() == 0 and probe.page.locator(".admin-team-remove").count() == 0
+
+
+def test_sources_space_lists_licences_and_saves_a_decision(probe):
+    calls = _mock(probe.page)
+    _open(probe, "sources", ".adm-src")
+    assert probe.page.locator(".adm-src").count() == 3
+    assert probe.page.locator(".adm-src b", has_text="<b>").count() == 0          # hostile name is text, not markup
+    assert "3 sources" in probe.page.inner_text("#admin-src-summary")
+    assert probe.page.locator('[data-domain="weather"] li').count() == 2
+    card = probe.page.locator('.adm-src[data-id="open-meteo"]')
+    card.locator("summary").click()
+    card.locator('select[name="layer"]').select_option("both")
+    card.locator('input[name="limit_day"]').fill("8000")
+    card.locator('button[type="submit"]').click()
+    probe.page.wait_for_selector(".adm-src")
+    assert any(m == "PUT" and p == "/sources/open-meteo" for m, p, _ in calls)
+    assert calls.bodies[-1]["layer"] == "both" and calls.bodies[-1]["limit_day"] == 8000
+    assert calls.bodies[-1]["limit_hour"] is None

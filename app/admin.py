@@ -29,6 +29,7 @@ from app.services.data_admin import DataAdminStore
 from app.services.quarantine import STATUSES as QUARANTINE_STATUSES
 from app.services.quarantine import QuarantineStore
 from app.services.scheduler import scheduler_service
+from app.services import source_policy as sp
 from app.services.storage import SECTOR_IDS, ObservationRepository, _cache_get, _cache_set, invalidate_cache
 
 logger = logging.getLogger(__name__)
@@ -645,3 +646,75 @@ async def admins_remove(body: AdminEmailBody, owner: AdminUser = Depends(require
         raise HTTPException(status_code=404, detail="No such administrator.")
     await asyncio.to_thread(_store().log, owner.email, "admin_removed", email, {})
     return {"status": "removed", "email": email}
+
+
+# ── Sources & licences: status, layer, limits ────────────────────────────────
+
+class SourcePolicyBody(BaseModel):
+    status: str | None = None
+    layer: str | None = None
+    limit_minute: int | None = Field(default=None, ge=0, le=100_000_000)
+    limit_hour: int | None = Field(default=None, ge=0, le=100_000_000)
+    limit_day: int | None = Field(default=None, ge=0, le=100_000_000)
+    limit_month: int | None = Field(default=None, ge=0, le=100_000_000)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+def _policy_store() -> sp.SourcePolicyStore:
+    from app.main import repository
+    return sp.SourcePolicyStore(repository)
+
+
+@router.get("/sources")
+async def sources_overview(admin: AdminUser = Depends(require_admin)) -> dict:
+    from app.main import repository
+    sources = await asyncio.to_thread(_policy_store().merged)
+    try:
+        fresh = await asyncio.to_thread(repository.source_freshness)
+    except Exception as exc:          # the screen stays usable without the counts
+        logger.warning("sources: freshness unavailable: %s", exc)
+        fresh = []
+    rows: dict[str, int] = {}
+    latest: dict[str, str] = {}
+    for f in fresh:
+        sid = sp.row_source_id(f.get("source", ""), f.get("sector"))
+        if sid:
+            rows[sid] = rows.get(sid, 0) + int(f.get("rows") or 0)
+            ref = str(f.get("latest_reference") or "")
+            latest[sid] = max(latest.get(sid, ""), ref)
+    for s in sources:
+        s["rows"] = rows.get(s["id"], 0)
+        s["latest_reference"] = latest.get(s["id"]) or None
+    summary = {
+        "total": len(sources),
+        "active": sum(s["policy"]["status"] == "active" for s in sources),
+        "commercial_ready": sum(s["commercial_safe"] and s["policy"]["status"] == "active" for s in sources),
+        "to_check": sum(bool(s["warnings"]) or not s["verified_on"] for s in sources),
+    }
+    return {"sources": sources, "alternatives": sp.ALTERNATIVES, "summary": summary,
+            "statuses": list(sp.STATUSES), "layers": list(sp.LAYERS)}
+
+
+@router.put("/sources/{source_id}")
+async def source_update(source_id: str, body: SourcePolicyBody, admin: AdminUser = Depends(require_admin)) -> dict:
+    current = {s["id"]: s for s in await asyncio.to_thread(_policy_store().merged)}
+    if source_id not in current:
+        raise HTTPException(status_code=404, detail="Unknown source.")
+    if body.status is not None and body.status not in sp.STATUSES:
+        raise HTTPException(status_code=422, detail=f"status must be one of {', '.join(sp.STATUSES)}.")
+    if body.layer is not None and body.layer not in sp.LAYERS:
+        raise HTTPException(status_code=422, detail=f"layer must be one of {', '.join(sp.LAYERS)}.")
+    old = current[source_id]["policy"]
+    sent = body.model_dump(exclude_unset=True)
+    new = {k: (v.strip() or None if isinstance(v, str) and k == "notes" else v) for k, v in sent.items()}
+    values = {k: new.get(k, old[k]) for k in ("status", "layer", "notes", *sp.LIMIT_FIELDS)}
+    changes = {k: {"from": old[k], "to": values[k]} for k in values if values[k] != old[k]}
+    if not changes:
+        return {"status": "unchanged"}
+    try:
+        await asyncio.to_thread(_policy_store().save, source_id, values, admin.email)
+    except Exception as exc:
+        logger.error("source policy save failed: %s", exc)
+        raise HTTPException(status_code=503, detail="The decision could not be saved.") from exc
+    await asyncio.to_thread(_store().log, admin.email, "source_policy", source_id, {"changes": changes})
+    return {"status": "saved", "changes": list(changes)}

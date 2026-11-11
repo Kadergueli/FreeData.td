@@ -252,6 +252,18 @@
       "verified_on": null,
       "evidence": "Non vérifiée",
       "notes": "Libellé repris tel quel ; texte de la licence à obtenir auprès de l'INSEED."
+    },
+    {
+      "id": "copernicus-era5",
+      "name": "Copernicus ERA5 / ERA5-Land (CDS)",
+      "licence": "Licence to use Copernicus Products",
+      "commercial_use": "yes",
+      "share_alike": false,
+      "attribution": "Generated using Copernicus Climate Change Service information [année] ; pour une donnée modifiée : « Contains modified Copernicus Climate Change Service information [année] » ; préciser que ni la Commission européenne ni l'ECMWF ne sont responsables de l'usage fait de l'information.",
+      "terms_url": "https://apps.ecmwf.int/datasets/licences/copernicus/",
+      "verified_on": "2026-11-12",
+      "evidence": "Texte de la licence lu le 2026-11-12 : §4.1 gratuite, mondiale, perpétuelle ; §4.2 accès « pour toute finalité licite » ; §5.1 mention obligatoire.",
+      "notes": "Source planifiée, pas encore collectée : il faut un compte CDS et une clé API (gratuite). Les produits portant leurs propres conditions sont exclus (§1.5) et les données tierces vues via le portail relèvent d'autres termes (§7). Alternative météo à Open-Meteo pour une offre commerciale ; à comparer avec NASA POWER."
     }
   ]
 }

@@ -89,7 +89,7 @@ function renderLogin(message = '') {
 
 const TAB_GROUPS = [
   ['admin.grp_monitor', [['overview', 'layout-dashboard'], ['collections', 'download-cloud']]],
-  ['admin.grp_data', [['quality', 'badge-check'], ['data', 'database'], ['reports', 'file-text']]],
+  ['admin.grp_data', [['quality', 'badge-check'], ['sources', 'scale'], ['data', 'database'], ['reports', 'file-text']]],
   ['admin.grp_assist', [['assistant', 'message-square']]],
   ['admin.grp_admin', [['team', 'users'], ['audit', 'scroll-text']]],
 ];
@@ -154,7 +154,7 @@ function renderPanel() {
   const panel = document.getElementById('admin-panel');
   if (!panel) return;
   panel.innerHTML = `<p class="mono-sm text-muted"><span class="skeleton" style="width:240px;"></span></p>`;
-  ({ assistant: loadAssistant, audit: loadAudit, collections: loadCollections, quality: loadQuality, data: loadData, reports: loadReports, team: loadTeam }[_tab] || loadOverview)(panel).catch(handlePanelError);
+  ({ assistant: loadAssistant, audit: loadAudit, collections: loadCollections, quality: loadQuality, sources: loadSources, data: loadData, reports: loadReports, team: loadTeam }[_tab] || loadOverview)(panel).catch(handlePanelError);
 }
 
 function handlePanelError(err) {
@@ -481,6 +481,65 @@ async function mutate(path, body, okKey, msgEl, goneKey) {
     else { msgEl.textContent = `${t('admin.load_failed')}: ${err.message}`; return; }
   }
   renderPanel();
+}
+
+/* ── Sources & licences ──────────────────────────────────────────────────── */
+
+const LIMITS = ['limit_minute', 'limit_hour', 'limit_day', 'limit_month'];
+
+function sourceCard(s, o) {
+  const p = s.policy;
+  const comm = s.commercial_use === 'yes' ? (s.verified_on ? 'ok' : 'unk') : s.commercial_use === 'no' ? 'no' : s.commercial_use === 'conditional' ? 'cond' : 'unk';
+  const opts = (list, cur, key) => list.map(v => `<option value="${v}"${v === cur ? ' selected' : ''}>${escapeHtml(t(`admin.src_${key}.${v}`))}</option>`).join('');
+  return `<details class="card adm-src" data-id="${escapeHtml(s.id)}" style="padding:12px 16px;">
+    <summary class="flex items-center gap-2 flex-wrap" style="cursor:pointer;">
+      <strong class="mono-sm">${escapeHtml(s.name)}</strong>
+      <span class="badge mono-xs">${escapeHtml(t(`admin.src_status.${p.status}`))}</span>
+      <span class="badge mono-xs adm-src-comm-${comm}">${escapeHtml(t(`admin.src_comm.${comm}`))}</span>
+      ${s.warnings.map(w => `<span class="badge mono-xs adm-src-warn">${escapeHtml(t(`admin.src_warn.${w}`))}</span>`).join('')}
+      <span class="mono-xs text-muted" style="margin-left:auto;">${s.rows ? `${s.rows.toLocaleString()} ${t('admin.src_rows')}` : ''}</span>
+    </summary>
+    <div class="mt-3">
+      <p class="mono-xs mb-1"><b>${t('admin.src_licence')}</b> ${escapeHtml(s.licence)}${s.share_alike ? ` · ${t('admin.src_sharealike')}` : ''}
+        · <a href="${escapeHtml(s.terms_url)}" target="_blank" rel="noopener">${t('admin.src_terms')}</a></p>
+      <p class="mono-xs text-muted mb-1">${s.verified_on ? `${t('admin.src_verified')} ${escapeHtml(s.verified_on)} — ${escapeHtml(s.evidence)}` : t('admin.src_unverified')}</p>
+      <p class="mono-xs text-muted mb-1"><b>${t('admin.src_attr')}</b> ${escapeHtml(s.attribution)}</p>
+      ${s.notes ? `<p class="mono-xs text-muted mb-2">${escapeHtml(s.notes)}</p>` : ''}
+      <form class="adm-src-form flex gap-3 flex-wrap items-end" data-id="${escapeHtml(s.id)}">
+        <label class="mono-xs">${t('admin.src_f_status')}<br><select name="status">${opts(o.statuses, p.status, 'status')}</select></label>
+        <label class="mono-xs">${t('admin.src_f_layer')}<br><select name="layer">${opts(o.layers, p.layer, 'layer')}</select></label>
+        ${LIMITS.map(k => `<label class="mono-xs">${t('admin.src_f_' + k)}<br><input type="number" min="0" name="${k}" value="${p[k] ?? ''}" style="width:110px;"></label>`).join('')}
+        <label class="mono-xs" style="flex:1 1 260px;">${t('admin.src_f_notes')}<br><input type="text" name="notes" maxlength="1000" value="${escapeHtml(p.notes || '')}" style="width:100%;"></label>
+        <button class="btn btn-cyan mono-xs" type="submit">${t('admin.src_save')}</button>
+      </form>
+      ${p.updated_by ? `<p class="mono-xs text-muted mt-2">${t('admin.src_updated')} ${escapeHtml(p.updated_by)} · ${escapeHtml(formatDate(p.updated_at))}</p>` : ''}
+    </div></details>`;
+}
+
+async function loadSources(panel) {
+  const o = await adminFetch('/sources');
+  const by = Object.fromEntries(o.sources.map(s => [s.id, s]));
+  const sm = o.summary;
+  panel.innerHTML = `
+    <p class="mono-xs mb-3" id="admin-src-summary">${fill(t('admin.src_summary'), { total: sm.total, active: sm.active, ready: sm.commercial_ready, check: sm.to_check })}</p>
+    ${o.alternatives.map(a => `<div class="card mb-3" style="padding:14px 16px;" data-domain="${escapeHtml(a.domain)}">
+      <h4 class="mono-sm uppercase mb-1">${escapeHtml(t('admin.src_alt_' + a.domain))}</h4>
+      <p class="mono-xs text-muted mb-2">${t('admin.src_alt_hint')}</p>
+      <ul class="mono-xs" style="margin:0;padding-left:18px;">${a.sources.filter(id => by[id]).map(id => `<li><b>${escapeHtml(by[id].name)}</b> — ${escapeHtml(t(`admin.src_status.${by[id].policy.status}`))}, ${escapeHtml(t(`admin.src_comm.${by[id].commercial_use === 'yes' && by[id].verified_on ? 'ok' : by[id].commercial_use === 'no' ? 'no' : 'unk'}`))}</li>`).join('')}</ul></div>`).join('')}
+    <div class="flex flex-col gap-2">${o.sources.map(s => sourceCard(s, o)).join('')}</div>`;
+  panel.querySelectorAll('.adm-src-form').forEach(form => form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = { status: form.status.value, layer: form.layer.value, notes: form.notes.value };
+    LIMITS.forEach(k => { body[k] = form[k].value === '' ? null : Number(form[k].value); });
+    try {
+      const r = await adminFetch(`/sources/${encodeURIComponent(form.dataset.id)}`, { method: 'PUT', body });
+      showToast(t(r.status === 'saved' ? 'admin.src_saved' : 'admin.src_unchanged'), 'success');
+      if (r.status === 'saved') renderPanel();
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) { handlePanelError(err); return; }
+      showToast(`${t('admin.load_failed')}: ${err.message}`, 'error');
+    }
+  }));
 }
 
 /* ── Data: find, correct, delete, restore ────────────────────────────────── */
