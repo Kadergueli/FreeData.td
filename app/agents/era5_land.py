@@ -2,8 +2,11 @@
 
 Dataset "reanalysis-era5-land-timeseries", CSV, one file per variable inside a zip:
   t2m  = 2 m temperature, kelvin, hourly
-  tp   = total precipitation, metres, ACCUMULATED from 00 UTC of each day (the value at 00:00 of
-         day D+1 is the total of day D), so the daily total is the largest value of that span.
+  tp   = total precipitation, metres. Either ACCUMULATED from 00 UTC of each day (then the daily
+         total is the largest value of the span, stamped 00:00 of day D+1) or hourly amounts (then
+         it is their sum). The first real download (Moundou) showed the largest-value rule giving
+         about a fifth of the rain, so the mode is detected in the data: a value that falls inside
+         a day (hour 1..23) can only be an hourly amount.
 Only complete months are returned: a half month would give a misleading mean."""
 from __future__ import annotations
 
@@ -61,13 +64,24 @@ def read_zip(blob: bytes) -> dict[str, list[tuple[datetime, float]]]:
     return series
 
 
+def precip_is_hourly(tp: list[tuple[datetime, float]]) -> bool:
+    """True when the values are hourly amounts: an accumulation never falls from one hour to the next
+    inside a day (it restarts after the 00:00 value)."""
+    for (t0, v0), (t1, v1) in zip(tp, tp[1:]):
+        if t0.hour != 0 and t1.hour != 0 and t1 - t0 == timedelta(hours=1) and v1 < v0 - 1e-9:
+            return True
+    return False
+
+
 def monthly(series: dict[str, list[tuple[datetime, float]]]) -> list[dict[str, Any]]:
     """[{year, month, kind, value}] for each complete month, kind in mean|max|min|precip."""
     temps: dict[date, list[float]] = defaultdict(list)
     for t, kelvin in series.get("t2m", []):
         temps[t.date()].append(kelvin - 273.15)
     accum: dict[date, list[float]] = defaultdict(list)
-    for t, metres in series.get("tp", []):
+    tp = sorted(series.get("tp", []))
+    hourly = precip_is_hourly(tp)
+    for t, metres in tp:
         # 00:00 belongs to the day that just ended; hours 01..23 to the current day
         accum[t.date() - timedelta(days=1) if t.hour == 0 else t.date()].append(metres * 1000.0)
 
@@ -81,7 +95,7 @@ def monthly(series: dict[str, list[tuple[datetime, float]]]) -> list[dict[str, A
         m["min"].append(min(vals))
     for day, vals in accum.items():
         if (day.year, day.month) in by_month and day in temps and len(temps[day]) >= 24:
-            by_month[(day.year, day.month)]["precip"].append(max(vals))
+            by_month[(day.year, day.month)]["precip"].append(sum(vals) if hourly else max(vals))
 
     out = []
     for (year, month), kinds in sorted(by_month.items()):

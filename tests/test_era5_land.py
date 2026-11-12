@@ -77,3 +77,22 @@ def test_agent_collects_per_region_and_reports_a_failed_one(tmp_path, monkeypatc
     assert any("Bardaï" in e and "cost limits" in e for e in agent.source_errors)
     obs = agent.normalize(records[0])
     assert obs.license == "Licence to use Copernicus Products" and "Copernicus" in obs.notes
+
+
+def test_hourly_rain_amounts_are_summed_not_maxed():
+    """If tp is the amount of each hour (it falls back inside a day), the day total is the sum."""
+    t_rows, p_rows = ["valid_time,t2m,latitude,longitude"], ["valid_time,tp,latitude,longitude"]
+    cur, last = datetime(2026, 1, 1), datetime(2026, 2, 1)
+    while cur <= last:
+        t_rows.append(f"{cur:%Y-%m-%d %H:%M:%S},300.0,8.6,16.1")
+        # 6 mm over two hours of every day, then dry
+        p_rows.append(f"{cur:%Y-%m-%d %H:%M:%S},{0.003 if cur.hour in (10, 11) else 0.0},8.6,16.1")
+        cur += timedelta(hours=1)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("t.csv", "\n".join(t_rows))
+        z.writestr("p.csv", "\n".join(p_rows))
+    series = era5_land.read_zip(buf.getvalue())
+    assert era5_land.precip_is_hourly(sorted(series["tp"]))
+    jan = {m["kind"]: m["value"] for m in era5_land.monthly(series) if m["month"] == 1}
+    assert jan["precip"] == pytest.approx(6.0)
