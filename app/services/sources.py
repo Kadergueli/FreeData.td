@@ -10,12 +10,12 @@ SOURCE_LABELS: dict[str, str] = {
     "unesco-uis": "UNESCO UIS", "unicef": "UNICEF", "open-street-map": "OpenStreetMap",
     "who-gho": "WHO GHO", "dhs": "DHS Program", "fews-net": "FEWS NET", "wfp": "WFP prices",
     "faostat": "FAOSTAT", "ourairports": "OurAirports", "open-meteo-transport": "Open-Meteo (transport)",
-    "pink-sheet": "World Bank Pink Sheet",
+    "pink-sheet": "World Bank Pink Sheet", "copernicus-era5": "Copernicus ERA5-Land",
 }
 
 SECTOR_SOURCES: dict[str, tuple[str, ...]] = {
     "agriculture": ("world-bank", "open-meteo", "nasa-power-agro"),
-    "environment": ("open-meteo", "nasa-power", "nasa-firms"),
+    "environment": ("open-meteo", "nasa-power", "nasa-firms", "copernicus-era5"),
     "markets": ("world-bank", "fews-net", "wfp", "faostat"),
     "economy": ("world-bank", "imf"),
     "health": ("world-bank", "who-gho", "dhs", "unicef", "open-street-map"),

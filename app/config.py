@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     read_rate_limit_per_minute: int = 120
     export_rate_limit_per_minute: int = 10
     nasa_firms_key: str | None = None
+    # Copernicus Climate Data Store (ERA5-Land): personal access token from the CDS profile page.
+    cdsapi_key: str | None = None
+    cdsapi_url: str | None = None
     # HDX Humanitarian API (HAPI): WFP food prices. Free; create it on hapi.humdata.org (Generate App Identifier).
     hdx_app_identifier: str | None = None
     # Admin area. The publishable ("anon") key is public by design: the browser needs it to

@@ -26,6 +26,9 @@ DEFAULT_LIMITS: dict[str, dict[str, int]] = {
     "open-meteo-transport": {"limit_minute": 600, "limit_hour": 5000, "limit_day": 10000, "limit_month": 300000},
 }
 
+# Collectable but not switched on by default: the admin turns it on after a first good run.
+DEFAULT_STATUS = {"copernicus-era5": "planned"}
+
 # Sources that give the same kind of data: the admin picks which one feeds the platform.
 ALTERNATIVES: list[dict[str, Any]] = [
     {"domain": "weather", "sources": ["open-meteo", "nasa-power", "copernicus-era5"],
@@ -58,7 +61,7 @@ def row_source_id(source: str, sector: str | None = None) -> str | None:
 def default_policy(entry: dict[str, Any]) -> dict[str, Any]:
     collectable = any(entry["id"] in ids for ids in SECTOR_SOURCES.values())
     pol: dict[str, Any] = {
-        "status": "active" if collectable else "planned",
+        "status": DEFAULT_STATUS.get(entry["id"], "active" if collectable else "planned"),
         "layer": "both" if commercial_safe(entry) else "open",
         "notes": None, "updated_by": None, "updated_at": None, "customised": False,
     }

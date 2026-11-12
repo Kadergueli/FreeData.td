@@ -31,6 +31,7 @@ SOURCE_TERMS: dict[str, tuple[str, str]] = {
     "UNICEF Data": ("CC BY 3.0 IGO", "Source: UNICEF Data Warehouse (data.unicef.org), all-population series for Chad. Licence: CC BY 3.0 IGO."),
     "UNESCO UIS": ("CC BY-SA 4.0", "Source: UNESCO Institute for Statistics (uis.unesco.org). Licence: CC BY-SA 4.0 (share-alike). Terms: https://databrowser.uis.unesco.org/terms-and-conditions"),
     "World Bank Pink Sheet": ("CC BY 4.0", "Source: World Bank Commodity Price Data (The Pink Sheet), monthly nominal US dollar prices."),
+    "Copernicus ERA5-Land": ("Licence to use Copernicus Products", "Contains modified Copernicus Climate Change Service information; neither the European Commission nor ECMWF is responsible for any use made of it. Terms: https://apps.ecmwf.int/datasets/licences/copernicus/"),
     "UNHCR": ("CC BY 4.0", "UNHCR Refugee Population Statistics Database (api.unhcr.org). Terms: https://www.unhcr.org/terms-use-datasets"),
 }
 

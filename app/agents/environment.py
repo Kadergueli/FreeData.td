@@ -4,12 +4,13 @@ import asyncio
 import csv
 import io
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
 
-from app.agents.base import BaseAgent, nasa_power_years, recent_window
+from app.agents import era5_land
+from app.agents.base import BaseAgent, nasa_power_years, recent_window, source_terms
 from app.config import settings
 from app.schemas import ObservationCreate
 
@@ -62,6 +63,9 @@ class EnvironmentAgent(BaseAgent):
         if source == "nasa-firms":
             return await self._collect_nasa_firms()
 
+        if source == "copernicus-era5":
+            return await self._collect_copernicus_era5()
+
         if source in ("all", "auto"):
             results = await asyncio.gather(
                 self._collect_open_meteo_weather(),
@@ -78,7 +82,7 @@ class EnvironmentAgent(BaseAgent):
             return combined
 
         raise ValueError(
-            f"Unknown source '{source}'. Supported: 'all', 'open-meteo', 'nasa-power', 'nasa-firms'."
+            f"Unknown source '{source}'. Supported: 'all', 'open-meteo', 'nasa-power', 'nasa-firms', 'copernicus-era5'."
         )
 
     # ─── Source 1: Open-Meteo Archive (temperature + precipitation) ──────────
@@ -201,6 +205,47 @@ class EnvironmentAgent(BaseAgent):
         logger.info("NASA POWER: collected %d records.", len(records))
         return records
 
+    # ─── Copernicus ERA5-Land (CDS): monthly values from hourly point series ─────
+    async def _collect_copernicus_era5(self) -> list[dict[str, Any]]:
+        """Not part of "all": 23 regions queue at the CDS for about 80 s each, so it is run on its own
+        (admin > Collectes > choose the source). Needs CDSAPI_KEY (and CDSAPI_URL) in the environment."""
+        key = settings.cdsapi_key
+        if not key:
+            raise ValueError("CDSAPI_KEY is not configured (Copernicus CDS personal access token).")
+        url = settings.cdsapi_url or era5_land.CDS_URL
+        start_s, end_s = recent_window(months=12)
+        start, end = date.fromisoformat(start_s), date.fromisoformat(end_s)
+        # one more day: the precipitation total of the last day is stamped 00:00 of the next one
+        windows = era5_land.chunks(start, end + timedelta(days=1))
+        gate = asyncio.Semaphore(3)         # be polite with the CDS queue
+
+        async def one_region(name: str, coords: dict[str, float]) -> list[dict[str, Any]]:
+            series: dict[str, list] = {}
+            async with gate:
+                for w_start, w_end in windows:
+                    blob = await asyncio.to_thread(
+                        era5_land.fetch_region_blob, url, key, coords["lat"], coords["lon"], w_start, w_end)
+                    for var, rows in era5_land.read_zip(blob).items():
+                        series.setdefault(var, []).extend(rows)
+            out = []
+            for m in era5_land.monthly(series):
+                indicator, unit = era5_land.INDICATORS[m["kind"]]
+                out.append({"year": m["year"], "month": m["month"], "day": 1, "value": m["value"],
+                            "source": era5_land.SOURCE, "indicator": indicator, "unit": unit,
+                            "region": name, "url": "https://cds.climate.copernicus.eu/datasets/" + era5_land.DATASET})
+            return out
+
+        results = await asyncio.gather(*(one_region(n, c) for n, c in self.CHAD_REGIONS.items()),
+                                       return_exceptions=True)
+        records: list[dict[str, Any]] = []
+        for (name, _), res in zip(self.CHAD_REGIONS.items(), results):
+            if isinstance(res, list):
+                records.extend(res)
+            else:
+                self.note_source_failure(f"Copernicus ERA5-Land ({name})", res)
+        logger.info("Copernicus ERA5-Land: collected %d records.", len(records))
+        return records
+
     # ─── Source 3: NASA FIRMS (active fire / bush fire hotspots) ──────────────
     async def _collect_nasa_firms(self) -> list[dict[str, Any]]:
         """Active fire hotspots in Chad from NASA FIRMS VIIRS (requires MAP_KEY).
@@ -302,7 +347,9 @@ class EnvironmentAgent(BaseAgent):
         unit_str = str(record.get("unit", "unit"))[:30]
 
         # Build notes with fire metadata if present
-        notes = f"Automated harvest by EnvironmentAgent from {record['source']}."
+        licence, notes = "CC BY 4.0", f"Automated harvest by EnvironmentAgent from {record['source']}."
+        if str(record["source"]).startswith("Copernicus"):
+            licence, notes = source_terms(str(record["source"]), "EnvironmentAgent")
         meta = record.get("meta")
         if meta:
             notes += f" [lat={meta.get('lat')}, lon={meta.get('lon')}, confidence={meta.get('confidence')}]"
@@ -320,6 +367,6 @@ class EnvironmentAgent(BaseAgent):
             region=str(record.get("region", "national")),
             source=str(record["source"])[:30],
             source_url=record.get("url"),
-            license="CC BY 4.0",
+            license=licence,
             notes=notes,
         )

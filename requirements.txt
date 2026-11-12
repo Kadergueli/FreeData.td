@@ -15,3 +15,4 @@ openpyxl>=3.1,<4.0     # reads the World Bank Pink Sheet workbook (pure Python)
 # ("temporarily unavailable, try CSV or JSON instead") instead of crashing
 # the whole deploy. Re-add a version constraint here once pyarrow publishes
 # cp314 wheels (or if Render's Python version is pinned back to <=3.12/3.13).
+cdsapi>=0.7.7,<1.0   # Copernicus CDS (ERA5-Land), only imported when that source runs
